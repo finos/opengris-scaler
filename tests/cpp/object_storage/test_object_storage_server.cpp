@@ -33,8 +33,11 @@ using ReceivedPayload = std::shared_ptr<const scaler::ymq::Bytes>;
 class ObjectStorageClient {
 public:
     ObjectStorageClient(
-        std::shared_ptr<IOContext> ioContext, const std::string& serverHost, const std::string serverPort)
-        : ioContext(ioContext), socket(createSocket(ioContext, serverHost, serverPort))
+        std::shared_ptr<IOContext> ioContext,
+        const std::string& serverHost,
+        const std::string serverPort,
+        std::optional<std::string> identity = std::nullopt)
+        : ioContext(ioContext), socket(createSocket(ioContext, serverHost, serverPort, std::move(identity)))
     {
     }
 
@@ -88,13 +91,16 @@ public:
 
 private:
     static scaler::ymq::sync::ConnectorSocket createSocket(
-        std::shared_ptr<IOContext> ioContext, const std::string& serverHost, const std::string& serverPort)
+        std::shared_ptr<IOContext> ioContext,
+        const std::string& serverHost,
+        const std::string& serverPort,
+        std::optional<std::string> identity)
     {
         static int id             = 0;
         const std::string address = "tcp://" + serverHost + ':' + serverPort;
 
         auto result = scaler::ymq::sync::ConnectorSocket::connect(
-            *ioContext, "ObjectStorageClient" + std::to_string(id++), address);
+            *ioContext, identity.value_or("ObjectStorageClient" + std::to_string(id++)), address);
 
         if (!result.has_value()) {
             throw std::runtime_error("Failed to connect to server");
@@ -152,9 +158,9 @@ protected:
         server.reset();
     }
 
-    std::unique_ptr<ObjectStorageClient> getClient()
+    std::unique_ptr<ObjectStorageClient> getClient(std::optional<std::string> identity = std::nullopt)
     {
-        return std::make_unique<ObjectStorageClient>(ioContext, SERVER_HOST, serverPort);
+        return std::make_unique<ObjectStorageClient>(ioContext, SERVER_HOST, serverPort, std::move(identity));
     }
 };
 
@@ -553,6 +559,69 @@ TEST_F(ObjectStorageServerTest, TestClientDisconnect)
         client2->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
+        EXPECT_EQ((*responsePayload)->asString(), payloadContent);
+    }
+}
+
+TEST_F(ObjectStorageServerTest, TestPartiallyDeliveredRequestIsDropped)
+{
+    // A connection that drops between a set request's header and its payload leaves the server holding a
+    // request that can never be completed. The client keeps its identity across a reconnect, so unless the
+    // server drops that request, the next request's header is taken for the missing payload: the object ends
+    // up holding a header, and everything after it is parsed as garbage.
+
+    ObjectResponseHeader responseHeader;
+    std::optional<ReceivedPayload> responsePayload;
+    uint64_t requestID = 200;
+
+    const std::string identity {"ReconnectingClient"};
+    const ObjectID objectID {4, 5, 6, 7};
+
+    // Announce a payload, then go away without sending it
+    {
+        auto client = getClient(identity);
+
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = payloadContent.size(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+    }
+
+    auto client = getClient(identity);
+
+    // The same request, this time delivered whole
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = payloadContent.size(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, payloadSpan);
+        client->readResponse(responseHeader, responsePayload);
+
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
+    }
+
+    // The object must hold the payload, not the header of the request that carried it
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = UINT64_MAX,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::GET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+        client->readResponse(responseHeader, responsePayload);
+
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
+        ASSERT_TRUE(responsePayload.has_value());
         EXPECT_EQ((*responsePayload)->asString(), payloadContent);
     }
 }
