@@ -197,7 +197,6 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         if worker_id not in self._worker_alive_since:
             return
 
-        logger.info(f"{worker_id!r} disconnected ({reason})")
         # Drop the worker from local state before any await: on a backend whose monitor send yields (ZMQ),
         # a second disconnect of the same worker could otherwise pass the guard above and pop() a
         # now-missing id. Removing first keeps the guard-and-remove atomic.
@@ -210,9 +209,10 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
         task_ids = self._policy_controller.remove_worker(worker_id)
         if not task_ids:
+            logger.info(f"{worker_id!r} disconnected ({reason})")
             return
 
-        logger.warning(f"{worker_id!r}: rerouting/failing {len(task_ids)} in-flight task(s)")
+        logger.warning(f"{worker_id!r} disconnected ({reason}): rerouting/failing {len(task_ids)} task(s)")
         for task_id in task_ids:
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
 

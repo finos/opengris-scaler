@@ -28,9 +28,9 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         await self._binder.bind(AddressConfig.from_string("tcp://127.0.0.1:0"))
 
     async def asyncTearDown(self) -> None:
-        # Destroy here rather than only in the tests: a binder left alive with a queued send is
-        # destroyed by __del__ at interpreter exit instead, where shutdown() blocks forever. A failing
-        # assertion would otherwise hang the whole run rather than just fail.
+        # Destroy here rather than only in the tests: a binder left alive is destroyed by __del__ at
+        # interpreter exit instead, which dead-locks on the GIL (finos/opengris-scaler#945), so a failing
+        # assertion would hang the whole run rather than just fail.
         self._binder.destroy()
 
     async def _on_receive(self, address: bytes, message: BaseMessage) -> None:

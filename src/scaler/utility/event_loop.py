@@ -3,6 +3,8 @@ import enum
 import logging
 from typing import Awaitable, Callable, Optional, TypeVar
 
+from scaler.utility.exceptions import ClientShutdownException
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -48,7 +50,8 @@ def create_async_loop_routine(
     loop keeps running. This is for the SCHEDULER, which serves many peers and must survive a bug in any
     single routine -- including a message handler, since the binder routine dispatches inbound messages.
     An escape would otherwise propagate through asyncio.gather and take the whole scheduler down. It must
-    stay False for the client/worker agents, which serve only themselves and should crash-and-restart."""
+    stay False for the client/worker agents, which serve only themselves and should crash-and-restart.
+    ClientShutdownException is never swallowed: it is a requested shutdown, not a failure."""
 
     async def loop() -> None:
         if interval_seconds < 0:
@@ -60,6 +63,8 @@ def create_async_loop_routine(
             while True:
                 try:
                     await routine()
+                except ClientShutdownException:
+                    raise
                 except Exception as e:
                     if not swallow_routine_errors:
                         raise

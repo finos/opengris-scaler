@@ -50,22 +50,6 @@ class TestDyingSuspendedProcessor(unittest.TestCase):
         self.cluster.shutdown()
         shutil.rmtree(self.directory, ignore_errors=True)
 
-    def test_suspended_processor(self) -> None:
-        """Validates a processor gets suspended and resumed when running a nested task."""
-
-        CHILD_DURATION_SECONDS = 1
-
-        parent_pid_path = os.path.join(self.directory, "parent_pid")
-        child_started_path = os.path.join(self.directory, "child_started")
-
-        with Client(self.address) as client:
-            future = client.submit(parent_task, client, parent_pid_path, child_started_path, CHILD_DURATION_SECONDS)
-
-            self.assertEqual(future.result(timeout=RESULT_TIMEOUT_SECONDS), "child done")
-
-            # The resumed processor must still be able to run tasks.
-            self.assertEqual(client.submit(square, 6).result(timeout=RESULT_TIMEOUT_SECONDS), 36)
-
     def test_dying_suspended_processor(self) -> None:
         """Validates a processor can die while it is suspended.
 

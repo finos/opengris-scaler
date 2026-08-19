@@ -121,6 +121,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     async def on_graph_task_cancel(self, task_cancel: TaskCancel):
         graph_task_id = self._task_id_to_graph_task_id.get(task_cancel.taskId)
         if graph_task_id is None or graph_task_id not in self._graph_task_id_to_graph:
+            logger.info(f"{task_cancel.taskId!r}: ignoring cancel, its graph is already gone")
             return
 
         # received any subtask canceling will lead the whole graph canceling
@@ -129,7 +130,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     async def on_graph_sub_task_result(self, result: TaskResult):
         graph_info = self.__graph_for_subtask(result.taskId)
         if graph_info is None:
-            # Unreachable while every mapped id belongs to a live graph; a KeyError here kills the scheduler.
+            logger.info(f"{result.taskId!r}: dropping subtask result, its graph is already gone")
             return
         graph_task_id = self._task_id_to_graph_task_id[result.taskId]
 
@@ -154,7 +155,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     async def on_graph_sub_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
         graph_info = self.__graph_for_subtask(task_cancel_confirm.taskId)
         if graph_info is None:
-            # Unreachable while every mapped id belongs to a live graph; a KeyError here kills the scheduler.
+            logger.info(f"{task_cancel_confirm.taskId!r}: dropping subtask cancel confirm, its graph is already gone")
             return
         graph_task_id = self._task_id_to_graph_task_id[task_cancel_confirm.taskId]
         self.__mark_node_canceled(graph_info, task_cancel_confirm)

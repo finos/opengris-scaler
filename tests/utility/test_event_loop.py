@@ -2,6 +2,7 @@ import asyncio
 import unittest
 
 from scaler.utility.event_loop import create_async_loop_routine
+from scaler.utility.exceptions import ClientShutdownException
 
 
 class _Routine:
@@ -34,6 +35,18 @@ class TestCreateAsyncLoopRoutine(unittest.TestCase):
         )
 
         self.assertEqual(routine.calls, 3, "the loop must run again after a routine raised, not die on it")
+
+    def test_client_shutdown_propagates_even_when_swallowing(self):
+        # A client asking the scheduler to shut down travels as an exception out of the binder routine;
+        # swallowing it would leave the scheduler running after it accepted the shutdown.
+        def behavior(_call_number: int) -> None:
+            raise ClientShutdownException("received client shutdown, quitting")
+
+        routine = _Routine(behavior)
+        with self.assertRaises(ClientShutdownException):
+            asyncio.new_event_loop().run_until_complete(
+                create_async_loop_routine(routine.routine, 0, swallow_routine_errors=True)
+            )
 
     def test_routine_error_propagates_by_default(self):
         # Default is the client/worker agent mode: they serve only themselves, so a bug should surface as a
