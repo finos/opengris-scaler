@@ -1,6 +1,7 @@
 #include "scaler/object_storage/object_storage_server.h"
 
 #include <algorithm>
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <exception>
@@ -12,6 +13,9 @@
 
 namespace scaler {
 namespace object_storage {
+
+// How often the receive loop wakes up to check for a shutdown request.
+static constexpr std::chrono::milliseconds shutdownPollInterval {100};
 
 // Global atomic flag to indicate termination request
 static std::atomic<bool> sigRequestStop {false};
@@ -133,7 +137,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             }
 
             auto maybeMessageFuture = _socket->recvMessage();
-            while (maybeMessageFuture.wait_for(std::chrono::milliseconds(100)) == std::future_status::timeout) {
+            while (maybeMessageFuture.wait_for(shutdownPollInterval) == std::future_status::timeout) {
                 if (!running() || sigRequestStop) {
                     _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
                     pendingRequests.clear();
@@ -175,6 +179,25 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             auto headerOrPayload = std::move(maybeMessage->payload);
 
             auto it = identityToFullRequest.find(identity);
+
+            // A pending request's payload always arrives as one message of exactly the announced length. A
+            // client that reconnects after a request was only partially delivered breaks that: its next
+            // message is a new header, and the payload it was waiting for can never arrive. Drop the stale
+            // request instead of completing it with the bytes of the next one, which would store the header
+            // as the object's content.
+            if (it != identityToFullRequest.end() && it->second.first.payloadLength != headerOrPayload->size()) {
+                _logger.log(
+                    scaler::ymq::Logger::LoggingLevel::error,
+                    "ObjectStorageServer: dropping a partially delivered request, expected a payload of ",
+                    it->second.first.payloadLength,
+                    " bytes, got a message of ",
+                    headerOrPayload->size(),
+                    " bytes");
+
+                identityToFullRequest.erase(it);
+                it = identityToFullRequest.end();
+            }
+
             if (it == identityToFullRequest.end()) {
                 identityToFullRequest[identity].first = ObjectRequestHeader::fromBuffer(*headerOrPayload);
                 const auto& requestType               = identityToFullRequest[identity].first.requestType;
@@ -183,7 +206,6 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                     continue;
                 }
             } else {
-                assert(it->second.first.payloadLength == headerOrPayload->size());
                 (it->second).second = std::move(headerOrPayload);
             }
 
@@ -233,9 +255,9 @@ void ObjectStorageServer::processSetRequest(
 {
     const auto requestHeader = std::move(request.first);
     auto requestPayload      = std::move(request.second);
-    if (requestHeader.payloadLength > MEMORY_LIMIT_IN_BYTES) {
+    if (requestHeader.payloadLength > memoryLimitInBytes) {
         throw std::runtime_error(
-            "payload length is larger than MEMORY_LIMIT_IN_BYTES=" + std::to_string(MEMORY_LIMIT_IN_BYTES));
+            "payload length is larger than memoryLimitInBytes=" + std::to_string(memoryLimitInBytes));
     }
 
     if (requestHeader.payloadLength > std::numeric_limits<size_t>::max()) {

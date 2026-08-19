@@ -1,11 +1,10 @@
 name: "Setup WASM Build Environment"
 description: "Install host capnp, pyodide-build and a pinned Emscripten SDK"
 
-# pyodide-build is pinned in pyproject.toml [dependency-groups] dev.
-# The emsdk version is pinned in scripts/library_tool.sh (EMSDK_VERSION).
-# They must stay in lockstep with the Pyodide kernel that ships in
-# jupyterlite-pyodide-kernel (see docs/requirements_docs.txt):
-#   pyodide-build 0.35.1 + xbuildenv 314.0.0 -> Pyodide 314 -> Emscripten 5.0.3 -> CPython 3.14
+# The xbuildenv must match the Pyodide that jupyterlite-pyodide-kernel ships (see
+# docs/requirements_docs.txt); pyodide-build only drives the build. emsdk is pinned in
+# scripts/library_tool.sh (EMSDK_VERSION).
+#   pyodide-build 0.39.0 + xbuildenv 314.0.0 -> Pyodide 314 -> Emscripten 5.0.3 -> CPython 3.14
 # See https://pyodide.org/en/stable/development/building-and-testing-packages.html
 inputs:
   python-version:
@@ -36,14 +35,8 @@ runs:
     - name: Install pyodide-build
       shell: bash
       run: |
-        # Keep this version in lockstep with the pyodide-build pin in
-        # pyproject.toml's [dependency-groups] dev (and the EMSDK_VERSION
-        # pin in scripts/library_tool.sh). All three move together with the
-        # Pyodide kernel that JupyterLite ships.
-        pip install "pyodide-build==0.35.1"
-        # pyodide-build 0.35.x is decoupled from the runtime; install the
-        # Pyodide 314 cross-build env (CPython 3.14 / Emscripten 5.0.3)
-        # explicitly so it matches the jupyterlite-pyodide-kernel 0.8.0 build.
+        pip install "pyodide-build==0.39.0"
+        # installed explicitly: pyodide-build does not imply an xbuildenv version
         pyodide xbuildenv install 314.0.0
 
     - name: Cache Emscripten SDK

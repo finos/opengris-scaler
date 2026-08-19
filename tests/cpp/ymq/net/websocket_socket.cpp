@@ -15,7 +15,35 @@
 
 // Split large payloads into 1 MiB frames so the receiver can decode and deliver
 // each chunk without accumulating the entire payload before the first delivery.
-static constexpr size_t MAX_FRAME_PAYLOAD = 1024 * 1024;
+static constexpr size_t maxFramePayload = 1024 * 1024;
+
+// WebSocket frame flags and masks (RFC 6455 section 5.2)
+static constexpr uint8_t flagFin    = 0x80;
+static constexpr uint8_t flagMasked = 0x80;
+static constexpr uint8_t maskOpcode = 0x0F;
+static constexpr uint8_t maskLength = 0x7F;
+
+// WebSocket opcodes (RFC 6455 section 5.2)
+static constexpr uint8_t opcodeContinuation = 0x0;
+static constexpr uint8_t opcodeText         = 0x1;
+static constexpr uint8_t opcodeBinary       = 0x2;
+
+// WebSocket payload length encoding (RFC 6455 section 5.2)
+static constexpr uint8_t payloadLen16Bit   = 126;
+static constexpr uint8_t payloadLen64Bit   = 127;
+static constexpr size_t payloadLen16BitMax = 65536;
+
+// WebSocket frame layout (RFC 6455 section 5.2)
+static constexpr size_t baseHeaderSize    = 2;  // FIN/opcode byte + mask/length byte
+static constexpr size_t extendedLen16Size = 2;
+static constexpr size_t extendedLen64Size = 8;
+static constexpr size_t maskKeySize       = 4;
+
+static constexpr int bitsPerByte   = 8;
+static constexpr uint64_t byteMask = 0xFF;
+
+// A handshake request/response ends with a blank line.
+static constexpr size_t headerTerminatorSize = 4;  // "\r\n\r\n"
 
 WebSocketSocket::WebSocketSocket(long long fd, bool isServer): _fd(fd), _isServer(isServer)
 {
@@ -82,29 +110,29 @@ void WebSocketSocket::rawReadExact(void* buffer, size_t size) const
 
 void WebSocketSocket::sendFrame(const void* data, size_t size) const
 {
-    if (size > MAX_FRAME_PAYLOAD) {
+    if (size > maxFramePayload) {
         const auto* bytes = static_cast<const uint8_t*>(data);
-        for (size_t offset = 0; offset < size; offset += MAX_FRAME_PAYLOAD) {
-            sendFrame(bytes + offset, std::min(size - offset, MAX_FRAME_PAYLOAD));
+        for (size_t offset = 0; offset < size; offset += maxFramePayload) {
+            sendFrame(bytes + offset, std::min(size - offset, maxFramePayload));
         }
         return;
     }
 
     std::vector<uint8_t> header;
-    header.push_back(0x82);  // FIN | binary opcode
+    header.push_back(flagFin | opcodeBinary);
 
     if (_isServer) {
         // Server sends unmasked frames (RFC 6455 section 5.1)
-        if (size < 126) {
+        if (size < payloadLen16Bit) {
             header.push_back(static_cast<uint8_t>(size));
-        } else if (size < 65536) {
-            header.push_back(126);
-            header.push_back(static_cast<uint8_t>((size >> 8) & 0xFF));
-            header.push_back(static_cast<uint8_t>(size & 0xFF));
+        } else if (size < payloadLen16BitMax) {
+            header.push_back(payloadLen16Bit);
+            header.push_back(static_cast<uint8_t>((size >> bitsPerByte) & byteMask));
+            header.push_back(static_cast<uint8_t>(size & byteMask));
         } else {
-            header.push_back(127);
-            for (int i = 7; i >= 0; --i)
-                header.push_back(static_cast<uint8_t>((size >> (i * 8)) & 0xFF));
+            header.push_back(payloadLen64Bit);
+            for (int i = static_cast<int>(extendedLen64Size) - 1; i >= 0; --i)
+                header.push_back(static_cast<uint8_t>((size >> (i * bitsPerByte)) & byteMask));
         }
         rawWriteAll(header.data(), header.size());
         rawWriteAll(data, size);
@@ -112,20 +140,20 @@ void WebSocketSocket::sendFrame(const void* data, size_t size) const
         // Client sends masked frames (RFC 6455 section 5.3)
         static thread_local std::mt19937 rng(std::random_device {}());
         std::uniform_int_distribution<uint32_t> dist;
-        std::array<uint8_t, 4> maskKey;
+        std::array<uint8_t, maskKeySize> maskKey;
         const uint32_t maskInt = dist(rng);
-        std::memcpy(maskKey.data(), &maskInt, 4);
+        std::memcpy(maskKey.data(), &maskInt, maskKeySize);
 
-        if (size < 126) {
-            header.push_back(0x80 | static_cast<uint8_t>(size));
-        } else if (size < 65536) {
-            header.push_back(0x80 | 126);
-            header.push_back(static_cast<uint8_t>((size >> 8) & 0xFF));
-            header.push_back(static_cast<uint8_t>(size & 0xFF));
+        if (size < payloadLen16Bit) {
+            header.push_back(flagMasked | static_cast<uint8_t>(size));
+        } else if (size < payloadLen16BitMax) {
+            header.push_back(flagMasked | payloadLen16Bit);
+            header.push_back(static_cast<uint8_t>((size >> bitsPerByte) & byteMask));
+            header.push_back(static_cast<uint8_t>(size & byteMask));
         } else {
-            header.push_back(0x80 | 127);
-            for (int i = 7; i >= 0; --i)
-                header.push_back(static_cast<uint8_t>((size >> (i * 8)) & 0xFF));
+            header.push_back(flagMasked | payloadLen64Bit);
+            for (int i = static_cast<int>(extendedLen64Size) - 1; i >= 0; --i)
+                header.push_back(static_cast<uint8_t>((size >> (i * bitsPerByte)) & byteMask));
         }
         header.insert(header.end(), maskKey.begin(), maskKey.end());
         rawWriteAll(header.data(), header.size());
@@ -133,7 +161,7 @@ void WebSocketSocket::sendFrame(const void* data, size_t size) const
         std::vector<uint8_t> masked(size);
         const auto* bytes = static_cast<const uint8_t*>(data);
         for (size_t i = 0; i < size; ++i)
-            masked[i] = bytes[i] ^ maskKey[i % 4];
+            masked[i] = bytes[i] ^ maskKey[i % maskKeySize];
         rawWriteAll(masked.data(), size);
     }
 }
@@ -141,39 +169,39 @@ void WebSocketSocket::sendFrame(const void* data, size_t size) const
 void WebSocketSocket::fillRecvBuffer(size_t needed) const
 {
     while (_recvBuffer.size() < needed) {
-        uint8_t header[2];
-        rawReadExact(header, 2);
+        uint8_t header[baseHeaderSize];
+        rawReadExact(header, baseHeaderSize);
 
-        const uint8_t opcode = header[0] & 0x0F;
-        const bool masked    = (header[1] & 0x80) != 0;
-        uint64_t payloadLen  = header[1] & 0x7F;
+        const uint8_t opcode = header[0] & maskOpcode;
+        const bool masked    = (header[1] & flagMasked) != 0;
+        uint64_t payloadLen  = header[1] & maskLength;
 
-        if (payloadLen == 126) {
-            uint8_t ext[2];
-            rawReadExact(ext, 2);
-            payloadLen = (uint64_t(ext[0]) << 8) | ext[1];
-        } else if (payloadLen == 127) {
-            uint8_t ext[8];
-            rawReadExact(ext, 8);
+        if (payloadLen == payloadLen16Bit) {
+            uint8_t ext[extendedLen16Size];
+            rawReadExact(ext, extendedLen16Size);
+            payloadLen = (uint64_t(ext[0]) << bitsPerByte) | ext[1];
+        } else if (payloadLen == payloadLen64Bit) {
+            uint8_t ext[extendedLen64Size];
+            rawReadExact(ext, extendedLen64Size);
             payloadLen = 0;
-            for (int i = 0; i < 8; ++i)
-                payloadLen = (payloadLen << 8) | ext[i];
+            for (size_t i = 0; i < extendedLen64Size; ++i)
+                payloadLen = (payloadLen << bitsPerByte) | ext[i];
         }
 
-        std::array<uint8_t, 4> maskKey {};
+        std::array<uint8_t, maskKeySize> maskKey {};
         if (masked)
-            rawReadExact(maskKey.data(), 4);
+            rawReadExact(maskKey.data(), maskKeySize);
 
         std::vector<uint8_t> payload(static_cast<size_t>(payloadLen));
         rawReadExact(payload.data(), static_cast<size_t>(payloadLen));
 
-        // Skip control frames (close=0x8, ping=0x9, pong=0xA) and reserved opcodes
-        if (opcode != 0x0 && opcode != 0x1 && opcode != 0x2)
+        // Skip control frames (CLOSE, PING, PONG) and reserved opcodes
+        if (opcode != opcodeContinuation && opcode != opcodeText && opcode != opcodeBinary)
             continue;
 
         if (masked) {
             for (size_t i = 0; i < payload.size(); ++i)
-                payload[i] ^= maskKey[i % 4];
+                payload[i] ^= maskKey[i % maskKeySize];
         }
 
         _recvBuffer.insert(_recvBuffer.end(), payload.begin(), payload.end());
@@ -199,7 +227,8 @@ void WebSocketSocket::performClientHandshake(const scaler::ymq::WebSocketAddress
 
     std::string response;
     char ch;
-    while (response.size() < 4 || response.compare(response.size() - 4, 4, "\r\n\r\n") != 0) {
+    while (response.size() < headerTerminatorSize ||
+           response.compare(response.size() - headerTerminatorSize, headerTerminatorSize, "\r\n\r\n") != 0) {
         rawReadExact(&ch, 1);
         response += ch;
     }
@@ -207,8 +236,8 @@ void WebSocketSocket::performClientHandshake(const scaler::ymq::WebSocketAddress
     if (response.find("101") == std::string::npos)
         throw std::runtime_error("WebSocket handshake failed: server did not return 101");
 
-    const auto headers =
-        scaler::ymq::internal::extractHeaders(std::string_view(response).substr(0, response.size() - 4));
+    const auto headers = scaler::ymq::internal::extractHeaders(
+        std::string_view(response).substr(0, response.size() - headerTerminatorSize));
     const auto acceptIt = headers.find("sec-websocket-accept");
     if (acceptIt == headers.end() || acceptIt->second != scaler::ymq::internal::computeWebSocketAccept(key))
         throw std::runtime_error("WebSocket handshake failed: invalid Sec-WebSocket-Accept");
@@ -218,13 +247,14 @@ void WebSocketSocket::performServerHandshake() const
 {
     std::string request;
     char ch;
-    while (request.size() < 4 || request.compare(request.size() - 4, 4, "\r\n\r\n") != 0) {
+    while (request.size() < headerTerminatorSize ||
+           request.compare(request.size() - headerTerminatorSize, headerTerminatorSize, "\r\n\r\n") != 0) {
         rawReadExact(&ch, 1);
         request += ch;
     }
 
-    const auto reqHeaders =
-        scaler::ymq::internal::extractHeaders(std::string_view(request).substr(0, request.size() - 4));
+    const auto reqHeaders = scaler::ymq::internal::extractHeaders(
+        std::string_view(request).substr(0, request.size() - headerTerminatorSize));
     const auto keyIt = reqHeaders.find("sec-websocket-key");
     if (keyIt == reqHeaders.end())
         throw std::runtime_error("WebSocket handshake failed: missing Sec-WebSocket-Key");

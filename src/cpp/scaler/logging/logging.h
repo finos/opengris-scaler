@@ -29,15 +29,15 @@ public:
 
 // Sound default logging level based on build type.
 #ifdef NDEBUG  // Release build
-    static constexpr LoggingLevel DEFAULT_LOGGING_LEVEL = LoggingLevel::info;
+    static constexpr LoggingLevel defaultLoggingLevel = LoggingLevel::info;
 #else  // Debug build
-    static constexpr LoggingLevel DEFAULT_LOGGING_LEVEL = LoggingLevel::debug;
+    static constexpr LoggingLevel defaultLoggingLevel = LoggingLevel::debug;
 #endif
 
     Logger(
         std::string log_format             = "%(asctime)s %(levelname)s %(name)s[%(process)d]: %(message)s",
         std::vector<std::string> log_paths = {"/dev/stdout"},
-        LoggingLevel level                 = DEFAULT_LOGGING_LEVEL,
+        LoggingLevel level                 = defaultLoggingLevel,
         std::string name                   = "scaler")
         : _log_paths(std::move(log_paths)), _level(level), _name(std::move(name))
     {
