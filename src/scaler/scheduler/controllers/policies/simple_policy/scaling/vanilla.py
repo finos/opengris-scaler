@@ -1,4 +1,3 @@
-from math import ceil
 from typing import Dict, List, Tuple
 
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
@@ -11,12 +10,9 @@ from scaler.utility.snapshot import InformationSnapshot
 
 class VanillaScalingPolicy(ScalingPolicy):
     """
-    Stateless scaling policy that scales workers based on task-to-worker ratio.
+    Stateless scaling policy that asks for one worker per outstanding task, bounded by the manager's
+    maximum task concurrency.
     """
-
-    def __init__(self):
-        self._lower_task_ratio = 1
-        self._upper_task_ratio = 10
 
     def get_scaling_commands(
         self,
@@ -38,21 +34,13 @@ class VanillaScalingPolicy(ScalingPolicy):
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
     ) -> int:
-        """Compute the target worker count for this manager from current task and worker observations."""
-        current = len(managed_worker_ids)
-        task_count = len(information_snapshot.tasks)
-        worker_count = len(information_snapshot.workers)
+        """Compute the target worker count for this manager from the current task observation.
 
-        if worker_count == 0:
-            desired = current + 1 if task_count > 0 else current
-        else:
-            task_ratio = task_count / worker_count
-            if task_ratio > self._upper_task_ratio:
-                desired = current + 1
-            elif task_ratio < self._lower_task_ratio:
-                desired = 0 if task_count == 0 else max(1, ceil(task_count / self._upper_task_ratio))
-            else:
-                desired = current
+        A worker runs one task at a time, so the worker count is the cluster's parallelism: ask for one
+        worker per outstanding task. maxTaskConcurrency is what bounds that, and asking for less than it
+        while tasks are outstanding leaves capacity the operator paid for standing idle.
+        """
+        desired = len(information_snapshot.tasks)
 
         max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
         if max_concurrency != -1:
