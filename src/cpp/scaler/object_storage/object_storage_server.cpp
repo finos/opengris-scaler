@@ -175,6 +175,25 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             auto headerOrPayload = std::move(maybeMessage->payload);
 
             auto it = identityToFullRequest.find(identity);
+
+            // A pending request's payload always arrives as one message of exactly the announced length. A
+            // client that reconnects after a request was only partially delivered breaks that: its next
+            // message is a new header, and the payload it was waiting for can never arrive. Drop the stale
+            // request instead of completing it with the bytes of the next one, which would store the header
+            // as the object's content.
+            if (it != identityToFullRequest.end() && it->second.first.payloadLength != headerOrPayload->size()) {
+                _logger.log(
+                    scaler::ymq::Logger::LoggingLevel::error,
+                    "ObjectStorageServer: dropping a partially delivered request, expected a payload of ",
+                    it->second.first.payloadLength,
+                    " bytes, got a message of ",
+                    headerOrPayload->size(),
+                    " bytes");
+
+                identityToFullRequest.erase(it);
+                it = identityToFullRequest.end();
+            }
+
             if (it == identityToFullRequest.end()) {
                 identityToFullRequest[identity].first = ObjectRequestHeader::fromBuffer(*headerOrPayload);
                 const auto& requestType               = identityToFullRequest[identity].first.requestType;
@@ -183,7 +202,6 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                     continue;
                 }
             } else {
-                assert(it->second.first.payloadLength == headerOrPayload->size());
                 (it->second).second = std::move(headerOrPayload);
             }
 
