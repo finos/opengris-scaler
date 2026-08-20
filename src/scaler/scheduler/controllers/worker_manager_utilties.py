@@ -1,7 +1,22 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, TypeVar
 
 from scaler.protocol import capnp
 from scaler.protocol.capnp import ScalingManagerStatus, TaskCapability, WorkerManagerCommand
+
+StateT = TypeVar("StateT")
+
+
+def forget_departed_managers(state_by_manager: Dict[bytes, StateT], live_manager_ids: Iterable[bytes]) -> None:
+    """Drops per-manager state for managers the scheduler no longer knows about.
+
+    A policy is only ever told about a manager that is heartbeating, so anything it remembers per manager id
+    otherwise stays for the lifetime of the scheduler -- growing without bound wherever ids are not reused
+    across restarts, e.g. one derived from a pod or instance name.
+    """
+
+    live_ids = set(live_manager_ids)
+    for departed_id in [manager_id for manager_id in state_by_manager if manager_id not in live_ids]:
+        del state_by_manager[departed_id]
 
 
 def build_scaling_manager_status(

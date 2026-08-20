@@ -16,6 +16,9 @@ from scaler.worker.agent.processor.processor import Processor
 
 logger = logging.getLogger(__name__)
 
+# how long to wait between two checks that a resuming processor is still alive
+RESUMED_EVENT_POLL_SECONDS = 0.1
+
 
 class ProcessorHolder:
     def __init__(
@@ -128,12 +131,17 @@ class ProcessorHolder:
 
         self._suspended = True
 
-    def resume(self):
+    def resume(self) -> bool:
+        """Resumes the suspended processor, returning False if it died before acknowledging the resume."""
+
         assert self._task is not None
         assert self._suspended is True
 
         if self._hard_suspend:
-            self._process.resume()
+            try:
+                self._process.resume()
+            except psutil.NoSuchProcess:
+                return False
         else:
             assert self._resume_event is not None
             assert self._resumed_event is not None
@@ -143,8 +151,11 @@ class ProcessorHolder:
             if sys.platform != "win32":
                 # POSIX uses a SIGUSR1 handler that runs synchronously at the next safe point. Waiting for the
                 # processor to acknowledge resume avoids re-entering the signal handler while the previous
-                # invocation is still in `_resume_event.wait()`.
-                self._resumed_event.wait()
+                # invocation is still in `_resume_event.wait()`. A processor that died while suspended never
+                # acknowledges, so give up as soon as it is gone instead of blocking the agent forever.
+                while not self._resumed_event.wait(RESUMED_EVENT_POLL_SECONDS):
+                    if not self._processor.is_alive():
+                        return False
             # On Windows the suspend handler is dispatched via Py_AddPendingCall, which is queued (not signal-
             # delivered) and therefore re-entrancy-safe. Waiting here would block the worker agent's asyncio loop
             # because the pending call cannot fire while the processor's main thread is inside a blocking C call
@@ -152,6 +163,8 @@ class ProcessorHolder:
             # reaches a bytecode boundary, which can be much later than the agent's heartbeat deadline.
 
         self._suspended = False
+
+        return True
 
     def kill(self):
         # On POSIX this maps to SIGTERM and gives the processor a chance to run its __interrupt handler

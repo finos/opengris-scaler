@@ -135,16 +135,16 @@ TEST_F(UVTest, Request)
 
 TEST_F(UVTest, Signal)
 {
-    constexpr int SIGNUM = SIGWINCH;
+    constexpr int signum = SIGWINCH;
 
     scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 
     // Validates support for signals
     {
         scaler::wrapper::uv::Signal signal = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Signal::init(loop));
-        UV_EXIT_ON_ERROR(signal.start(SIGNUM, [&](int) {}));
+        UV_EXIT_ON_ERROR(signal.start(signum, [&](int) {}));
 
-        if (uv_kill(uv_os_getpid(), SIGNUM) == UV_ENOSYS) {
+        if (uv_kill(uv_os_getpid(), signum) == UV_ENOSYS) {
             GTEST_SKIP() << "uv_kill() is not supported on this platform";
             return;
         }
@@ -155,13 +155,13 @@ TEST_F(UVTest, Signal)
         int nTimesCalled = 0;
 
         scaler::wrapper::uv::Signal signal = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Signal::init(loop));
-        UV_EXIT_ON_ERROR(signal.start(SIGNUM, [&](int) { nTimesCalled++; }));
+        UV_EXIT_ON_ERROR(signal.start(signum, [&](int) { nTimesCalled++; }));
 
         loop.run(UV_RUN_NOWAIT);
         ASSERT_EQ(nTimesCalled, 0);
 
-        uv_kill(uv_os_getpid(), SIGNUM);
-        uv_kill(uv_os_getpid(), SIGNUM);
+        uv_kill(uv_os_getpid(), signum);
+        uv_kill(uv_os_getpid(), signum);
 
         loop.run(UV_RUN_NOWAIT);
         ASSERT_EQ(nTimesCalled, 2);
@@ -174,15 +174,15 @@ TEST_F(UVTest, Signal)
         int nTimesCalled = 0;
 
         scaler::wrapper::uv::Signal signalOneShot = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Signal::init(loop));
-        UV_EXIT_ON_ERROR(signalOneShot.startOneshot(SIGNUM, [&](int) { nTimesCalled++; }));
+        UV_EXIT_ON_ERROR(signalOneShot.startOneshot(signum, [&](int) { nTimesCalled++; }));
 
         // Setup a 2nd "catch-all" signal handler, or else the 2nd uv_kill() will terminate the process because of the
         // default signal handler.
         scaler::wrapper::uv::Signal signal = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Signal::init(loop));
-        UV_EXIT_ON_ERROR(signal.start(SIGNUM, [&](int) {}));
+        UV_EXIT_ON_ERROR(signal.start(signum, [&](int) {}));
 
-        uv_kill(uv_os_getpid(), SIGNUM);
-        uv_kill(uv_os_getpid(), SIGNUM);
+        uv_kill(uv_os_getpid(), signum);
+        uv_kill(uv_os_getpid(), signum);
 
         loop.run(UV_RUN_NOWAIT);
 
@@ -192,7 +192,7 @@ TEST_F(UVTest, Signal)
 
 TEST_F(UVTest, Timer)
 {
-    constexpr std::chrono::milliseconds DELAY {50};
+    constexpr std::chrono::milliseconds delay {50};
 
     scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 
@@ -201,14 +201,14 @@ TEST_F(UVTest, Timer)
         int nTimesCalled                 = 0;
         scaler::wrapper::uv::Timer timer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(loop));
 
-        UV_EXIT_ON_ERROR(timer.start(DELAY, std::nullopt, [&]() { nTimesCalled++; }));
+        UV_EXIT_ON_ERROR(timer.start(delay, std::nullopt, [&]() { nTimesCalled++; }));
 
         // Timer should not be called immediately
         loop.run(UV_RUN_NOWAIT);
         ASSERT_EQ(nTimesCalled, 0);
 
         // Sleep and check timer was called
-        std::this_thread::sleep_for(DELAY * 1.1);
+        std::this_thread::sleep_for(delay * 1.1);
         loop.run(UV_RUN_NOWAIT);
         ASSERT_GE(nTimesCalled, 1);
     }
@@ -218,22 +218,22 @@ TEST_F(UVTest, Timer)
         int nTimesCalled                 = 0;
         scaler::wrapper::uv::Timer timer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(loop));
 
-        UV_EXIT_ON_ERROR(timer.start(std::chrono::milliseconds::zero(), DELAY, [&]() { nTimesCalled++; }));
+        UV_EXIT_ON_ERROR(timer.start(std::chrono::milliseconds::zero(), delay, [&]() { nTimesCalled++; }));
 
-        ASSERT_EQ(timer.getRepeat(), DELAY);
+        ASSERT_EQ(timer.getRepeat(), delay);
 
         // 0 second timeout should be called immediately.
         loop.run(UV_RUN_NOWAIT);
         ASSERT_EQ(nTimesCalled, 1);
 
         // Sleep and check timer was repeated
-        std::this_thread::sleep_for(DELAY * 1.1);
+        std::this_thread::sleep_for(delay * 1.1);
         loop.run(UV_RUN_NOWAIT);
         ASSERT_EQ(nTimesCalled, 2);
 
         // Stop should prevent further executions
         UV_EXIT_ON_ERROR(timer.stop());
-        std::this_thread::sleep_for(DELAY * 1.1);
+        std::this_thread::sleep_for(delay * 1.1);
         loop.run(UV_RUN_NOWAIT);
         ASSERT_EQ(nTimesCalled, 2);
     }

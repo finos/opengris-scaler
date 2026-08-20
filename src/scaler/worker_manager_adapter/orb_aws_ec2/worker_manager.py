@@ -384,12 +384,17 @@ class ORBAWSEC2WorkerManager:
                 )
                 script += f"""set -e
 dnf update -y
-dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel openssl-devel
+dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel perl
 {clone_cmd}
 cd /opt/scaler-src
 CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh capnp download
 CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh capnp compile
 bash scripts/library_tool.sh capnp install
+
+# compile openssl because we need static library
+CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh openssl download
+CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh openssl compile
+bash scripts/library_tool.sh openssl install
 cd /
 echo '/usr/local/lib' > /etc/ld.so.conf.d/local.conf
 ldconfig

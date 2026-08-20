@@ -3,6 +3,8 @@ import enum
 import logging
 from typing import Awaitable, Callable, Optional, TypeVar
 
+from scaler.utility.exceptions import ClientShutdownException
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -35,23 +37,40 @@ def register_event_loop(event_loop_type: str):
     logger.info(f"use event loop: {event_loop_type}")
 
 
-def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int):
+def create_async_loop_routine(
+    routine: Callable[[], Awaitable], interval_seconds: int, swallow_routine_errors: bool = False
+) -> Awaitable[None]:
     """create async loop routine,
 
-    - if seconds is negative, means disable
+    - if interval_seconds is negative, means disable
     - 0 means looping without any wait, as fast as possible
-    - positive number means execute routine every positive seconds, if passing 1 means run once every 1 seconds"""
+    - positive number means execute routine every interval_seconds, if passing 1 means run once every 1 seconds
 
-    async def loop():
-        if seconds < 0:
+    swallow_routine_errors: when True, an exception raised by the routine is logged per-iteration and the
+    loop keeps running. This is for the SCHEDULER, which serves many peers and must survive a bug in any
+    single routine -- including a message handler, since the binder routine dispatches inbound messages.
+    An escape would otherwise propagate through asyncio.gather and take the whole scheduler down. It must
+    stay False for the client/worker agents, which serve only themselves and should crash-and-restart.
+    ClientShutdownException is never swallowed: it is a requested shutdown, not a failure."""
+
+    async def loop() -> None:
+        if interval_seconds < 0:
             logger.info(f"{routine.__self__.__class__.__name__}: disabled")  # type: ignore[attr-defined]
             return
 
         logger.info(f"{routine.__self__.__class__.__name__}: started")  # type: ignore[attr-defined]
         try:
             while True:
-                await routine()
-                await asyncio.sleep(seconds)
+                try:
+                    await routine()
+                except ClientShutdownException:
+                    raise
+                except Exception as e:
+                    if not swallow_routine_errors:
+                        raise
+                    routine_owner = routine.__self__.__class__.__name__  # type: ignore[attr-defined]
+                    logger.exception(f"{routine_owner}: routine raised {e!r}, continuing")
+                await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
             pass
         except KeyboardInterrupt:

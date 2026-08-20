@@ -104,7 +104,7 @@ class VanillaTaskManager(Looper, TaskManager):
             self._processing_task_ids.add(task_id)
             await self._processor_manager.on_task(task)
         else:
-            self._processor_manager.on_resume_task(task_id)
+            await self._processor_manager.on_resume_task(task_id)
 
     async def __suspend_if_priority_is_higher(self, new_task: Task):
         current_task = self._processor_manager.current_task()

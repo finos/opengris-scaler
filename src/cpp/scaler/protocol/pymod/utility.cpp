@@ -184,10 +184,10 @@ OwnedPyObject<> build_enum_value(uint64_t enum_schema_id, uint16_t raw)
 // top of the file. Previously these were ``constexpr const char*`` initialised
 // with bare string literals, which the Pyodide loader was free to corrupt
 // (e.g. ``"_capnp_source"`` getting relocated to a tail of another literal).
-constexpr const char* CAPNP_SOURCE_ATTR          = KEY_CAPNP_SOURCE;
-constexpr const char* CAPNP_TRAVERSAL_LIMIT_ATTR = KEY_CAPNP_TRAVERSAL_LIMIT;
-constexpr const char* CAPNP_ROOT_SCHEMA_ID_ATTR  = KEY_CAPNP_ROOT_SCHEMA_NODE_ID;
-constexpr const char* CAPNP_PATH_ATTR            = KEY_CAPNP_PATH;
+constexpr const char* capnpSourceAttr         = KEY_CAPNP_SOURCE;
+constexpr const char* capnpTraversalLimitAttr = KEY_CAPNP_TRAVERSAL_LIMIT;
+constexpr const char* capnpRootSchemaIDAttr   = KEY_CAPNP_ROOT_SCHEMA_NODE_ID;
+constexpr const char* capnpPathAttr           = KEY_CAPNP_PATH;
 
 OwnedPyObject<> create_lazy_struct_object(
     PyObject* type_object,
@@ -217,10 +217,10 @@ OwnedPyObject<> create_lazy_struct_object(
     if (!traversal_limit_obj || !root_schema_id_obj) {
         return {};
     }
-    if (PyObject_SetAttrString(result.get(), CAPNP_SOURCE_ATTR, source) < 0 ||
-        PyObject_SetAttrString(result.get(), CAPNP_TRAVERSAL_LIMIT_ATTR, traversal_limit_obj.get()) < 0 ||
-        PyObject_SetAttrString(result.get(), CAPNP_ROOT_SCHEMA_ID_ATTR, root_schema_id_obj.get()) < 0 ||
-        PyObject_SetAttrString(result.get(), CAPNP_PATH_ATTR, path) < 0) {
+    if (PyObject_SetAttrString(result.get(), capnpSourceAttr, source) < 0 ||
+        PyObject_SetAttrString(result.get(), capnpTraversalLimitAttr, traversal_limit_obj.get()) < 0 ||
+        PyObject_SetAttrString(result.get(), capnpRootSchemaIDAttr, root_schema_id_obj.get()) < 0 ||
+        PyObject_SetAttrString(result.get(), capnpPathAttr, path) < 0) {
         return {};
     }
 
@@ -262,15 +262,15 @@ bool load_lazy_struct_metadata(
     uint64_t& root_schema_id,
     OwnedPyObject<>& path)
 {
-    source = get_instance_attr_borrowed(self, CAPNP_SOURCE_ATTR);
+    source = get_instance_attr_borrowed(self, capnpSourceAttr);
     if (!source) {
         PyErr_Clear();
-        PyErr_Format(PyExc_AttributeError, "%s not found: object is not a lazy Cap'n Proto struct", CAPNP_SOURCE_ATTR);
+        PyErr_Format(PyExc_AttributeError, "%s not found: object is not a lazy Cap'n Proto struct", capnpSourceAttr);
         return false;
     }
-    OwnedPyObject<> traversal_limit_obj {get_instance_attr_borrowed(self, CAPNP_TRAVERSAL_LIMIT_ATTR)};
-    OwnedPyObject<> root_schema_id_obj {get_instance_attr_borrowed(self, CAPNP_ROOT_SCHEMA_ID_ATTR)};
-    path = get_instance_attr_borrowed(self, CAPNP_PATH_ATTR);
+    OwnedPyObject<> traversal_limit_obj {get_instance_attr_borrowed(self, capnpTraversalLimitAttr)};
+    OwnedPyObject<> root_schema_id_obj {get_instance_attr_borrowed(self, capnpRootSchemaIDAttr)};
+    path = get_instance_attr_borrowed(self, capnpPathAttr);
     if (!traversal_limit_obj || !root_schema_id_obj || !path) {
         return false;
     }

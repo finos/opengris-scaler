@@ -1,10 +1,10 @@
 """io-layer contract tests for ``YMQAsyncBinder``.
 
-These document the origin of the ``jne-fix-ymq`` failure: a binder send surfaces
-``SocketStopRequested`` when its own socket is shut down (``disconnect``/teardown) while a send is
-in flight. The io layer deliberately does NOT swallow this in ``send()`` - it fails fast so the
-error is visible during development. The graceful, "log not crash" handling lives at the worker's
-loop boundary; see ``tests/worker/test_worker.py``.
+A ``detached=True`` send is fire-and-forget: it schedules the send and returns, so a peer that never
+connects cannot block the caller, and a failure is logged rather than raised at a caller that has
+already moved on. Callers that need the send to have left the process pass ``detached=False``, and
+they still get the ``SocketStopRequested`` fail-fast the worker boundary handles -- the graceful
+shutdown path is the one that relies on it. See ``tests/worker/test_worker.py`` for that boundary.
 """
 
 import asyncio
@@ -27,6 +27,12 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         self._binder = YMQAsyncBinder(self._context, identity=b"binder-under-test", callback=self._on_receive)
         await self._binder.bind(AddressConfig.from_string("tcp://127.0.0.1:0"))
 
+    async def asyncTearDown(self) -> None:
+        # Destroy here rather than only in the tests: a binder left alive is destroyed by __del__ at
+        # interpreter exit instead, which dead-locks on the GIL (finos/opengris-scaler#945), so a failing
+        # assertion would hang the whole run rather than just fail.
+        self._binder.destroy()
+
     async def _on_receive(self, address: bytes, message: BaseMessage) -> None:
         self._received.append((address, message))
 
@@ -34,12 +40,20 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
     def _make_message() -> DisconnectRequest:
         return DisconnectRequest(worker=WorkerID.generate_worker_id("nobody"))
 
-    async def test_send_propagates_socket_stop_requested_when_socket_shut_down(self) -> None:
-        """binder.send surfaces SocketStopRequested when its own socket is shut down mid-send.
+    async def test_detached_send_does_not_wait_for_the_peer(self) -> None:
+        """A detached send returns without waiting for a peer that never connects."""
+        # Would never return if the send were awaited through to the C++ socket.
+        await asyncio.wait_for(
+            self._binder.send(b"peer-that-never-connects", self._make_message(), detached=True), timeout=5.0
+        )
+
+    async def test_attached_send_propagates_socket_stop_requested_when_socket_shut_down(self) -> None:
+        """detached=False surfaces SocketStopRequested when the socket is shut down mid-send.
 
         The send is queued inside the C++ binder (the peer never connects), then the binder is
-        destroyed. The native socket fails the pending send with ``SocketStopRequested``, which the
-        io layer propagates as-is (fail fast). This is the exception the worker boundary must handle.
+        destroyed. The native socket fails the pending send with ``SocketStopRequested``, which the io
+        layer propagates as-is (fail fast). This is the exception the worker boundary must handle, and
+        it is why the graceful shutdown path opts out of detaching.
         """
         send_task = asyncio.ensure_future(
             self._binder.send(b"peer-that-never-connects", self._make_message(), detached=False)
@@ -47,7 +61,7 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
 
         # Let the send reach the binder's event-loop thread and park in its pending-send queue.
         await asyncio.sleep(0.2)
-        self.assertFalse(send_task.done(), "send should still be pending (peer never connected)")
+        self.assertFalse(send_task.done(), "an attached send should still be pending (peer never connected)")
 
         # Shut the binder down while the send is in flight (mirrors worker teardown / `disconnect`).
         self._binder.destroy()
