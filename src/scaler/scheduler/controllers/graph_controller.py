@@ -270,22 +270,29 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
 
         graph_info = self._graph_task_id_to_graph[graph_task_id]
 
-        if graph_info.status in {_GraphState.Canceling, _GraphState.Aborting}:
-            # if graph is already in canceling or aborting, we don't need to proceed whole graph canceling again
+        if graph_info.status == _GraphState.Aborting:
+            # the abort answers every remaining node with the failing result, a cancel confirm would race it
             return
 
+        # A node only becomes ready once its dependencies are done, and a running node is only done when its
+        # cancel confirm comes back, so the sweep below has to run on every entry: the confirms that the first
+        # pass triggers are what make the rest of the graph ready. The fan-out does not repeat, both because a
+        # second cancel to the same worker is pointless and because the task router locks per task, and a task
+        # already in the outer fan-out would be waiting on its own lock.
+        first_pass = graph_info.status != _GraphState.Canceling
         graph_info.status = _GraphState.Canceling
 
-        await asyncio.gather(
-            *[
-                self._task_controller.on_task_cancel(
-                    graph_info.client, TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=True))
-                )
-                for task_id in graph_info.running_task_ids
-            ]
-        )
+        if first_pass:
+            await asyncio.gather(
+                *[
+                    self._task_controller.on_task_cancel(
+                        graph_info.client, TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=True))
+                    )
+                    for task_id in graph_info.running_task_ids
+                ]
+            )
 
-        # cancel all inactive tasks
+        # cancel the inactive tasks that are ready now
         task_cancel_confirms: List[TaskCancelConfirm] = list()
         while graph_info.sorter.is_active():
             ready_task_ids = graph_info.sorter.get_ready()
