@@ -91,6 +91,7 @@ struct WorkerHeartbeatEcho {
 }
 
 struct WorkerManagerHeartbeat {
+    # 0 means this manager starts no workers; 2^32-1 is the upper limit (effectively unlimited).
     maxTaskConcurrency @0 :UInt32;
     capabilities @1 :List(CommonType.TaskCapability);
     workerManagerID @2 :Data;

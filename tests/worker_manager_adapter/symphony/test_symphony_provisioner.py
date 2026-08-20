@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from scaler.config import defaults
+
 try:
     from scaler.worker_manager_adapter.symphony.worker_manager import SymphonyWorkerProvisioner
 
@@ -11,7 +13,7 @@ except ImportError:
     _SYMPHONY_AVAILABLE = False
 
 
-def _make_provisioner(max_task_concurrency: int = -1) -> SymphonyWorkerProvisioner:
+def _make_provisioner(max_task_concurrency: int = defaults.MAX_TASK_CONCURRENCY_LIMIT) -> SymphonyWorkerProvisioner:
     config = MagicMock()
     config.worker_config.per_worker_capabilities.capabilities = {}
     config.worker_manager_config.max_task_concurrency = max_task_concurrency

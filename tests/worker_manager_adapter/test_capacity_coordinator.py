@@ -2,10 +2,13 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock
 
+from scaler.config import defaults
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 
 
-def _make_coordinator(units: list, max_unit_count: int = -1) -> tuple[CapacityCoordinator, AsyncMock, AsyncMock]:
+def _make_coordinator(
+    units: list, max_unit_count: int = defaults.MAX_TASK_CONCURRENCY_LIMIT
+) -> tuple[CapacityCoordinator, AsyncMock, AsyncMock]:
     start_mock = AsyncMock()
     stop_mock = AsyncMock()
     loop = CapacityCoordinator(
@@ -96,7 +99,10 @@ class TestCapacityCoordinator(unittest.IsolatedAsyncioTestCase):
                 raise RuntimeError("first call fails")
 
         loop = CapacityCoordinator(
-            start_units=flaky_start, stop_units=AsyncMock(), active_unit_count=lambda: 0, max_unit_count=-1
+            start_units=flaky_start,
+            stop_units=AsyncMock(),
+            active_unit_count=lambda: 0,
+            max_unit_count=defaults.MAX_TASK_CONCURRENCY_LIMIT,
         )
         await loop.set_desired_unit_count(1)
         await asyncio.sleep(0)

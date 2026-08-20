@@ -42,7 +42,3 @@ class NativeWorkerManagerConfig(ConfigClass):
     def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
         super().configure_parser(parser)
         parser.add_argument("-n", "--num-of-workers", dest="max_task_concurrency", type=int, help=argparse.SUPPRESS)
-
-    def __post_init__(self) -> None:
-        if self.mode == NativeWorkerManagerMode.FIXED and self.worker_manager_config.max_task_concurrency < 0:
-            raise ValueError("max_task_concurrency must be >= 0 for fixed mode")

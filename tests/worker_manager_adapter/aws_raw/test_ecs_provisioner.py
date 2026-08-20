@@ -2,12 +2,15 @@ import math
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from scaler.config import defaults
 from scaler.worker_manager_adapter.aws_raw.ecs import ECSWorkerProvisioner
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 
 
-def _make_provisioner(max_task_concurrency: int = -1, ecs_task_cpu: int = 4) -> ECSWorkerProvisioner:
-    max_instances = math.ceil(max_task_concurrency / ecs_task_cpu) if max_task_concurrency != -1 else -1
+def _make_provisioner(
+    max_task_concurrency: int = defaults.MAX_TASK_CONCURRENCY_LIMIT, ecs_task_cpu: int = 4
+) -> ECSWorkerProvisioner:
+    max_instances = math.ceil(max_task_concurrency / ecs_task_cpu)
     with patch("boto3.Session"):
         provisioner = ECSWorkerProvisioner.__new__(ECSWorkerProvisioner)
         provisioner._capabilities = {}

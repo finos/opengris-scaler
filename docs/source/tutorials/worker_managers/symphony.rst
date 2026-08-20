@@ -98,7 +98,7 @@ Symphony-Specific Parameters
 
 * ``scheduler_address`` (positional, required): Address of the Scaler scheduler.
 * ``--service-name`` (``-sn``, required): The name of the Symphony service to connect to.
-* ``--max-task-concurrency`` (``-mtc``): Maximum number of concurrent Symphony workers (default: number of CPUs − 1).
+* ``--max-task-concurrency`` (``-mtc``): Maximum number of concurrent Symphony workers, from ``0`` (start no workers) to ``2^32 - 1`` (the upper limit; default: number of CPUs).
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~

@@ -200,7 +200,7 @@ Baremetal Native Parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * ``scheduler_address`` (positional, required): Address of the scheduler (e.g., ``tcp://127.0.0.1:8516``).
-* ``--max-task-concurrency`` (``-mtc``): Maximum number of worker subprocesses. In dynamic mode, set to ``-1`` for no limit (default: number of CPUs − 1). In fixed mode, this is the exact number of workers spawned.
+* ``--max-task-concurrency`` (``-mtc``): Maximum number of worker subprocesses, from ``0`` (start no workers) to ``2^32 - 1`` (the upper limit; default: number of CPUs). In fixed mode, this is the exact number of workers spawned.
 * ``--mode``: Operating mode: ``dynamic`` (default) for auto-scaling driven by scheduler, or ``fixed`` for pre-spawned workers.
 * ``--num-of-workers`` (``-n``): Alias for ``--max-task-concurrency``.
 * ``--preload``: Python module path to preload in each worker before it accepts tasks (e.g., ``my_package.preload``).

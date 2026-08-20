@@ -238,8 +238,7 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
 class OCIRawWorkerManager:
     def __init__(self, config: OCIRawWorkerManagerConfig) -> None:
         workers_per_instance = max(1, int(config.instance_ocpus))
-        mtc = config.worker_manager_config.max_task_concurrency
-        max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
+        max_instances = math.ceil(config.worker_manager_config.max_task_concurrency / workers_per_instance)
         provisioner = OCIRawWorkerProvisioner(config, max_instances)
         self._runner = WorkerManagerRunner(
             address=config.worker_manager_config.scheduler_address,

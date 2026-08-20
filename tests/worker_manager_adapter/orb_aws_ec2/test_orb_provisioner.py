@@ -2,10 +2,13 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from scaler.config import defaults
 from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBWorkerProvisioner
 
 
-def _make_provisioner(workers_per_instance: int = 1, max_instances: int = -1) -> ORBWorkerProvisioner:
+def _make_provisioner(
+    workers_per_instance: int = 1, max_instances: int = defaults.MAX_TASK_CONCURRENCY_LIMIT
+) -> ORBWorkerProvisioner:
     config = MagicMock()
     config.worker_config.per_worker_capabilities.capabilities = {"cpu": 4}
     sdk = MagicMock()

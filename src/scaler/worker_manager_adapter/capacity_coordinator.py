@@ -23,7 +23,7 @@ class CapacityCoordinator:
         start_units: Async callable that launches `n` new units.
         stop_units: Async callable that terminates `n` existing units.
         active_unit_count: Callable that returns the current live unit count.
-        max_unit_count: Hard cap on the number of units. -1 means unlimited.
+        max_unit_count: Hard cap on the number of units.
     """
 
     def __init__(
@@ -72,10 +72,8 @@ class CapacityCoordinator:
 
                 desired = self._desired_unit_count
                 current = self._active_unit_count()
-                delta = desired - current
-                if self._max_unit_count != -1:
-                    delta = min(delta, self._max_unit_count - current)
-                capped = self._max_unit_count != -1 and delta != desired - current
+                delta = min(desired - current, self._max_unit_count - current)
+                capped = delta != desired - current
                 msg = f"Reconcile: desired={desired}, current={current}, delta={delta:+d}" + (
                     f" (capped by max_unit_count={self._max_unit_count})" if capped else ""
                 )
