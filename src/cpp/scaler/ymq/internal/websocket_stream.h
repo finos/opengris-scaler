@@ -70,6 +70,8 @@ public:
 
     void readStop() noexcept;
 
+    std::expected<void, scaler::wrapper::uv::Error> keepalive(bool enable, unsigned int delaySeconds) noexcept;
+
     std::expected<void, scaler::wrapper::uv::Error> shutdown(scaler::wrapper::uv::ShutdownCallback callback) noexcept;
 
     std::expected<void, scaler::wrapper::uv::Error> closeReset() noexcept;

@@ -52,6 +52,15 @@ class SchedulerConfig(ConfigClass):
             "tcp://localhost:2347",
         ),
     )
+    status_report_interval_seconds: int = dataclasses.field(
+        default=defaults.STATUS_REPORT_INTERVAL_SECONDS,
+        metadata=dict(
+            short="-sri",
+            help="number of seconds between scheduler status reports to the monitors (scaler_top / scaler_gui). "
+            "Each report serializes every worker and processor, so raise this to cut monitoring overhead when "
+            "running thousands of workers or tasks.",
+        ),
+    )
     protected: bool = dataclasses.field(
         default=False,
         metadata=dict(
@@ -114,3 +123,5 @@ class SchedulerConfig(ConfigClass):
             raise ValueError("load_balance_seconds must be non-zero (use a negative value to disable balancing).")
         if self.load_balance_trigger_times <= 0:
             raise ValueError("load_balance_trigger_times must be a positive integer.")
+        if self.status_report_interval_seconds <= 0:
+            raise ValueError("status_report_interval_seconds must be positive.")

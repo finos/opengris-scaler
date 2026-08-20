@@ -197,6 +197,11 @@ std::expected<void, uv::Error> SecureSocket::nodelay(bool enable) noexcept
     return _state->_transport.nodelay(enable);
 }
 
+std::expected<void, uv::Error> SecureSocket::keepalive(bool enable, unsigned int delaySeconds) noexcept
+{
+    return _state->_transport.keepalive(enable, delaySeconds);
+}
+
 SecureSocket::ConnectionState SecureSocket::state() const noexcept
 {
     return _state->_connectionState;

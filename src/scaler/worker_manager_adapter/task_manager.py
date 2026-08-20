@@ -103,13 +103,15 @@ class TaskManager(Looper, TaskManagerMixin):
 
         if not task_queued and not task_processing:
             await self._connector_external.send(
-                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound)
+                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound),
+                detached=True,
             )
             return
 
         if task_processing and not task_cancel.flags.force:
             await self._connector_external.send(
-                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelFailed)
+                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelFailed),
+                detached=True,
             )
             return
 
@@ -126,7 +128,8 @@ class TaskManager(Looper, TaskManagerMixin):
             self._canceled_task_ids.add(task_cancel.taskId)
 
         await self._connector_external.send(
-            TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled)
+            TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled),
+            detached=True,
         )
 
     async def on_task_result(self, result: TaskResult) -> None:
@@ -142,7 +145,7 @@ class TaskManager(Looper, TaskManagerMixin):
         self._processing_task_ids.remove(result.taskId)
         self._task_id_to_task.pop(result.taskId)
 
-        await self._connector_external.send(result)
+        await self._connector_external.send(result, detached=True)
 
     def get_queued_size(self) -> int:
         return self._queued_task_id_queue.qsize()
@@ -188,11 +191,13 @@ class TaskManager(Looper, TaskManagerMixin):
                             objectTypes=(ObjectMetadata.ObjectContentType.object,),
                             objectNames=(f"<res {result_object_id.hex()[:6]}>".encode(),),
                         ),
-                    )
+                    ),
+                    detached=True,
                 )
 
                 await self._connector_external.send(
-                    TaskResult(taskId=task_id, resultType=result_type, metadata=b"", results=[bytes(result_object_id)])
+                    TaskResult(taskId=task_id, resultType=result_type, metadata=b"", results=[bytes(result_object_id)]),
+                    detached=True,
                 )
 
             elif task_id in self._canceled_task_ids:

@@ -17,13 +17,13 @@ class ClientDisconnectManager(DisconnectManager):
 
     async def on_client_disconnect(self, disconnect: ClientDisconnect):
         assert self._connector_external is not None
-        await self._connector_external.send(disconnect)
+        await self._connector_external.send(disconnect, detached=True)
 
         if disconnect.disconnectType == ClientDisconnect.DisconnectType.disconnect:
             raise ClientQuitException("client disconnecting")
 
     async def on_client_shutdown_response(self, response: ClientShutdownResponse):
         assert self._connector_internal is not None
-        await self._connector_internal.send(response)
+        await self._connector_internal.send(response, detached=True)
 
         raise ClientShutdownException("cluster shutting down")

@@ -37,8 +37,13 @@ def format_microseconds(number: int):
         return f"{int(number)}{too_big_sign}{unit}"
 
 
-def format_seconds(number: int):
-    if number > 60:
-        return "60+s"
+def format_seconds(number: int) -> str:
+    if number < 60:
+        return f"{number}s"
 
-    return f"{number}s"
+    minutes, seconds = divmod(number, 60)
+    if minutes < 60:
+        return f"{minutes}m{seconds}s" if seconds else f"{minutes}m"
+
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes}m" if minutes else f"{hours}h"

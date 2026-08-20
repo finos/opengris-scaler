@@ -28,6 +28,7 @@ from scaler.utility.mixins import Looper, Reporter
 logger = logging.getLogger(__name__)
 
 UINT8_MAX = 2**8 - 1
+UINT16_MAX = 2**16 - 1
 
 
 class VanillaWorkerController(WorkerController, Looper, Reporter):
@@ -94,6 +95,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
                     scheme=object_storage_address.type.value,
                 )
             ),
+            detached=True,
         )
 
     async def on_client_shutdown(self, client_id: ClientID):
@@ -102,7 +104,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
         await self.__disconnect_worker(request.worker)
-        await self._binder.send(worker_id, DisconnectResponse(worker=request.worker))
+        await self._binder.send(worker_id, DisconnectResponse(worker=request.worker), detached=True)
 
     async def routine(self):
         await self.__clean_workers()
@@ -122,7 +124,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
         suspended = min(len([p for p in info.processors if p.suspended]), UINT8_MAX)
-        last_s = min(int(time.time() - last), UINT8_MAX)
+        last_s = min(int(time.time() - last), UINT16_MAX)
 
         if current_processor:
             debug_info = f"{int(current_processor.initialized)}{int(current_processor.hasTask)}{int(info.taskLock)}"
@@ -133,6 +135,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             workerId=worker_id,
             agent=info.agent,
             rssFree=info.rssFree,
+            memLimit=info.memLimit,
             free=worker_task_numbers["free"],
             sent=worker_task_numbers["sent"],
             queued=info.queuedTasks,
@@ -199,5 +202,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
 
     async def __shutdown_worker(self, worker_id: WorkerID):
-        await self._binder.send(worker_id, ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown))
+        await self._binder.send(
+            worker_id, ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown), detached=True
+        )
         await self.__disconnect_worker(worker_id)

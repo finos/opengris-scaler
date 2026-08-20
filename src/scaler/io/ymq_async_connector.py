@@ -1,12 +1,13 @@
+import asyncio
 import logging
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional, Set
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncConnector, ConnectorRemoteType
 from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext
-from scaler.io.ymq.utils import to_tls_config
+from scaler.io.ymq.utils import run_detached, to_tls_config
 from scaler.protocol.capnp import BaseMessage
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,8 @@ class YMQAsyncConnector(AsyncConnector):
 
         self._callback: Callable[[BaseMessage], Awaitable[None]] = callback
         self._socket: Optional[ConnectorSocket] = None
+
+        self._pending_tasks: Set[asyncio.Task] = set()
 
     def __del__(self):
         self.destroy()
@@ -48,6 +51,9 @@ class YMQAsyncConnector(AsyncConnector):
     def destroy(self):
         if self._socket is None:
             return
+
+        for task in self._pending_tasks.copy():
+            task.cancel()
 
         self._socket.shutdown()
 
@@ -88,8 +94,17 @@ class YMQAsyncConnector(AsyncConnector):
 
         return result
 
-    async def send(self, message: BaseMessage):
+    async def send(self, message: BaseMessage, *, detached: bool):
         if self._socket is None:
             return
 
-        await self._socket.send_message(Bytes(serialize(message)))
+        awaitable = self._socket.send_message(Bytes(serialize(message)))
+
+        if not detached:
+            await awaitable
+            return
+
+        self._pending_tasks.add(run_detached(awaitable, self.__get_prefix(), self._pending_tasks.discard))
+
+    def __get_prefix(self) -> str:
+        return f"{self.__class__.__name__}[{self._identity!r}]:"

@@ -740,7 +740,7 @@ class TestOCIRawWorkerManagerConfig(unittest.TestCase):
     def test_oci_raw_subcommand_dispatches_worker_manager(self) -> None:
         with (
             patch("sys.argv", ["scaler_worker_manager", "oci_raw", *_OCI_RAW_BASE_ARGV]),
-            patch("scaler.entry_points.worker_manager.setup_logger"),
+            patch("scaler.entry_points.worker_manager.bootstrap_process"),
             patch("scaler.entry_points.worker_manager.register_event_loop"),
             patch("scaler.worker_manager_adapter.oci_raw.worker_manager.OCIRawWorkerManager") as mock_mgr,
         ):
@@ -1067,7 +1067,7 @@ worker_manager_id = "wm-2"
     def test_oci_hpc_subcommand_dispatches_worker_manager(self) -> None:
         with (
             patch("sys.argv", ["scaler_worker_manager", "oci_hpc", *_OCI_HPC_BASE_ARGV]),
-            patch("scaler.entry_points.worker_manager.setup_logger"),
+            patch("scaler.entry_points.worker_manager.bootstrap_process"),
             patch("scaler.entry_points.worker_manager.register_event_loop"),
             patch("scaler.worker_manager_adapter.oci_hpc.worker_manager.OCIHPCWorkerManager") as mock_mgr,
         ):

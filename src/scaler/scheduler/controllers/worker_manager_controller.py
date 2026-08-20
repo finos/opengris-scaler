@@ -21,6 +21,8 @@ from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
 
+UINT16_MAX = 2**16 - 1
+
 
 class WorkerManagerController(Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
@@ -63,7 +65,7 @@ class WorkerManagerController(Looper, Reporter):
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
-        await self._binder.send(source, WorkerManagerHeartbeatEcho())
+        await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
         information_snapshot = self._build_snapshot()
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
@@ -95,7 +97,7 @@ class WorkerManagerController(Looper, Reporter):
                 {
                     "worker_manager_id": heartbeat.workerManagerID,
                     "identity": source.decode(errors="replace"),
-                    "last_seen_s": min(int(now - last_seen), 255),
+                    "last_seen_s": min(int(now - last_seen), UINT16_MAX),
                     "max_task_concurrency": heartbeat.maxTaskConcurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
@@ -113,7 +115,7 @@ class WorkerManagerController(Looper, Reporter):
         return result
 
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
-        await self._binder.send(source, command)
+        await self._binder.send(source, command, detached=True)
 
     def _build_manager_snapshots(self) -> Dict[bytes, WorkerManagerSnapshot]:
         """Build cross-manager snapshots from all known managers, keyed by worker_manager_id."""

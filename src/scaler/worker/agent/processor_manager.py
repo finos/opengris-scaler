@@ -17,6 +17,7 @@ from scaler.protocol.capnp import (
     TaskResultType,
 )
 from scaler.utility.exceptions import ProcessorDiedError
+from scaler.utility.exitcode import describe_exitcode
 from scaler.utility.identifiers import ObjectID, ProcessorID, TaskID, WorkerID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.serialization import serialize_failure
@@ -128,7 +129,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         self._profiling_manager.on_task_start(holder.pid(), task.taskId)
 
-        await self._binder_internal.send(holder.processor_id(), task)
+        await self._binder_internal.send(holder.processor_id(), task, detached=True)
 
         return True
 
@@ -162,7 +163,15 @@ class VanillaProcessorManager(ProcessorManager):
         else:
             profile_result = None
 
-        reason = f"process died {process_status=}"
+        # This only fires for zombie or dead processors, so the exit code is already readable here
+        # (`Process.exitcode` reaps on read). Name the signal so an OOM kill (SIGKILL) is obvious in the logs
+        # instead of just "zombie". Logged before the kill below, so the diagnosis is not separated from the
+        # processor it describes by the restart's own logging.
+        death = f"process_status={process_status!r} exitcode={describe_exitcode(holder.exitcode())}"
+        task_note = f", task_id={task.taskId.hex()}" if task is not None else ""
+        logger.warning(f"{self._identity!r}: Processor[{holder.pid()}] died: {death}{task_note}")
+
+        reason = "process died"
         if holder == self._current_holder:
             self.__restart_current_processor(reason)
         else:
@@ -173,7 +182,7 @@ class VanillaProcessorManager(ProcessorManager):
             task_id = task.taskId
 
             result_object_id = ObjectID.generate_object_id(source)
-            result_object_bytes = serialize_failure(ProcessorDiedError(f"{process_status=}"))
+            result_object_bytes = serialize_failure(ProcessorDiedError(death))
 
             await self._connector_storage.set_object(result_object_id, result_object_bytes)
             await self._connector_external.send(
@@ -185,7 +194,8 @@ class VanillaProcessorManager(ProcessorManager):
                         objectTypes=(ObjectMetadata.ObjectContentType.object,),
                         objectNames=(b"",),
                     ),
-                )
+                ),
+                detached=True,
             )
 
             await self._task_manager.on_task_result(
@@ -281,13 +291,13 @@ class VanillaProcessorManager(ProcessorManager):
             if processor_id not in self._holders_by_processor_id:
                 continue  # processor got killed while we were iterating over the list
 
-            await self._binder_internal.send(processor_id, instruction)
+            await self._binder_internal.send(processor_id, instruction, detached=True)
 
     async def on_internal_object_instruction(self, processor_id: ProcessorID, instruction: ObjectInstruction):
         if not self.__processor_ready_to_process_object(processor_id):
             return
 
-        await self._connector_external.send(instruction)
+        await self._connector_external.send(instruction, detached=True)
 
     def destroy(self, reason: str):
         if self._connector_storage is not None:

@@ -97,6 +97,16 @@ std::expected<void, Error> TCPSocket::nodelay(bool enable) noexcept
     return {};
 }
 
+std::expected<void, Error> TCPSocket::keepalive(bool enable, unsigned int delaySeconds) noexcept
+{
+    const int err = uv_tcp_keepalive(&handle().native(), enable, delaySeconds);
+    if (err) {
+        return std::unexpected(Error {err});
+    }
+
+    return {};
+}
+
 std::expected<TCPServer, Error> TCPServer::init(Loop& loop) noexcept
 {
     TCPServer server {};

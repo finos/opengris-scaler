@@ -11,8 +11,9 @@
 namespace scaler {
 namespace object_storage {
 
-static constexpr size_t CAPNP_HEADER_SIZE = 80;
-static constexpr size_t CAPNP_WORD_SIZE   = sizeof(capnp::word);
+static constexpr size_t capnpHeaderSize   = 80;
+static constexpr size_t capnpObjectIDSize = 48;
+static constexpr size_t capnpWordSize     = sizeof(capnp::word);
 
 template <typename T>
 concept ObjectStorageMessage = requires(const T obj, std::vector<capnp::word> buffer) {
@@ -44,7 +45,7 @@ struct ObjectID {
 
     static constexpr size_t bufferSize()
     {
-        return 48;
+        return capnpObjectIDSize;
     }
 
     kj::Array<const capnp::word> toBuffer() const;
@@ -53,7 +54,7 @@ struct ObjectID {
     static ObjectID fromBuffer(const Buffer& buffer)
     {
         capnp::FlatArrayMessageReader reader(
-            kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / CAPNP_WORD_SIZE));
+            kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / capnpWordSize));
 
         auto objectIDRoot = reader.getRoot<scaler::protocol::ObjectID>();
 
@@ -71,7 +72,7 @@ struct ObjectRequestHeader {
 
     static constexpr size_t bufferSize()
     {
-        return CAPNP_HEADER_SIZE;
+        return capnpHeaderSize;
     }
 
     kj::Array<const capnp::word> toBuffer() const;
@@ -80,7 +81,7 @@ struct ObjectRequestHeader {
     static ObjectRequestHeader fromBuffer(const Buffer& buffer)
     {
         capnp::FlatArrayMessageReader reader(
-            kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / CAPNP_WORD_SIZE));
+            kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / capnpWordSize));
 
         auto requestRoot  = reader.getRoot<scaler::protocol::ObjectRequestHeader>();
         auto objectIDRoot = requestRoot.getObjectID();
@@ -110,7 +111,7 @@ struct ObjectResponseHeader {
 
     static constexpr size_t bufferSize()
     {
-        return CAPNP_HEADER_SIZE;
+        return capnpHeaderSize;
     }
 
     kj::Array<const capnp::word> toBuffer() const;
@@ -119,7 +120,7 @@ struct ObjectResponseHeader {
     static ObjectResponseHeader fromBuffer(const Buffer& buffer)
     {
         capnp::FlatArrayMessageReader reader(
-            kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / CAPNP_WORD_SIZE));
+            kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / capnpWordSize));
 
         auto responseRoot = reader.getRoot<scaler::protocol::ObjectResponseHeader>();
         auto objectIDRoot = responseRoot.getObjectID();

@@ -23,27 +23,38 @@ namespace internal {
 
 namespace {
 
-static constexpr size_t MAX_UPGRADE_HEADER_SIZE = 64 * 1024;  // 64 KB
+static constexpr size_t maxUpgradeHeaderSize = 64 * 1024;  // 64 KB
 
 // WebSocket frame flags and masks (RFC 6455 section 5.2)
-static constexpr uint8_t FLAG_FIN    = 0x80;
-static constexpr uint8_t FLAG_MASKED = 0x80;
-static constexpr uint8_t MASK_OPCODE = 0x0F;
-static constexpr uint8_t MASK_LENGTH = 0x7F;
+static constexpr uint8_t flagFin    = 0x80;
+static constexpr uint8_t flagMasked = 0x80;
+static constexpr uint8_t maskOpcode = 0x0F;
+static constexpr uint8_t maskLength = 0x7F;
 
 // WebSocket opcodes (RFC 6455 section 5.2)
-static constexpr uint8_t OPCODE_CONTINUATION = 0x0;
-static constexpr uint8_t OPCODE_TEXT         = 0x1;
-static constexpr uint8_t OPCODE_BINARY       = 0x2;
-static constexpr uint8_t OPCODE_CLOSE        = 0x8;
-static constexpr uint8_t OPCODE_PING         = 0x9;
-static constexpr uint8_t OPCODE_PONG         = 0xA;
+static constexpr uint8_t opcodeContinuation = 0x0;
+static constexpr uint8_t opcodeText         = 0x1;
+static constexpr uint8_t opcodeBinary       = 0x2;
+static constexpr uint8_t opcodeClose        = 0x8;
+static constexpr uint8_t opcodePing         = 0x9;
+static constexpr uint8_t opcodePong         = 0xA;
 
 // WebSocket payload length encoding (RFC 6455 section 5.2)
-static constexpr uint8_t PAYLOAD_LEN_16BIT         = 126;
-static constexpr uint8_t PAYLOAD_LEN_64BIT         = 127;
-static constexpr size_t PAYLOAD_LEN_16BIT_MAX      = 65536;
-static constexpr uint8_t MAX_CONTROL_FRAME_PAYLOAD = 125;
+static constexpr uint8_t payloadLen16Bit        = 126;
+static constexpr uint8_t payloadLen64Bit        = 127;
+static constexpr size_t payloadLen16BitMax      = 65536;
+static constexpr uint8_t maxControlFramePayload = 125;
+
+// WebSocket frame layout (RFC 6455 section 5.2)
+static constexpr size_t baseHeaderSize    = 2;  // FIN/opcode byte + mask/length byte
+static constexpr size_t extendedLen16Size = 2;
+static constexpr size_t extendedLen64Size = 8;
+static constexpr size_t header16BitSize   = baseHeaderSize + extendedLen16Size;
+static constexpr size_t header64BitSize   = baseHeaderSize + extendedLen64Size;
+static constexpr size_t maskKeySize       = 4;
+
+static constexpr int bitsPerByte   = 8;
+static constexpr uint64_t byteMask = 0xFF;
 
 std::string buildClientUpgradeRequest(
     const std::string& host, uint16_t port, const std::string& path, const std::string& key) noexcept
@@ -77,17 +88,17 @@ std::string buildServerUpgradeResponse(const std::string& key) noexcept
 std::vector<uint8_t> buildServerFrameHeader(size_t payloadSize) noexcept
 {
     std::vector<uint8_t> header;
-    header.push_back(FLAG_FIN | OPCODE_BINARY);
-    if (payloadSize < PAYLOAD_LEN_16BIT) {
+    header.push_back(flagFin | opcodeBinary);
+    if (payloadSize < payloadLen16Bit) {
         header.push_back(static_cast<uint8_t>(payloadSize));
-    } else if (payloadSize < PAYLOAD_LEN_16BIT_MAX) {
-        header.push_back(PAYLOAD_LEN_16BIT);
-        header.push_back(static_cast<uint8_t>((payloadSize >> 8) & 0xFF));
-        header.push_back(static_cast<uint8_t>(payloadSize & 0xFF));
+    } else if (payloadSize < payloadLen16BitMax) {
+        header.push_back(payloadLen16Bit);
+        header.push_back(static_cast<uint8_t>((payloadSize >> bitsPerByte) & byteMask));
+        header.push_back(static_cast<uint8_t>(payloadSize & byteMask));
     } else {
-        header.push_back(PAYLOAD_LEN_64BIT);
-        for (int i = 7; i >= 0; --i)
-            header.push_back(static_cast<uint8_t>((payloadSize >> (i * 8)) & 0xFF));
+        header.push_back(payloadLen64Bit);
+        for (int i = static_cast<int>(extendedLen64Size) - 1; i >= 0; --i)
+            header.push_back(static_cast<uint8_t>((payloadSize >> (i * bitsPerByte)) & byteMask));
     }
     return header;
 }
@@ -98,22 +109,22 @@ std::pair<std::vector<uint8_t>, std::vector<uint8_t>> buildClientFrame(
 {
     static thread_local std::mt19937 rng(std::random_device {}());
     std::uniform_int_distribution<uint32_t> dist;
-    std::array<uint8_t, 4> maskKey;
+    std::array<uint8_t, maskKeySize> maskKey;
     const uint32_t maskInt = dist(rng);
-    std::memcpy(maskKey.data(), &maskInt, 4);
+    std::memcpy(maskKey.data(), &maskInt, maskKeySize);
 
     std::vector<uint8_t> header;
-    header.push_back(FLAG_FIN | OPCODE_BINARY);
-    if (totalSize < PAYLOAD_LEN_16BIT) {
-        header.push_back(FLAG_MASKED | static_cast<uint8_t>(totalSize));
-    } else if (totalSize < PAYLOAD_LEN_16BIT_MAX) {
-        header.push_back(FLAG_MASKED | PAYLOAD_LEN_16BIT);
-        header.push_back(static_cast<uint8_t>((totalSize >> 8) & 0xFF));
-        header.push_back(static_cast<uint8_t>(totalSize & 0xFF));
+    header.push_back(flagFin | opcodeBinary);
+    if (totalSize < payloadLen16Bit) {
+        header.push_back(flagMasked | static_cast<uint8_t>(totalSize));
+    } else if (totalSize < payloadLen16BitMax) {
+        header.push_back(flagMasked | payloadLen16Bit);
+        header.push_back(static_cast<uint8_t>((totalSize >> bitsPerByte) & byteMask));
+        header.push_back(static_cast<uint8_t>(totalSize & byteMask));
     } else {
-        header.push_back(FLAG_MASKED | PAYLOAD_LEN_64BIT);
-        for (int i = 7; i >= 0; --i)
-            header.push_back(static_cast<uint8_t>((totalSize >> (i * 8)) & 0xFF));
+        header.push_back(flagMasked | payloadLen64Bit);
+        for (int i = static_cast<int>(extendedLen64Size) - 1; i >= 0; --i)
+            header.push_back(static_cast<uint8_t>((totalSize >> (i * bitsPerByte)) & byteMask));
     }
     header.insert(header.end(), maskKey.begin(), maskKey.end());
 
@@ -122,7 +133,7 @@ std::pair<std::vector<uint8_t>, std::vector<uint8_t>> buildClientFrame(
     size_t pos = 0;
     for (const auto& buf: buffers) {
         for (uint8_t byte: buf)
-            masked.push_back(byte ^ maskKey[pos++ % 4]);
+            masked.push_back(byte ^ maskKey[pos++ % maskKeySize]);
     }
     return {std::move(header), std::move(masked)};
 }
@@ -135,18 +146,18 @@ std::vector<uint8_t> buildControlFrame(uint8_t opcode, bool isClient, std::span<
     static thread_local std::mt19937 rng(std::random_device {}());
     std::uniform_int_distribution<uint32_t> dist;
 
-    const uint8_t len = static_cast<uint8_t>(payload.size());  // caller ensures <= 125
+    const uint8_t len = static_cast<uint8_t>(payload.size());  // caller ensures <= maxControlFramePayload
 
     std::vector<uint8_t> frame;
-    frame.push_back(FLAG_FIN | opcode);
+    frame.push_back(flagFin | opcode);
     if (isClient) {
-        frame.push_back(FLAG_MASKED | len);
-        std::array<uint8_t, 4> maskKey;
+        frame.push_back(flagMasked | len);
+        std::array<uint8_t, maskKeySize> maskKey;
         const uint32_t maskInt = dist(rng);
-        std::memcpy(maskKey.data(), &maskInt, 4);
+        std::memcpy(maskKey.data(), &maskInt, maskKeySize);
         frame.insert(frame.end(), maskKey.begin(), maskKey.end());
         for (size_t i = 0; i < payload.size(); ++i)
-            frame.push_back(payload[i] ^ maskKey[i % 4]);
+            frame.push_back(payload[i] ^ maskKey[i % maskKeySize]);
     } else {
         frame.push_back(len);
         frame.insert(frame.end(), payload.begin(), payload.end());
@@ -167,42 +178,42 @@ struct DecodedFrame {
 std::expected<std::optional<DecodedFrame>, scaler::wrapper::uv::Error> tryDecodeFrame(
     std::vector<uint8_t>& buffer) noexcept
 {
-    if (buffer.size() < 2)
+    if (buffer.size() < baseHeaderSize)
         return std::optional<DecodedFrame> {std::nullopt};
 
     const uint8_t byte0  = buffer[0];
     const uint8_t byte1  = buffer[1];
-    const bool fin       = (byte0 & FLAG_FIN) != 0;
-    const uint8_t opcode = byte0 & MASK_OPCODE;
-    const bool masked    = (byte1 & FLAG_MASKED) != 0;
-    uint64_t payloadLen  = byte1 & MASK_LENGTH;
-    size_t headerSize    = 2;
+    const bool fin       = (byte0 & flagFin) != 0;
+    const uint8_t opcode = byte0 & maskOpcode;
+    const bool masked    = (byte1 & flagMasked) != 0;
+    uint64_t payloadLen  = byte1 & maskLength;
+    size_t headerSize    = baseHeaderSize;
 
-    if (payloadLen == PAYLOAD_LEN_16BIT) {
-        if (buffer.size() < 4)
+    if (payloadLen == payloadLen16Bit) {
+        if (buffer.size() < header16BitSize)
             return std::optional<DecodedFrame> {std::nullopt};
-        payloadLen = (uint64_t(buffer[2]) << 8) | buffer[3];
-        headerSize = 4;
-    } else if (payloadLen == PAYLOAD_LEN_64BIT) {
-        if (buffer.size() < 10)
+        payloadLen = (uint64_t(buffer[baseHeaderSize]) << bitsPerByte) | buffer[baseHeaderSize + 1];
+        headerSize = header16BitSize;
+    } else if (payloadLen == payloadLen64Bit) {
+        if (buffer.size() < header64BitSize)
             return std::optional<DecodedFrame> {std::nullopt};
         payloadLen = 0;
-        for (int i = 0; i < 8; ++i)
-            payloadLen = (payloadLen << 8) | buffer[2 + i];
-        headerSize = 10;
+        for (size_t i = 0; i < extendedLen64Size; ++i)
+            payloadLen = (payloadLen << bitsPerByte) | buffer[baseHeaderSize + i];
+        headerSize = header64BitSize;
     }
 
     if (masked)
-        headerSize += 4;
+        headerSize += maskKeySize;
 
     if (buffer.size() < headerSize + static_cast<size_t>(payloadLen))
         return std::optional<DecodedFrame> {std::nullopt};
 
     std::vector<uint8_t> payload(static_cast<size_t>(payloadLen));
     if (masked) {
-        const uint8_t* maskKey = buffer.data() + headerSize - 4;
+        const uint8_t* maskKey = buffer.data() + headerSize - maskKeySize;
         for (size_t i = 0; i < static_cast<size_t>(payloadLen); ++i)
-            payload[i] = buffer[headerSize + i] ^ maskKey[i % 4];
+            payload[i] = buffer[headerSize + i] ^ maskKey[i % maskKeySize];
     } else {
         std::copy(
             buffer.begin() + static_cast<std::ptrdiff_t>(headerSize),
@@ -259,6 +270,12 @@ std::expected<void, scaler::wrapper::uv::Error> transportReadStart(
 void transportReadStop(WebSocketStream::Transport& transport) noexcept
 {
     std::visit([](auto& socket) { socket.readStop(); }, transport);
+}
+
+std::expected<void, scaler::wrapper::uv::Error> transportKeepAlive(
+    WebSocketStream::Transport& transport, bool enable, unsigned int delaySeconds) noexcept
+{
+    return std::visit([&](auto& socket) { return socket.keepalive(enable, delaySeconds); }, transport);
 }
 
 std::expected<void, scaler::wrapper::uv::Error> transportShutdown(
@@ -497,7 +514,7 @@ void WebSocketStream::upgradeAsClient(
                     const auto& data = readResult.value();
                     state->_recvBuffer.insert(state->_recvBuffer.end(), data.begin(), data.end());
 
-                    if (state->_recvBuffer.size() > MAX_UPGRADE_HEADER_SIZE) {
+                    if (state->_recvBuffer.size() > maxUpgradeHeaderSize) {
                         auto safeState = state;
                         transportReadStop(state->_transport);
                         completeUpgrade(safeState, std::unexpected(scaler::wrapper::uv::Error {UV_EPROTO}));
@@ -538,7 +555,7 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::upgradeAsServer
             const auto& data = readResult.value();
             state->_recvBuffer.insert(state->_recvBuffer.end(), data.begin(), data.end());
 
-            if (state->_recvBuffer.size() > MAX_UPGRADE_HEADER_SIZE) {
+            if (state->_recvBuffer.size() > maxUpgradeHeaderSize) {
                 auto safeState = state;
                 transportReadStop(state->_transport);
                 completeUpgrade(safeState, std::unexpected(scaler::wrapper::uv::Error {UV_EPROTO}));
@@ -639,9 +656,9 @@ void WebSocketStream::processRecvBuffer(std::shared_ptr<State> state) noexcept
 
         auto& frame = frameResult->value();
 
-        if (frame.opcode == OPCODE_CLOSE) {
+        if (frame.opcode == opcodeClose) {
             // CLOSE: echo a CLOSE frame then signal clean disconnect.
-            auto closeFrame = buildControlFrame(OPCODE_CLOSE, state->_role != Role::Server, {});
+            auto closeFrame = buildControlFrame(opcodeClose, state->_role != Role::Server, {});
             auto frameData  = std::make_shared<std::vector<uint8_t>>(std::move(closeFrame));
             const std::span<const uint8_t> frameSpan(*frameData);
             // Best-effort CLOSE echo - connection is shutting down regardless.
@@ -656,12 +673,12 @@ void WebSocketStream::processRecvBuffer(std::shared_ptr<State> state) noexcept
             return;
         }
 
-        if (frame.opcode == OPCODE_PING) {
+        if (frame.opcode == opcodePing) {
             // PING: respond with PONG carrying the same payload (RFC 6455 section 5.5.3).
             auto pongPayload = frame.payload;
-            if (pongPayload.size() > MAX_CONTROL_FRAME_PAYLOAD)
-                pongPayload.resize(MAX_CONTROL_FRAME_PAYLOAD);
-            auto pongFrame = buildControlFrame(OPCODE_PONG, state->_role != Role::Server, pongPayload);
+            if (pongPayload.size() > maxControlFramePayload)
+                pongPayload.resize(maxControlFramePayload);
+            auto pongFrame = buildControlFrame(opcodePong, state->_role != Role::Server, pongPayload);
             auto frameData = std::make_shared<std::vector<uint8_t>>(std::move(pongFrame));
             const std::span<const uint8_t> frameSpan(*frameData);
             // Best-effort PONG - if this write fails the next read will catch the error.
@@ -674,13 +691,13 @@ void WebSocketStream::processRecvBuffer(std::shared_ptr<State> state) noexcept
             continue;
         }
 
-        if (frame.opcode == OPCODE_PONG) {
+        if (frame.opcode == opcodePong) {
             // PONG: unsolicited or in response to our PING - ignore.
             continue;
         }
 
         // Data frames: handle fragmentation per RFC 6455 section 5.4.
-        if (frame.opcode == OPCODE_TEXT || frame.opcode == OPCODE_BINARY) {
+        if (frame.opcode == opcodeText || frame.opcode == opcodeBinary) {
             if (frame.fin) {
                 // Complete single-frame message.
                 state->_readCallback(std::span<const uint8_t>(frame.payload));
@@ -688,7 +705,7 @@ void WebSocketStream::processRecvBuffer(std::shared_ptr<State> state) noexcept
                 // First fragment - start accumulating.
                 state->_fragmentBuffer = std::move(frame.payload);
             }
-        } else if (frame.opcode == OPCODE_CONTINUATION) {
+        } else if (frame.opcode == opcodeContinuation) {
             // Continuation frame.
             state->_fragmentBuffer.insert(state->_fragmentBuffer.end(), frame.payload.begin(), frame.payload.end());
             if (frame.fin) {
@@ -732,10 +749,16 @@ void WebSocketStream::readStop() noexcept
     _state->_readCallback = {};
 }
 
+std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::keepalive(
+    bool enable, unsigned int delaySeconds) noexcept
+{
+    return transportKeepAlive(_state->_transport, enable, delaySeconds);
+}
+
 std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::shutdown(
     scaler::wrapper::uv::ShutdownCallback callback) noexcept
 {
-    auto closeFrame = buildControlFrame(OPCODE_CLOSE, _state->_role != Role::Server, {});
+    auto closeFrame = buildControlFrame(opcodeClose, _state->_role != Role::Server, {});
     auto frameData  = std::make_shared<std::vector<uint8_t>>(std::move(closeFrame));
     const std::span<const uint8_t> frameSpan(*frameData);
     auto state = _state;

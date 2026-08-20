@@ -14,14 +14,12 @@
 
 set -euo pipefail
 
-# Version pins -- the single place version numbers are allowed to live. The
-# Pyodide xbuildenv fixes a specific CPython, so PYTHON_VERSION and
-# PYODIDE_XBUILDENV_VERSION MUST be bumped together. pyodide-build is decoupled
-# from the runtime; PYODIDE_BUILD_VERSION tracks the jupyterlite-pyodide-kernel
-# 0.8.0 build the docs site ships. Comments elsewhere name these variables instead
-# of repeating numbers, so they cannot drift.
+# Version pins. The xbuildenv fixes a specific CPython, so PYTHON_VERSION moves with
+# PYODIDE_XBUILDENV_VERSION, which in turn has to match the Pyodide the docs site's
+# jupyterlite-pyodide-kernel ships. pyodide-build only drives the build and moves on its
+# own.
 PYTHON_VERSION="3.14"
-PYODIDE_BUILD_VERSION="0.35.1"
+PYODIDE_BUILD_VERSION="0.39.0"
 PYODIDE_XBUILDENV_VERSION="314.0.0"
 TBLIB_MIN_VERSION="3.2.0"
 

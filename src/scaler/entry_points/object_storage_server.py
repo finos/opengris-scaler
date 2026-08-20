@@ -4,13 +4,14 @@ import sys
 
 from scaler.config.section.object_storage_server import ObjectStorageServerConfig
 from scaler.object_storage.object_storage_server import ObjectStorageServer
-from scaler.utility.logging.utility import get_logger_info, setup_logger
+from scaler.utility.logging.utility import get_logger_info
+from scaler.utility.process_bootstrap import bootstrap_process
 
 
 def main():
     oss_config = ObjectStorageServerConfig.parse("Scaler Object Storage Server", "object_storage_server")
 
-    setup_logger(
+    bootstrap_process(
         oss_config.logging_config.paths,
         oss_config.logging_config.config_file,
         oss_config.logging_config.level,
