@@ -378,6 +378,17 @@ function renderManagers() {
         tdWC.textContent = m.worker_count != null ? m.worker_count : "0";
         tr.appendChild(tdWC);
 
+        // The manager's own view of its fleet, which is one heartbeat behind the scheduler's and
+        // is the only place a unit on its way out is visible.
+        var tdUnits = document.createElement("td");
+        var active = m.active_units != null ? m.active_units : 0;
+        var pending = m.pending_units != null ? m.pending_units : 0;
+        var draining = m.draining_units != null ? m.draining_units : 0;
+        tdUnits.textContent = active + " / " + pending + " / " + draining;
+        tdUnits.title = active + " active, " + pending + " pending, " + draining + " draining";
+        if (draining > 0) tdUnits.classList.add("draining");
+        tr.appendChild(tdUnits);
+
         var tdCpu = document.createElement("td");
         tdCpu.textContent = m.total_proc_cpu != null ? m.total_proc_cpu + "%" : "—";
         tr.appendChild(tdCpu);
@@ -525,8 +536,11 @@ function setGauge(td, value, max, unit) {
 
 function updateWorkerRow(tr, w) {
     var cells = tr.children;
+    // A draining worker is finishing its current task and will not take another. Marking the whole
+    // row keeps it findable without spending a column on a flag that is usually false.
+    tr.classList.toggle("draining", !!w.draining);
     cells[0].textContent = w.name;
-    cells[0].title = w.full_name || w.name;
+    cells[0].title = w.draining ? (w.full_name || w.name) + " (draining)" : (w.full_name || w.name);
     cells[1].textContent = w.manager_id || "—";
     setGauge(cells[2], w.agt_cpu, 100, "%");
     setGauge(cells[3], w.agt_rss, w.total_rss, "");

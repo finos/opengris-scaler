@@ -114,7 +114,7 @@ def scaler_init(
     per_worker_task_queue_size: int = DEFAULT_PER_WORKER_QUEUE_SIZE,
     hard_processor_suspend: bool = DEFAULT_HARD_PROCESSOR_SUSPEND,
     protected: bool = True,
-    scaler_policy: PolicyConfig = PolicyConfig(policy_content="allocate=even_load; scaling=no"),
+    scaler_policy: PolicyConfig = PolicyConfig(policy_content="allocate=even_load; scaling=static"),
     event_loop: str = "builtin",
     logging_paths: Tuple[str, ...] = DEFAULT_LOGGING_PATHS,
     logging_level: str = DEFAULT_LOGGING_LEVEL,

@@ -1,6 +1,5 @@
 import unittest
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBWorkerProvisioner
 
@@ -8,27 +7,42 @@ from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBWorkerPr
 def _make_provisioner(workers_per_instance: int = 1, max_instances: int = -1) -> ORBWorkerProvisioner:
     config = MagicMock()
     config.worker_config.per_worker_capabilities.capabilities = {"cpu": 4}
-    sdk = MagicMock()
     return ORBWorkerProvisioner(
         config=config,
         max_instances=max_instances,
-        sdk=sdk,
+        sdk=MagicMock(),
         template_id="tmpl-123",
         workers_per_instance=workers_per_instance,
     )
 
 
-def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:
-    request = MagicMock()
-    request.taskConcurrency = task_concurrency
-    request.capabilities = [SimpleNamespace(name=k, value=v) for k, v in capabilities.items()]
-    return request
+class TestORBWorkerProvisionerShape(unittest.TestCase):
+    """ORB EC2 is a nested provisioner: its unit is an instance running a child worker manager."""
+
+    def test_a_unit_supplies_the_workers_of_its_instance(self) -> None:
+        self.assertEqual(_make_provisioner(workers_per_instance=16).task_concurrency_per_unit(), 16)
+
+    def test_max_units_is_the_configured_instance_cap(self) -> None:
+        self.assertEqual(_make_provisioner(max_instances=5).max_units(), 5)
+
+    def test_an_unlimited_cap_is_passed_through(self) -> None:
+        self.assertEqual(_make_provisioner(max_instances=-1).max_units(), -1)
 
 
-class TestORBWorkerProvisionerConcurrencyConversion(unittest.IsolatedAsyncioTestCase):
-    async def test_converts_workers_to_instance_count(self) -> None:
-        provisioner = _make_provisioner(workers_per_instance=16)
-        request = _make_request(task_concurrency=100, capabilities={"cpu": 4})
-        with patch.object(provisioner._capacity_coordinator, "_reconcile", new_callable=AsyncMock):
-            await provisioner.set_desired_task_concurrency([request])
-        self.assertEqual(provisioner._capacity_coordinator._desired_unit_count, 7)  # ceil(100 / 16) = 7
+class TestORBWorkerProvisionerPoll(unittest.IsolatedAsyncioTestCase):
+    async def test_it_reports_the_instances_it_created(self) -> None:
+        provisioner = _make_provisioner()
+        provisioner._instance_ids = {"i-abc", "i-def"}
+
+        self.assertEqual(await provisioner.poll_units(), {"i-abc", "i-def"})
+
+    async def test_destroying_an_unknown_instance_asks_orb_nothing(self) -> None:
+        provisioner = _make_provisioner()
+
+        await provisioner.destroy_unit("i-never-created")
+
+        provisioner._sdk.create_return_request.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

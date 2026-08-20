@@ -27,7 +27,7 @@ from scaler.io.ymq._ymq_wasm import (
     YMQException,
 )
 
-_MAGIC = b"YMQ\x01"
+_MAGIC = b"YMQ\x02"
 _HEADER = "<Q"
 
 

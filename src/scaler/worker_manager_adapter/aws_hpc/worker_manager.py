@@ -1,49 +1,38 @@
 from __future__ import annotations
 
 import logging
-import math
-from typing import TYPE_CHECKING, List
+from typing import Set
 
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import AsyncBinder
 from scaler.worker_manager_adapter.aws_hpc.worker import create_aws_batch_worker
-from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager_adapter.common import extract_desired_count
-from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager_adapter.proxy_worker_pool import ProxyWorkerPool
+from scaler.worker_manager_adapter.unit_provisioner import UNLIMITED_UNITS, UnitProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 from scaler.worker_manager_adapter.worker_process import WorkerProcess
 
-if TYPE_CHECKING:
-    from scaler.protocol.capnp import WorkerManagerCommand
-
 logger = logging.getLogger(__name__)
 
+SENTINEL_POLL_INTERVAL_SECONDS = 1.0
 
-class BatchWorkerProvisioner(DeclarativeWorkerProvisioner):
+
+class BatchWorkerProvisioner(UnitProvisioner):
+    """A unit is one local proxy process that submits jobs to AWS Batch.
+
+    There is no child manager below it, so this manager commands the process directly. The unit
+    supplies the concurrent job limit as its task concurrency, which is fixed.
+    """
+
     def __init__(self, config: AWSBatchWorkerManagerConfig) -> None:
         self._config = config
         self._base_concurrency = config.max_concurrent_jobs
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._units: List[WorkerProcess] = []
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=-1,
-        )
+        self._pool = ProxyWorkerPool(self._build_worker, description="Batch worker process")
 
-    def active_unit_count(self) -> int:
-        return len(self._units)
-
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        task_concurrency = extract_desired_count(requests, self._capabilities)
-        new_desired = math.ceil(task_concurrency / self._base_concurrency)
-        await self._capacity_coordinator.set_desired_unit_count(new_desired)
-
-    def _start_unit(self) -> None:
+    def _build_worker(self) -> WorkerProcess:
         config = self._config
-        worker = create_aws_batch_worker(
+        return create_aws_batch_worker(
             name=config.name,
             address=config.worker_manager_config.effective_worker_scheduler_address,
             object_storage_address=config.worker_manager_config.object_storage_address,
@@ -62,28 +51,33 @@ class BatchWorkerProvisioner(DeclarativeWorkerProvisioner):
             job_timeout_seconds=config.job_timeout_minutes * 60,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
         )
-        worker.start()
-        self._units.append(worker)
-        logger.info(f"Started Batch worker process {worker.name!r}")
 
-    async def start_units(self, count: int) -> None:
-        for _ in range(count):
-            self._start_unit()
+    def register(self, binder: AsyncBinder, children_address: AddressConfig) -> None:
+        self._pool.register(binder, children_address)
 
-    async def stop_units(self, count: int) -> None:
-        to_stop = self._units[:count]
-        if len(to_stop) < count:
-            logger.warning(f"Requested to stop {count} worker process(es) but only {len(to_stop)} available.")
-        for worker in to_stop:
-            worker.terminate()
-            self._units.pop(0)
-            logger.info(f"Stopped Batch worker process {worker.name!r}")
+    async def create_unit(self) -> str:
+        return await self._pool.create()
 
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        for worker in self._units:
-            worker.terminate()
-        self._units.clear()
+    async def destroy_unit(self, unit_id: str) -> None:
+        await self._pool.destroy(unit_id)
+
+    async def shutdown_unit(self, unit_id: str) -> None:
+        await self._pool.shutdown(unit_id)
+
+    async def set_unit_task_concurrency(self, unit_id: str, task_concurrency: int) -> None:
+        """A proxy process supplies a fixed concurrent job limit, so there is nothing to adjust."""
+
+    async def poll_units(self) -> Set[str]:
+        return await self._pool.poll()
+
+    def max_units(self) -> int:
+        return UNLIMITED_UNITS
+
+    def task_concurrency_per_unit(self) -> int:
+        return self._base_concurrency
+
+    def poll_interval_seconds(self) -> float:
+        return SENTINEL_POLL_INTERVAL_SECONDS
 
 
 class AWSHPCWorkerManager:
@@ -105,6 +99,7 @@ class AWSHPCWorkerManager:
             max_provisioner_units=-1,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_bind_address=config.worker_manager_config.children_bind_address,
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=config.max_concurrent_jobs,
         )

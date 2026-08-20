@@ -17,6 +17,16 @@ class ScalerPolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def mark_worker_draining(self, worker: WorkerID) -> bool:
+        """mark worker as draining so it receives no further tasks, return True the first time only"""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def evacuate_worker(self, worker: WorkerID) -> List[TaskID]:
+        """return the task_ids this worker has queued but not started, so they can be reassigned"""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def get_worker_ids(self) -> Set[WorkerID]:
         raise NotImplementedError()
 

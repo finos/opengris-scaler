@@ -17,22 +17,22 @@ from scaler.io.mixins import (
     ConnectorRemoteType,
     NetworkBackend,
 )
-from scaler.io.network_backends import YMQNetworkBackend, ZMQNetworkBackend, get_network_backend_from_env
+from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import (
     BaseMessage,
     ClientDisconnect,
-    DisconnectRequest,
-    DisconnectResponse,
     ObjectInstruction,
     ProcessorInitialized,
     Task,
     TaskCancel,
     TaskLog,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
+    WorkerShutdown,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
-from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
+from scaler.utility.exceptions import ClientQuitException, ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
@@ -43,6 +43,18 @@ from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
 logger = logging.getLogger(__name__)
+
+DRAIN_CHECK_INTERVAL_SECONDS = 0.1
+
+# YMQ errors that mean the scheduler connection is already gone.
+_EXPECTED_TEARDOWN_ERROR_CODES = frozenset(
+    {ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd, ymq.ErrorCode.SocketStopRequested}
+)
+
+# How long teardown waits for the exit notification to be sent. The notification only saves the
+# scheduler from waiting out the heartbeat timeout, so it is never worth blocking our own exit on:
+# a connection that is wedged rather than closed would otherwise hang teardown indefinitely.
+_NOTIFY_SCHEDULER_TIMEOUT_SECONDS = 5
 
 
 class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
@@ -65,6 +77,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         logging_paths: Tuple[str, ...],
         logging_level: str,
         worker_manager_id: bytes,
+        worker_manager_address: Optional[AddressConfig] = None,
         deterministic_worker_ids: bool = False,
         security_config: Optional[SecurityConfig] = None,
     ):
@@ -98,6 +111,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
         self._worker_manager_id = worker_manager_id
+        self._worker_manager_address = worker_manager_address
+        self._connector_manager: Optional[AsyncConnector] = None
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -160,6 +175,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
                 exit_code = 1
         except ClientShutdownException as e:
             logger.info(f"{self.identity!r}: {str(e)}")
+        except ClientQuitException as e:
+            # A completed drain: we were asked to stop, we finished the work we held, and we are
+            # leaving of our own accord. Teardown still sends WorkerDisconnectNotification, which
+            # is what turns the scheduler's timeout into an event.
+            logger.info(f"{self.identity!r}: {str(e)}")
         except TimeoutError as e:
             # The worker decided on its own that it is orphaned (no heartbeat from the scheduler
             # within death_timeout_seconds), not that anyone asked it to stop: an anomaly worth a
@@ -206,6 +226,14 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._connector_storage = self._backend.create_async_object_storage_connector(identity=self._ident)
 
+        # Children dial parents, so the worker opens this one. Its only inbound message is
+        # WorkerShutdown; liveness comes from the manager watching the process, which is better
+        # than a heartbeat timeout, so this link needs no echo.
+        if self._worker_manager_address is not None:
+            self._connector_manager = self._backend.create_async_connector(
+                identity=self._ident, callback=self.__on_receive_manager
+            )
+
         self._heartbeat_manager = VanillaHeartbeatManager(
             object_storage_address=self._object_storage_address,
             capabilities=self._capabilities,
@@ -239,6 +267,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             worker_task_manager=self._task_manager,
             timeout_manager=self._timeout_manager,
             processor_manager=self._processor_manager,
+            connector_manager=self._connector_manager,
         )
         self._processor_manager.register(
             heartbeat_manager=self._heartbeat_manager,
@@ -273,12 +302,16 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             logger.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
 
-        if isinstance(message, DisconnectResponse):
-            logger.error("Worker initiated DisconnectRequest got replied")
-            self._task.cancel()
+        raise TypeError(f"Unknown {message=}")
+
+    async def __on_receive_manager(self, message: BaseMessage):
+        if isinstance(message, WorkerShutdown):
+            if not self._heartbeat_manager.is_draining():
+                logger.info(f"{self.identity!r}: draining on request from the worker manager")
+                self._heartbeat_manager.set_draining()
             return
 
-        raise TypeError(f"Unknown {message=}")
+        logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
 
     async def __on_receive_internal(self, processor_id_bytes: bytes, message: BaseMessage):
         processor_id = ProcessorID(processor_id_bytes)
@@ -301,11 +334,34 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
+    async def __drain_routine(self) -> None:
+        """Leave once the drain is done, which is when the last task this worker holds is finished.
+
+        Step 2 of the drain has already moved the queue away, so what is left here is the running
+        task. That is why a drain costs the runtime of one task and not the depth of the queue.
+        """
+        if self._connector_manager is None:
+            return  # nothing can send WorkerShutdown, so a drain cannot start
+
+        if not self._heartbeat_manager.is_draining():
+            return
+
+        if self._task_manager.get_queued_size() > 0 or not self._processor_manager.can_accept_task():
+            return
+
+        logger.info(f"{self.identity!r}: drained, quitting")
+        raise ClientQuitException("drained on request from the worker manager")
+
     async def __main_loop(self) -> None:
         await self._connector_external.connect(
             self._address, ConnectorRemoteType.Binder, security_config=self._security_config
         )
         await self._binder_internal.bind(self._address_internal)
+
+        if self._connector_manager is not None:
+            await self._connector_manager.connect(
+                self._worker_manager_address, ConnectorRemoteType.Binder, security_config=self._security_config
+            )
 
         if self._object_storage_address is not None:
             # With a manually set storage address, immediately connect to the object storage server.
@@ -317,6 +373,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             create_async_loop_routine(self._connector_storage.routine, 0),
             create_async_loop_routine(self._binder_internal.routine, 0),
             create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+            *(
+                [create_async_loop_routine(self._connector_manager.routine, 0)]
+                if self._connector_manager is not None
+                else []
+            ),
+            create_async_loop_routine(self.__drain_routine, DRAIN_CHECK_INTERVAL_SECONDS),
             create_async_loop_routine(self._timeout_manager.routine, 1),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
@@ -325,8 +387,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     async def __teardown(self) -> None:
         # Guarded with `is not None` throughout: this runs even when __initialize failed partway
         # through, so some of these may never have been created.
-        if isinstance(self._backend, ZMQNetworkBackend):
-            await self.__graceful_shutdown()
+        await self.__notify_scheduler_of_exit()
 
         if self._connector_external is not None:
             self._connector_external.destroy()
@@ -346,22 +407,29 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
 
     def __register_signal(self):
-        if isinstance(self._backend, ZMQNetworkBackend):
-            install_async_shutdown_handler(self._loop, self.__destroy)
-        elif isinstance(self._backend, YMQNetworkBackend):
-            install_async_shutdown_handler(self._loop, self.__schedule_graceful_shutdown)
+        install_async_shutdown_handler(self._loop, self.__destroy)
 
-    def __schedule_graceful_shutdown(self) -> None:
-        asyncio.ensure_future(self.__graceful_shutdown())
-
-    async def __graceful_shutdown(self):
+    async def __notify_scheduler_of_exit(self) -> None:
+        """Tell the scheduler this worker is leaving, so it re-dispatches our tasks instead of
+        waiting out the heartbeat timeout. Runs on every exit path, not just on a signal.
+        """
         if self._connector_external is None:
             return
 
         try:
-            await self._connector_external.send(DisconnectRequest(worker=self.identity), detached=False)
-        except ymq.YMQException:
-            pass
+            await asyncio.wait_for(
+                self._connector_external.send(WorkerDisconnectNotification(), detached=False),
+                _NOTIFY_SCHEDULER_TIMEOUT_SECONDS,
+            )
+        except ymq.YMQException as e:
+            if e.code not in _EXPECTED_TEARDOWN_ERROR_CODES:
+                raise
+            logger.info(f"{self.identity!r}: could not notify the scheduler of exit: {e}")
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"{self.identity!r}: could not notify the scheduler of exit within "
+                f"{_NOTIFY_SCHEDULER_TIMEOUT_SECONDS}s, quitting anyway"
+            )
 
     def __destroy(self):
         self._task.cancel()

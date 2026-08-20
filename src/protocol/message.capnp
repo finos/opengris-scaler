@@ -84,6 +84,7 @@ struct WorkerHeartbeat {
     capabilities @7 :List(CommonType.TaskCapability);
     workerManagerID @8 :Data;
     memLimit @9 :UInt64;  # memory limit in bytes the worker runs under (cgroup if set, else system total); 0 if unknown
+    draining @10 :Bool;  # worker is shutting down: it finishes its current task and takes no new one
 }
 
 struct WorkerHeartbeatEcho {
@@ -94,6 +95,14 @@ struct WorkerManagerHeartbeat {
     maxTaskConcurrency @0 :UInt32;
     capabilities @1 :List(CommonType.TaskCapability);
     workerManagerID @2 :Data;
+
+    # State is level-triggered: the parent reads what this manager is actually running from every
+    # heartbeat, rather than tracking it through edges.
+    activeTaskConcurrency @3 :UInt32;
+    occupancy @4 :UInt32;
+    activeUnits @5 :UInt32;
+    pendingUnits @6 :UInt32;
+    drainingUnits @7 :UInt32;
 }
 
 struct WorkerManagerHeartbeatEcho {
@@ -120,12 +129,20 @@ struct ObjectInstruction {
     }
 }
 
-struct DisconnectRequest {
-    worker @0 :Data;
+# Carries no payload: the worker it refers to is the sender, which the binder already identifies.
+struct WorkerShutdown {
+    # manager -> worker: finish the current task, take no new one, then exit
 }
 
-struct DisconnectResponse {
-    worker @0 :Data;
+struct WorkerManagerShutdown {
+    # parent -> child manager: drain the whole fleet, then report and exit
+}
+
+struct WorkerManagerDisconnectNotification {
+    # child manager -> parent: the fleet is gone, the resource can be destroyed now
+}
+
+struct WorkerDisconnectNotification {
 }
 
 struct ClientDisconnect {
@@ -219,27 +236,30 @@ struct Message {
         workerHeartbeat @9 :WorkerHeartbeat;
         workerHeartbeatEcho @10 :WorkerHeartbeatEcho;
 
-        disconnectRequest @11 :DisconnectRequest;
-        disconnectResponse @12 :DisconnectResponse;
+        stateClient @11 :StateClient;
+        stateObject @12 :StateObject;
+        stateBalanceAdvice @13 :StateBalanceAdvice;
+        stateScheduler @14 :StateScheduler;
+        stateWorker @15 :StateWorker;
+        stateTask @16 :StateTask;
+        stateGraphTask @17 :StateGraphTask;
 
-        stateClient @13 :StateClient;
-        stateObject @14 :StateObject;
-        stateBalanceAdvice @15 :StateBalanceAdvice;
-        stateScheduler @16 :StateScheduler;
-        stateWorker @17 :StateWorker;
-        stateTask @18 :StateTask;
-        stateGraphTask @19 :StateGraphTask;
+        clientDisconnect @18 :ClientDisconnect;
+        clientShutdownResponse @19 :ClientShutdownResponse;
 
-        clientDisconnect @20 :ClientDisconnect;
-        clientShutdownResponse @21 :ClientShutdownResponse;
+        processorInitialized @20 :ProcessorInitialized;
 
-        processorInitialized @22 :ProcessorInitialized;
+        informationRequest @21 :InformationRequest;
+        informationResponse @22 :InformationResponse;
 
-        informationRequest @23 :InformationRequest;
-        informationResponse @24 :InformationResponse;
+        workerManagerHeartbeat @23 :WorkerManagerHeartbeat;
+        workerManagerHeartbeatEcho @24 :WorkerManagerHeartbeatEcho;
+        workerManagerCommand @25 :WorkerManagerCommand;
 
-        workerManagerHeartbeat @25 :WorkerManagerHeartbeat;
-        workerManagerHeartbeatEcho @26 :WorkerManagerHeartbeatEcho;
-        workerManagerCommand @27 :WorkerManagerCommand;
+        workerDisconnectNotification @26 :WorkerDisconnectNotification;
+
+        workerShutdown @27 :WorkerShutdown;
+        workerManagerShutdown @28 :WorkerManagerShutdown;
+        workerManagerDisconnectNotification @29 :WorkerManagerDisconnectNotification;
     }
 }

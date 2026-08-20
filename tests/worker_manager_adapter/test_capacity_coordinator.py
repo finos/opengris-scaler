@@ -114,3 +114,41 @@ class TestCapacityCoordinator(unittest.IsolatedAsyncioTestCase):
         # delta = min(5 - 2, 2 - 2) = 0: pool is full, nothing to start
         start_mock.assert_not_called()
         stop_mock.assert_not_called()
+
+
+class TestCapacityCoordinatorPeriodicReconcile(unittest.IsolatedAsyncioTestCase):
+    async def test_periodic_reconcile_replaces_a_unit_that_died(self) -> None:
+        units = [object(), object()]
+        start_mock = AsyncMock()
+        coordinator = CapacityCoordinator(
+            start_units=start_mock,
+            stop_units=AsyncMock(),
+            active_unit_count=lambda: len(units),
+            max_unit_count=-1,
+            reconcile_interval_seconds=0.01,
+        )
+
+        await coordinator.set_desired_unit_count(2)
+        await asyncio.sleep(0)
+        start_mock.assert_not_called()  # supply already matches demand
+
+        units.pop()  # a unit dies on its own; the desired count never changes
+        await asyncio.sleep(0.05)
+
+        start_mock.assert_called_with(1)
+        coordinator.cancel()
+
+    async def test_no_interval_means_no_periodic_reconcile(self) -> None:
+        units = [object(), object()]
+        start_mock = AsyncMock()
+        coordinator = CapacityCoordinator(
+            start_units=start_mock, stop_units=AsyncMock(), active_unit_count=lambda: len(units), max_unit_count=-1
+        )
+
+        await coordinator.set_desired_unit_count(2)
+        await asyncio.sleep(0)
+        units.pop()
+        await asyncio.sleep(0.05)
+
+        start_mock.assert_not_called()
+        coordinator.cancel()

@@ -17,6 +17,24 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def mark_worker_draining(self, worker: WorkerID) -> bool:
+        """mark worker as draining so it receives no further tasks, return True the first time only
+
+        A drain cannot be reversed, so there is no matching call to clear the flag. The worker keeps
+        the tasks it is already running; use evacuate_worker to reclaim the ones it has queued.
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def evacuate_worker(self, worker: WorkerID) -> List[TaskID]:
+        """return the task_ids this worker has queued but not started, so they can be reassigned
+
+        Unlike balance, this ignores load: every queued task of a draining worker is returned,
+        whatever the rest of the cluster looks like.
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def get_worker_ids(self) -> Set[WorkerID]:
         """get all worker ids as list"""
         raise NotImplementedError()

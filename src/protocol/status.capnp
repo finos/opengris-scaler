@@ -51,6 +51,7 @@ struct WorkerStatus {
     lastS @8 :UInt16;
     itl @9 :Text;
     processorStatuses @10 :List(ProcessorStatus);
+    draining @12 :Bool;  # worker is finishing its current task and taking no new one
 }
 
 struct WorkerManagerStatus {
@@ -75,6 +76,12 @@ struct ScalingManagerStatus {
         # Workers the scheduler has requested but that have not yet connected.
         # Computed each tick as max(0, total_requested - connected_count).
         pendingWorkers @5 :UInt32;
+
+        # Unit counts as the manager itself sees them, which is one heartbeat behind this view.
+        activeUnits @6 :UInt32;
+        pendingUnits @7 :UInt32;
+        drainingUnits @8 :UInt32;
+        occupancy @9 :UInt32;
     }
 }
 

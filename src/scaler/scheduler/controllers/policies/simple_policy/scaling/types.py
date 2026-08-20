@@ -15,9 +15,9 @@ class WorkerManagerSnapshot:
 
 
 class ScalingPolicyStrategy(enum.Enum):
-    NO = "no"
     VANILLA = "vanilla"
     CAPABILITY = "capability"
+    STATIC = "static"
 
     def __str__(self):
         return self.name

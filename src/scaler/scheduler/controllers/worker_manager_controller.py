@@ -42,6 +42,7 @@ class WorkerManagerController(Looper, Reporter):
         # Per-manager total desired worker count from the latest setDesiredTaskConcurrency command.
         # Used to report pendingWorkers = max(0, last_desired - connected_count) to the monitor.
         self._last_desired_total: Dict[bytes, int] = {}
+        self._manager_fleet: Dict[bytes, Dict[str, int]] = {}
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
@@ -49,6 +50,17 @@ class WorkerManagerController(Looper, Reporter):
         self._worker_controller = worker_controller
 
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
+        # Read the fleet numbers before touching the message. Assigning to any field detaches the
+        # struct from its lazy capnp source, after which a field nobody has read yet cannot be.
+        # The default covers a heartbeat built without these fields, which a partially constructed
+        # message can be, rather than letting one missing number take the whole controller down.
+        self._manager_fleet[source] = {
+            "active_units": getattr(heartbeat, "activeUnits", 0),
+            "pending_units": getattr(heartbeat, "pendingUnits", 0),
+            "draining_units": getattr(heartbeat, "drainingUnits", 0),
+            "occupancy": getattr(heartbeat, "occupancy", 0),
+        }
+
         heartbeat.capabilities = capabilities_to_dict(heartbeat.capabilities)
         if source not in self._manager_alive_since:
             manager_id = heartbeat.workerManagerID
@@ -101,6 +113,7 @@ class WorkerManagerController(Looper, Reporter):
                     "max_task_concurrency": heartbeat.maxTaskConcurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
+                    **self._manager_fleet.get(source, {}),
                 }
             )
 
@@ -166,6 +179,7 @@ class WorkerManagerController(Looper, Reporter):
         logger.info(f"WorkerManager {source!r} disconnected")
         self._manager_alive_since.pop(source)
         self._last_desired_total.pop(source, None)
+        self._manager_fleet.pop(source, None)
 
 
 def _sum_desired_for_manager(commands: List[WorkerManagerCommand], manager_capabilities: Dict[str, int]) -> int:

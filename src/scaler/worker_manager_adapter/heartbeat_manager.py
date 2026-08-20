@@ -43,8 +43,15 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
 
         self._start_timestamp_ns = 0
         self._latency_us = 0
+        self._draining = False
 
         self._object_storage_address: Optional[AddressConfig] = object_storage_address
+
+    def set_draining(self) -> None:
+        self._draining = True
+
+    def is_draining(self) -> bool:
+        return self._draining
 
     def register(
         self,
@@ -98,6 +105,7 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
                 queuedTasks=self._task_manager.get_queued_size(),
                 latencyUS=self._latency_us,
                 taskLock=not self._task_manager.can_accept_task(),
+                draining=self._draining,
                 processors=self._processor_status_provider.get_processor_statuses(),
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,

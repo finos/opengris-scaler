@@ -51,6 +51,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
 
         self._task_id_to_worker_id: Dict[TaskID, WorkerID] = {}
         self._capability_to_worker_ids: Dict[str, Set[WorkerID]] = {}
+        self._draining_worker_ids: Set[WorkerID] = set()
 
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         if any(capability_value != -1 for capability_value in capabilities.values()):
@@ -70,7 +71,24 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
 
         return True
 
+    def mark_worker_draining(self, worker: WorkerID) -> bool:
+        if worker not in self._worker_id_to_worker or worker in self._draining_worker_ids:
+            return False
+
+        self._draining_worker_ids.add(worker)
+        return True
+
+    def evacuate_worker(self, worker: WorkerID) -> List[TaskID]:
+        worker_holder = self._worker_id_to_worker.get(worker)
+        if worker_holder is None:
+            return []
+
+        # task_id_to_task runs oldest to youngest, and the oldest is the one the worker is
+        # running. A worker refuses a balance-cancel for that task, so leave it alone.
+        return list(worker_holder.task_id_to_task.keys())[1:]
+
     def remove_worker(self, worker: WorkerID) -> List[TaskID]:
+        self._draining_worker_ids.discard(worker)
         worker_holder = self._worker_id_to_worker.pop(worker, None)
 
         if worker_holder is None:
@@ -96,9 +114,17 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
     def balance(self) -> Dict[WorkerID, List[TaskID]]:
         """Returns, for every worker id, the list of task ids to balance out."""
 
-        has_idle_workers = any(worker.n_tasks() == 0 for worker in self._worker_id_to_worker.values())
+        # A draining worker takes no part in balancing. It must not receive tasks, and its own
+        # queue is reclaimed by evacuate_worker instead, which does not wait on load thresholds.
+        serving_workers = [
+            worker
+            for worker_id, worker in self._worker_id_to_worker.items()
+            if worker_id not in self._draining_worker_ids
+        ]
 
-        if not has_idle_workers:
+        has_idle_workers = any(worker.n_tasks() == 0 for worker in serving_workers)
+
+        if not has_idle_workers or not serving_workers:
             return {}
 
         # The balancing algorithm works by trying to move tasks from workers that have more queued tasks than the
@@ -139,8 +165,8 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         #
         # See <https://github.com/finos/opengris-scaler/issues/32#issuecomment-2541897645> for more details.
 
-        n_tasks = sum(worker.n_tasks() for worker in self._worker_id_to_worker.values())
-        avg_tasks_per_worker = n_tasks / len(self._worker_id_to_worker)
+        n_tasks = sum(worker.n_tasks() for worker in serving_workers)
+        avg_tasks_per_worker = n_tasks / len(serving_workers)
 
         # When workers outnumber tasks the average drops below one, and a strict "within one of the
         # average" test marks every idle worker as balanced -- so a single worker hoarding all the tasks
@@ -159,7 +185,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         #
         # Time complexity is O(n_workers + n_tasks)
 
-        workers = [worker.copy() for worker in self._worker_id_to_worker.values() if not is_balanced(worker)]
+        workers = [worker.copy() for worker in serving_workers if not is_balanced(worker)]
 
         # Then, we sort the remaining workers by the number of queued tasks.
         #
@@ -287,6 +313,8 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
 
         for capability in capabilities.keys():
             matching_worker_ids.intersection_update(self._capability_to_worker_ids[capability])
+
+        matching_worker_ids -= self._draining_worker_ids
 
         matching_workers = [self._worker_id_to_worker[worker_id] for worker_id in matching_worker_ids]
 

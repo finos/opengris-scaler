@@ -8,7 +8,7 @@ from scaler.cluster.combo import SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
-from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
@@ -24,7 +24,7 @@ def cpu_task(x: float) -> float:
 
 def main():
     cluster = SchedulerClusterCombo(
-        n_workers=2, scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=no")
+        n_workers=2, scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=static")
     )
 
     base_config = cluster._worker_manager.config
@@ -38,7 +38,6 @@ def main():
                 object_storage_address=base_config.worker_manager_config.object_storage_address,
                 max_task_concurrency=1,
             ),
-            mode=NativeWorkerManagerMode.FIXED,
             worker_config=WorkerConfig(
                 per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
                 per_worker_task_queue_size=base_worker_config.per_worker_task_queue_size,

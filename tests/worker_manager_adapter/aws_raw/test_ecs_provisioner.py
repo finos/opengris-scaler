@@ -1,9 +1,8 @@
 import math
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from scaler.worker_manager_adapter.aws_raw.ecs import ECSWorkerProvisioner
-from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 
 
 def _make_provisioner(max_task_concurrency: int = -1, ecs_task_cpu: int = 4) -> ECSWorkerProvisioner:
@@ -14,13 +13,7 @@ def _make_provisioner(max_task_concurrency: int = -1, ecs_task_cpu: int = 4) -> 
         provisioner._ecs_task_cpu = ecs_task_cpu
         provisioner._max_task_concurrency = max_task_concurrency
         provisioner._max_instances = max_instances
-        provisioner._units = []
-        provisioner._capacity_coordinator = CapacityCoordinator(
-            start_units=lambda n: provisioner.start_units(n),
-            stop_units=lambda n: provisioner.stop_units(n),
-            active_unit_count=lambda: len(provisioner._units),
-            max_unit_count=max_instances,
-        )
+        provisioner._task_arns = set()
         provisioner._ecs_client = MagicMock()
         provisioner._ecs_cluster = "test-cluster"
         provisioner._ecs_task_definition = "test-td"
@@ -28,21 +21,44 @@ def _make_provisioner(max_task_concurrency: int = -1, ecs_task_cpu: int = 4) -> 
     return provisioner
 
 
-def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:
-    request = MagicMock()
-    request.taskConcurrency = task_concurrency
-    request.capabilities = [MagicMock(key=k, value=v) for k, v in capabilities.items()]
-    return request
+class TestECSWorkerProvisionerShape(unittest.TestCase):
+    """ECS is a nested provisioner: its unit is a task running a child worker manager."""
+
+    def test_a_unit_supplies_one_task_slot_per_cpu(self) -> None:
+        self.assertEqual(_make_provisioner(ecs_task_cpu=4).task_concurrency_per_unit(), 4)
+
+    def test_max_units_is_derived_from_max_task_concurrency(self) -> None:
+        self.assertEqual(_make_provisioner(max_task_concurrency=8, ecs_task_cpu=4).max_units(), 2)
+
+    def test_an_unlimited_concurrency_leaves_the_unit_count_unbounded(self) -> None:
+        self.assertEqual(_make_provisioner(max_task_concurrency=-1).max_units(), -1)
+
+    def test_describing_tasks_is_charged_so_the_poll_is_slow(self) -> None:
+        self.assertGreaterEqual(_make_provisioner().poll_interval_seconds(), 5.0)
 
 
-class TestECSWorkerProvisionerConcurrencyConversion(unittest.IsolatedAsyncioTestCase):
-    async def test_converts_task_concurrency_to_instance_count(self) -> None:
-        provisioner = _make_provisioner(ecs_task_cpu=4)
-        request = _make_request(task_concurrency=10, capabilities={})
-        with patch.object(provisioner._capacity_coordinator, "_reconcile", new_callable=AsyncMock):
-            await provisioner.set_desired_task_concurrency([request])
-        self.assertEqual(provisioner._capacity_coordinator._desired_unit_count, 3)  # ceil(10 / 4) = 3
+class TestECSWorkerProvisionerPoll(unittest.IsolatedAsyncioTestCase):
+    async def test_a_stopped_task_drops_out_of_the_poll(self) -> None:
+        provisioner = _make_provisioner()
+        provisioner._task_arns = {"arn-running", "arn-stopped"}
+        provisioner._ecs_client.describe_tasks.return_value = {
+            "tasks": [
+                {"taskArn": "arn-running", "lastStatus": "RUNNING"},
+                {"taskArn": "arn-stopped", "lastStatus": "STOPPED"},
+            ]
+        }
 
-    async def test_max_instances_wired_to_capacity_coordinator(self) -> None:
-        provisioner = _make_provisioner(max_task_concurrency=8, ecs_task_cpu=4)
-        self.assertEqual(provisioner._capacity_coordinator._max_unit_count, 2)  # ceil(8 / 4) = 2
+        alive = await provisioner.poll_units()
+
+        self.assertEqual(alive, {"arn-running"})
+        self.assertEqual(provisioner._task_arns, {"arn-running"})
+
+    async def test_polling_with_no_tasks_asks_ecs_nothing(self) -> None:
+        provisioner = _make_provisioner()
+
+        self.assertEqual(await provisioner.poll_units(), set())
+        provisioner._ecs_client.describe_tasks.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

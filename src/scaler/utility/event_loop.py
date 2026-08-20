@@ -35,12 +35,17 @@ def register_event_loop(event_loop_type: str):
     logger.info(f"use event loop: {event_loop_type}")
 
 
-def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int):
+def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: float, swallow_routine_errors: bool = False):
     """create async loop routine,
 
     - if seconds is negative, means disable
     - 0 means looping without any wait, as fast as possible
-    - positive number means execute routine every positive seconds, if passing 1 means run once every 1 seconds"""
+    - positive number means execute routine every positive seconds, if passing 1 means run once every 1 seconds
+
+    swallow_routine_errors keeps the loop alive when one iteration raises. Use it where a process
+    serves several peers and one broken routine must not take the others down with it. The cost is
+    that a routine which fails every time is then invisible except through its status report, so
+    only turn it on where such a report exists."""
 
     async def loop():
         if seconds < 0:
@@ -50,7 +55,16 @@ def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int):
         logger.info(f"{routine.__self__.__class__.__name__}: started")  # type: ignore[attr-defined]
         try:
             while True:
-                await routine()
+                if swallow_routine_errors:
+                    try:
+                        await routine()
+                    except (asyncio.CancelledError, KeyboardInterrupt):
+                        raise
+                    except Exception:
+                        name = routine.__self__.__class__.__name__  # type: ignore[attr-defined]
+                        logger.exception(f"{name}: routine raised, continuing")
+                else:
+                    await routine()
                 await asyncio.sleep(seconds)
         except asyncio.CancelledError:
             pass

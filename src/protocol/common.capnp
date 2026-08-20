@@ -15,21 +15,6 @@ enum TaskCancelConfirmType {
     cancelNotFound @2;         # if cancel cannot find such task
 }
 
-enum TaskTransition {
-    hasCapacity @0;
-    taskResultSuccess @1;
-    taskResultFailed @2;
-    taskResultWorkerDied @3;
-    taskCancel @4;
-    taskCancelConfirmCanceled @5;
-    taskCancelConfirmFailed @6;
-    taskCancelConfirmNotFound @7;
-    balanceTaskCancel @8;
-    workerDisconnect @9;
-    schedulerHasTask @10;
-    schedulerHasNoTask @11;
-}
-
 enum TaskState {
     inactive @0;
     running @1;
@@ -40,8 +25,6 @@ enum TaskState {
     failedWorkerDied @6;
     canceled @7;
     canceledNotFound @8;
-    balanceCanceled @9;
-    workerDisconnecting @10;
 }
 
 enum WorkerState {

@@ -24,6 +24,9 @@ class CapacityCoordinator:
         stop_units: Async callable that terminates `n` existing units.
         active_unit_count: Callable that returns the current live unit count.
         max_unit_count: Hard cap on the number of units. -1 means unlimited.
+        reconcile_interval_seconds: Also reconcile this often, not only when the desired count
+            changes. 0 disables the periodic wake. A pool whose units can die on their own needs
+            this, or it never notices the loss.
     """
 
     def __init__(
@@ -32,11 +35,13 @@ class CapacityCoordinator:
         stop_units: Callable[[int], Awaitable[None]],
         active_unit_count: Callable[[], int],
         max_unit_count: int,
+        reconcile_interval_seconds: float = 0.0,
     ) -> None:
         self._start_units = start_units
         self._stop_units = stop_units
         self._active_unit_count = active_unit_count
         self._max_unit_count = max_unit_count
+        self._reconcile_interval_seconds = reconcile_interval_seconds
         self._desired_unit_count: int = 0
         self._active_reconcile_task: Optional[asyncio.Task] = None
         self._reconcile_needed: asyncio.Event = asyncio.Event()
@@ -62,10 +67,26 @@ class CapacityCoordinator:
     def __del__(self) -> None:
         self.cancel()
 
+    async def _wait_for_reconcile(self) -> None:
+        """Block until a new desired count arrives, or until the poll interval expires.
+
+        The interval is what lets the loop notice units that died on their own. Without it the
+        loop only ever wakes on a change of desired count, so a pool that has silently shrunk
+        stays shrunk for as long as the scheduler keeps asking for the same number.
+        """
+        if self._reconcile_interval_seconds <= 0:
+            await self._reconcile_needed.wait()
+            return
+
+        try:
+            await asyncio.wait_for(self._reconcile_needed.wait(), self._reconcile_interval_seconds)
+        except asyncio.TimeoutError:
+            pass
+
     async def _reconcile(self) -> None:
         try:
             while not self._stop.is_set():
-                await self._reconcile_needed.wait()
+                await self._wait_for_reconcile()
                 self._reconcile_needed.clear()
                 if self._stop.is_set():
                     break

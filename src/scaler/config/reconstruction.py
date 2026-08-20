@@ -69,7 +69,7 @@ def _from_toml(config_cls: Type[T], data: Dict[str, Any]) -> T:
     * Type coercion: the same precedence as ``_from_args`` is used - the
       field's explicit ``type`` metadata (if any) is tried first, then the
       type derived from the field's Python type annotation.  This ensures
-      e.g. enum fields with a value-based constructor (``mode = "fixed"``) and
+      e.g. enum fields with a value-based constructor (``backend = "batch"``) and
       ConfigType address fields work identically in both entry points.
 
     Note: this function reads ``data`` without mutating it.  Multiple composed

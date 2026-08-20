@@ -9,7 +9,6 @@ The TOML content is copied verbatim from the README.  Only positional arguments
 import unittest
 from unittest.mock import mock_open, patch
 
-from scaler.config.section.native_worker_manager import NativeWorkerManagerMode
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.section.webgui import WebGUIConfig
 
@@ -25,7 +24,6 @@ policy_content = "allocate=even_load; scaling=vanilla"
 
 [[worker_manager]]
 type = "baremetal_native"
-mode = "fixed"
 max_task_concurrency = 8
 worker_manager_id = "my-manager"
 per_worker_capabilities = "linux,cpu=8"
@@ -81,8 +79,6 @@ class TestReadmeConfig(unittest.TestCase):
             "scaler_worker_manager", section_data, argv=["tcp://127.0.0.1:6378"]
         )
 
-        self.assertIsInstance(config.mode, NativeWorkerManagerMode)
-        self.assertEqual(config.mode, NativeWorkerManagerMode.FIXED)
         self.assertEqual(config.worker_manager_config.max_task_concurrency, 8)
         self.assertEqual(config.worker_manager_config.worker_manager_id, "my-manager")
         self.assertEqual(config.worker_config.task_timeout_seconds, 600)

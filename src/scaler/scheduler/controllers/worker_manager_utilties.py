@@ -23,6 +23,10 @@ def build_scaling_manager_status(
                 maxTaskConcurrency=d["max_task_concurrency"],
                 capabilities=d.get("capabilities", ""),
                 pendingWorkers=d.get("pending_workers", 0),
+                activeUnits=d.get("active_units", 0),
+                pendingUnits=d.get("pending_units", 0),
+                drainingUnits=d.get("draining_units", 0),
+                occupancy=d.get("occupancy", 0),
             )
             for d in details
         ],

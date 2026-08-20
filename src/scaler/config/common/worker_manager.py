@@ -28,6 +28,19 @@ class WorkerManagerConfig(ConfigClass):
         ),
     )
 
+    children_bind_address: Optional[AddressConfig] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-cba",
+            help=(
+                "address this manager binds for its own units to dial. Units are children and "
+                "always dial their parent. Leave unset for a manager whose units are local "
+                "processes, which then gets a loopback port; set it for a manager whose units are "
+                "remote resources, which need an address they can actually reach."
+            ),
+        ),
+    )
+
     object_storage_address: Optional[AddressConfig] = dataclasses.field(
         default=None,
         metadata=dict(short="-osa", help="specify the object storage server address, e.g.: tcp://localhost:2346"),

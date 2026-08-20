@@ -252,6 +252,16 @@ th.sort-desc::after {
     background: var(--danger);
 }
 
+/* A unit on its way out: still serving, but not taking new work. Warning rather than danger,
+   because a drain is an orderly shutdown and not a fault. */
+tr.draining {
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+td.draining {
+    color: var(--warning);
+}
+
 .gauge-value {
     font-size: 12px;
     min-width: 32px;

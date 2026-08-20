@@ -20,6 +20,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         self._task_id_to_worker: Dict[TaskID, WorkerID] = {}
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
+        self._draining_workers: Set[WorkerID] = set()
 
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         # TODO: handle uneven queue size for each worker
@@ -35,10 +36,34 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         self._worker_queue.put_nowait([0, worker])
         return True
 
+    def mark_worker_draining(self, worker: WorkerID) -> bool:
+        if worker not in self._workers_to_task_ids or worker in self._draining_workers:
+            return False
+
+        self._draining_workers.add(worker)
+
+        # Take the worker out of the candidate queue rather than zeroing its queue size. A worker
+        # whose size is zero still sorts to the front on an empty task list, where assign_task
+        # reads "the least loaded worker is full" as "the cluster is full" and stops scheduling
+        # everywhere. Removal is also what makes balance skip it, since balance advice only ever
+        # moves tasks between workers that assign_task can still choose.
+        self._worker_queue.remove(worker)
+        return True
+
+    def evacuate_worker(self, worker: WorkerID) -> List[TaskID]:
+        task_ids = self._workers_to_task_ids.get(worker)
+        if task_ids is None:
+            return []
+
+        # The oldest task is the one the worker is running, and a worker refuses a balance-cancel
+        # for that. Everything behind it is queued and can move.
+        return task_ids.to_list()[1:]
+
     def remove_worker(self, worker: WorkerID) -> List[TaskID]:
         if worker not in self._workers_to_task_ids:
             return []
 
+        self._draining_workers.discard(worker)
         self._worker_queue.remove(worker)
 
         task_ids = self._workers_to_task_ids.pop(worker).to_list()
@@ -73,15 +98,24 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         """Returns, for every worker, the number of tasks to balance out."""
 
         queued_tasks_per_worker = {
-            worker: max(0, len(tasks) - 1) for worker, tasks in self._workers_to_task_ids.items()
+            worker: max(0, len(tasks) - 1)
+            for worker, tasks in self._workers_to_task_ids.items()
+            if worker not in self._draining_workers
         }
+
+        if not queued_tasks_per_worker:
+            return {}
 
         any_worker_has_queued_task = any(queued_tasks_per_worker.values())
 
         if not any_worker_has_queued_task:
             return {}
 
-        number_of_idle_workers = sum(1 for tasks in self._workers_to_task_ids.values() if len(tasks) == 0)
+        number_of_idle_workers = sum(
+            1
+            for worker, tasks in self._workers_to_task_ids.items()
+            if len(tasks) == 0 and worker not in self._draining_workers
+        )
 
         if number_of_idle_workers == 0:
             return {}

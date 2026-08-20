@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 try:
     from scaler.worker_manager_adapter.symphony.worker_manager import SymphonyWorkerProvisioner
+    from scaler.worker_manager_adapter.unit_provisioner import UNLIMITED_UNITS
 
     _SYMPHONY_AVAILABLE = True
 except ImportError:
@@ -20,18 +21,20 @@ def _make_provisioner(max_task_concurrency: int = -1) -> SymphonyWorkerProvision
     return SymphonyWorkerProvisioner(config)
 
 
-def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:
-    request = MagicMock()
-    request.taskConcurrency = task_concurrency
-    request.capabilities = [MagicMock(key=k, value=v) for k, v in capabilities.items()]
-    return request
-
-
 @unittest.skipUnless(_SYMPHONY_AVAILABLE, "soamapi not installed")
-class TestSymphonyWorkerProvisionerConcurrencyConversion(unittest.IsolatedAsyncioTestCase):
-    async def test_passes_task_concurrency_directly_as_desired_unit_count(self) -> None:
-        provisioner = _make_provisioner()
-        request = _make_request(task_concurrency=4, capabilities={})
-        with patch.object(provisioner._capacity_coordinator, "_reconcile", new_callable=AsyncMock):
-            await provisioner.set_desired_task_concurrency([request])
-        self.assertEqual(provisioner._capacity_coordinator._desired_unit_count, 4)
+class TestSymphonyWorkerProvisionerShape(unittest.TestCase):
+    """Symphony is a proxy provisioner: its unit is a local process, not a remote resource."""
+
+    def test_a_unit_supplies_the_configured_concurrency(self) -> None:
+        self.assertEqual(_make_provisioner(max_task_concurrency=4).task_concurrency_per_unit(), 4)
+
+    def test_an_unlimited_concurrency_still_supplies_at_least_one_slot(self) -> None:
+        # ceil(desired / per_unit) in the controller must never divide by zero or by a negative.
+        self.assertGreaterEqual(_make_provisioner(max_task_concurrency=-1).task_concurrency_per_unit(), 1)
+
+    def test_the_number_of_proxy_processes_is_unbounded(self) -> None:
+        self.assertEqual(_make_provisioner().max_units(), UNLIMITED_UNITS)
+
+
+if __name__ == "__main__":
+    unittest.main()

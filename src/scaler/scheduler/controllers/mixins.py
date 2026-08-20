@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional, Set
 from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeat,
-    DisconnectRequest,
     GraphTask,
     InformationRequest,
     ObjectInstruction,
@@ -14,6 +13,7 @@ from scaler.protocol.capnp import (
     TaskCancel,
     TaskCancelConfirm,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
@@ -84,7 +84,7 @@ class ClientController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_finish(self, task_id: TaskID) -> Optional[bytes]:
+    def on_task_finish(self, task_id: TaskID) -> Optional[ClientID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -191,7 +191,7 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
+    async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -227,6 +227,16 @@ class PolicyController(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def remove_worker(self, worker: WorkerID) -> List[TaskID]:
         """remove worker to worker collection, and return list of task_ids of removed worker"""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def mark_worker_draining(self, worker: WorkerID) -> bool:
+        """mark worker as draining so it receives no further tasks, return True the first time only"""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def evacuate_worker(self, worker: WorkerID) -> List[TaskID]:
+        """return the task_ids this worker has queued but not started, so they can be reassigned"""
         raise NotImplementedError()
 
     @abc.abstractmethod

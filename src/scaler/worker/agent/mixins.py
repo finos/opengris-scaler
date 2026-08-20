@@ -24,6 +24,15 @@ class HeartbeatManager(metaclass=abc.ABCMeta):
     def get_object_storage_address(self) -> AddressConfig:
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def set_draining(self) -> None:
+        """Mark this worker as draining, which the next heartbeat reports. A drain cannot be reversed."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def is_draining(self) -> bool:
+        raise NotImplementedError()
+
 
 class TimeoutManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod

@@ -80,7 +80,6 @@ type = "baremetal_native"
 scheduler_address = "tcp://127.0.0.1:{self._scheduler_port}"
 worker_manager_id = "wm-shutdown-test"
 object_storage_address = "tcp://127.0.0.1:{self._object_storage_port}"
-mode = "fixed"
 max_task_concurrency = 1
 """)
 

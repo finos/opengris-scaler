@@ -119,6 +119,7 @@ def show_status(status: BaseMessage, screen):
                 "lag": worker.lagUS,
                 "last": worker.lastS,
                 "ITL": worker.itl,
+                "drn": "D" if worker.draining else "",
             }
             for worker in status.workerManager.workers
         ],
@@ -143,13 +144,16 @@ def show_status(status: BaseMessage, screen):
     try:
         screen.addstr(new_row, 0, "-" * max_cols)
         screen.addstr(new_row + 1, 0, "Shortcuts: " + " ".join([f"{v}[{chr(k)}]" for k, v in SORT_BY_OPTIONS.items()]))
-        total_pending = sum(d.pendingWorkers for d in status.scalingManager.workerManagerDetails)
+        details = status.scalingManager.workerManagerDetails
+        total_pending = sum(d.pendingWorkers for d in details)
+        total_draining = sum(d.drainingUnits for d in details)
         pending_str = f", {total_pending} pending" if total_pending > 0 else ""
+        draining_str = f", {total_draining} draining" if total_draining > 0 else ""
         screen.addstr(
             new_row + 3,
             0,
             f"Total {len(status.scalingManager.managedWorkers)} manager(s) "
-            f"with {len(status.workerManager.workers)} worker(s){pending_str}",
+            f"with {len(status.workerManager.workers)} worker(s){pending_str}{draining_str}",
         )
         _ = __print_table(screen, new_row + 4, table3)
     except curses.error:

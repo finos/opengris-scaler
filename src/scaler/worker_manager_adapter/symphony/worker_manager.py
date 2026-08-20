@@ -1,25 +1,25 @@
 from __future__ import annotations
 
 import logging
-import os
-import signal
-from typing import TYPE_CHECKING, List
+from typing import Set
 
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
-from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager_adapter.common import extract_desired_count
-from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import AsyncBinder
+from scaler.worker_manager_adapter.proxy_worker_pool import ProxyWorkerPool
 from scaler.worker_manager_adapter.symphony.worker import create_symphony_worker
+from scaler.worker_manager_adapter.unit_provisioner import UNLIMITED_UNITS, UnitProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 from scaler.worker_manager_adapter.worker_process import WorkerProcess
 
-if TYPE_CHECKING:
-    from scaler.protocol.capnp import WorkerManagerCommand
-
 logger = logging.getLogger(__name__)
 
+SENTINEL_POLL_INTERVAL_SECONDS = 1.0
 
-class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
+
+class SymphonyWorkerProvisioner(UnitProvisioner):
+    """A unit is one local proxy process that submits tasks to an IBM Symphony service."""
+
     def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
@@ -33,25 +33,10 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._event_loop = config.worker_config.event_loop
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
 
-        self._workers: List[WorkerProcess] = []
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=self._max_task_concurrency,
-        )
+        self._pool = ProxyWorkerPool(self._build_worker, description="Symphony worker")
 
-    def active_unit_count(self) -> int:
-        return len(self._workers)
-
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        task_concurrency = extract_desired_count(requests, self._capabilities)
-        await self._capacity_coordinator.set_desired_unit_count(task_concurrency)
-
-    def _start_unit(self) -> None:
-        worker = create_symphony_worker(
+    def _build_worker(self) -> WorkerProcess:
+        return create_symphony_worker(
             address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
             service_name=self._service_name,
@@ -64,26 +49,33 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
             event_loop=self._event_loop,
             worker_manager_id=self._worker_manager_id,
         )
-        worker.start()
-        self._workers.append(worker)
-        logger.info(f"Started Symphony worker {worker.identity!r}")
 
-    async def start_units(self, count: int) -> None:
-        for _ in range(count):
-            self._start_unit()
+    def register(self, binder: AsyncBinder, children_address: AddressConfig) -> None:
+        self._pool.register(binder, children_address)
 
-    async def stop_units(self, count: int) -> None:
-        to_stop = self._workers[:count]
-        if len(to_stop) < count:
-            logger.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
-        for worker in to_stop:
-            os.kill(worker.pid, signal.SIGINT)
-            self._workers.pop(0)
-            logger.info(f"Stopped Symphony worker {worker.identity!r}")
+    async def create_unit(self) -> str:
+        return await self._pool.create()
 
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        await self.stop_units(len(self._workers))
+    async def destroy_unit(self, unit_id: str) -> None:
+        await self._pool.destroy(unit_id)
+
+    async def shutdown_unit(self, unit_id: str) -> None:
+        await self._pool.shutdown(unit_id)
+
+    async def set_unit_task_concurrency(self, unit_id: str, task_concurrency: int) -> None:
+        """A proxy process supplies a fixed concurrent job limit, so there is nothing to adjust."""
+
+    async def poll_units(self) -> Set[str]:
+        return await self._pool.poll()
+
+    def max_units(self) -> int:
+        return UNLIMITED_UNITS
+
+    def task_concurrency_per_unit(self) -> int:
+        return max(1, self._max_task_concurrency)
+
+    def poll_interval_seconds(self) -> float:
+        return SENTINEL_POLL_INTERVAL_SECONDS
 
 
 class SymphonyWorkerManager:
@@ -97,6 +89,7 @@ class SymphonyWorkerManager:
             max_provisioner_units=config.worker_manager_config.max_task_concurrency,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_bind_address=config.worker_manager_config.children_bind_address,
             io_threads=config.worker_config.io_threads,
         )
 

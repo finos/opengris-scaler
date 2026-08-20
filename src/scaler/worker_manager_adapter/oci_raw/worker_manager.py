@@ -7,21 +7,22 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import Any, Optional, Set
 
 import oci
 
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.config.types.oci_auth_type import OCIAuthType
-from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities, load_requirements_content
-from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
+from scaler.io.mixins import AsyncBinder
+from scaler.worker_manager_adapter.child_manager_link import ChildManagerLink
+from scaler.worker_manager_adapter.common import format_capabilities, load_requirements_content
+from scaler.worker_manager_adapter.unit_provisioner import UnitProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 
-if TYPE_CHECKING:
-    from scaler.protocol.capnp import WorkerManagerCommand
-
 logger = logging.getLogger(__name__)
+
+OCI_RAW_POLL_INTERVAL_SECONDS = 15.0
 
 _OCI_POLL_INTERVAL_SECONDS = 10
 _OCI_MAX_POLL_ATTEMPTS = 30  # 5 minutes total
@@ -32,18 +33,16 @@ class _InstanceInfo:
     instance_id: str
 
 
-class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
+class OCIRawWorkerProvisioner(UnitProvisioner):
+    """A unit is one OCI container instance running a native worker manager inside it."""
+
     def __init__(self, config: OCIRawWorkerManagerConfig, max_instances: int) -> None:
         self._config = config
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._instances: List[_InstanceInfo] = []
+        self._max_instances = max_instances
+        self._instance_ids: Set[str] = set()
         self._container_instances_client: Any = None
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=max_instances,
-        )
+        self._children = ChildManagerLink()
         self._initialize_oci_client()
 
     def _initialize_oci_client(self) -> None:
@@ -58,36 +57,54 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
             oci_config["region"] = container_instance_config.oci_region
             self._container_instances_client = oci.container_instances.ContainerInstanceClient(oci_config)
 
-    def active_unit_count(self) -> int:
-        return len(self._instances)
+    def register(self, binder: AsyncBinder, children_address: AddressConfig) -> None:
+        self._children.register(binder, children_address)
 
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        task_concurrency = extract_desired_count(requests, self._capabilities)
-        workers_per_instance = max(1, int(self._config.instance_ocpus))
-        new_desired = math.ceil(task_concurrency / workers_per_instance)
-        await self._capacity_coordinator.set_desired_unit_count(new_desired)
+    def _parent_address(self, scheduler_address: str) -> str:
+        """Where the child manager dials.
 
-    async def start_units(self, count: int) -> None:
-        for _ in range(count):
-            instance_id = await self._start_instance()
-            if instance_id is not None:
-                self._instances.append(_InstanceInfo(instance_id=instance_id))
+        This comes from configuration rather than from the bound address, because a container
+        instance cannot reach a loopback port, and because the command is built before the binder
+        exists. Falls back to the scheduler address, which loses the child link.
+        """
+        configured = self._config.worker_manager_config.children_bind_address
+        return str(configured) if configured is not None else scheduler_address
 
-    async def stop_units(self, count: int) -> None:
-        to_stop = self._instances[:count]
-        self._instances = self._instances[count:]
-        if len(to_stop) < count:
-            logger.warning(f"Requested to stop {count} Container Instance(s) but only {len(to_stop)} available.")
-        for info in to_stop:
-            await self._stop_instance(info.instance_id)
+    async def create_unit(self) -> str:
+        instance_id = await self._start_instance()
+        if instance_id is None:
+            raise RuntimeError("OCI container instance creation returned no instance id")
 
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        for info in self._instances:
-            await self._stop_instance(info.instance_id)
-        self._instances.clear()
+        self._instance_ids.add(instance_id)
+        return instance_id
+
+    async def destroy_unit(self, unit_id: str) -> None:
+        if unit_id not in self._instance_ids:
+            return
+
+        await self._stop_instance(unit_id)
+        self._instance_ids.discard(unit_id)
+
+    async def shutdown_unit(self, unit_id: str) -> None:
+        if not await self._children.shutdown(unit_id):
+            await self.destroy_unit(unit_id)
+
+    async def set_unit_task_concurrency(self, unit_id: str, task_concurrency: int) -> None:
+        await self._children.set_task_concurrency(unit_id, task_concurrency)
+
+    async def poll_units(self) -> Set[str]:
+        """OCI has a get_container_instance call, but it is charged per request and this poll runs
+        on a loop. Supervision for these units comes from the child manager's heartbeat instead."""
+        return set(self._instance_ids)
+
+    def max_units(self) -> int:
+        return self._max_instances
+
+    def task_concurrency_per_unit(self) -> int:
+        return max(1, int(self._config.instance_ocpus))
+
+    def poll_interval_seconds(self) -> float:
+        return OCI_RAW_POLL_INTERVAL_SECONDS
 
     async def _start_instance(self) -> Optional[str]:
         config = self._config
@@ -97,8 +114,8 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
         scheduler_address = str(config.worker_manager_config.effective_worker_scheduler_address)
         requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
 
-        command = f"""scaler_worker_manager baremetal_native {scheduler_address!r} \
---mode fixed \
+        command = f"""scaler_worker_manager baremetal_native {self._parent_address(scheduler_address)!r} \
+--worker-scheduler-address {scheduler_address!r} \
 --worker-type OCI_RAW \
 --max-task-concurrency {num_workers} \
 --worker-manager-id {config.worker_manager_config.worker_manager_id} \
@@ -249,6 +266,7 @@ class OCIRawWorkerManager:
             max_provisioner_units=max_instances,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_bind_address=config.worker_manager_config.children_bind_address,
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=workers_per_instance,
         )

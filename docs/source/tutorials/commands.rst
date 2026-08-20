@@ -94,7 +94,7 @@ Scaler examples
             # advertised_object_storage_address = "tcp://203.0.113.10:6379"
             monitor_address = "tcp://127.0.0.1:6380"
             policy_engine_type = "simple"
-            policy_content = "allocate=even_load; scaling=no"
+            policy_content = "allocate=even_load; scaling=static"
             logging_level = "INFO"
 
             [gui]
@@ -190,7 +190,7 @@ Scheduler examples
             # advertised_object_storage_address = "tcp://203.0.113.10:6379"
             monitor_address = "tcp://127.0.0.1:6380"
             policy_engine_type = "simple"
-            policy_content = "allocate=even_load; scaling=no"
+            policy_content = "allocate=even_load; scaling=static"
             logging_level = "INFO"
 
         Run command:
@@ -208,7 +208,7 @@ Scheduler examples
                 --advertised-object-storage-address tcp://203.0.113.10:6379 \
                 --monitor-address tcp://127.0.0.1:6380 \
                 --policy-engine-type simple \
-                --policy-content "allocate=even_load; scaling=no" \
+                --policy-content "allocate=even_load; scaling=static" \
                 --logging-level INFO
 
 Scheduler arguments
@@ -486,7 +486,7 @@ Death timeout
 
 .. code-block:: bash
 
-    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-fixed --mode fixed --max-task-concurrency 10 -dts 300
+    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-main --max-task-concurrency 10 -dts 300
 
 Subcommand: ``baremetal_native``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -522,7 +522,6 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
 
             scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 \
                 --worker-manager-id wm-native \
-                --mode dynamic \
                 --max-task-concurrency 8
 
 .. list-table::
@@ -532,10 +531,6 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
      - Required
      - Default
      - Description
-   * - ``--mode``
-     - No
-     - ``DYNAMIC``
-     - ``DYNAMIC`` or ``FIXED`` native worker manager mode.
    * - ``--worker-type``
      - No
      - Auto

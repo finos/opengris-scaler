@@ -29,7 +29,7 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.config.types.worker import WorkerCapabilities
@@ -75,7 +75,7 @@ class SchedulerClusterCombo:
         per_worker_task_queue_size: int = DEFAULT_PER_WORKER_QUEUE_SIZE,
         hard_processor_suspend: bool = DEFAULT_HARD_PROCESSOR_SUSPEND,
         protected: bool = True,
-        scaler_policy: PolicyConfig = PolicyConfig(),
+        scaler_policy: PolicyConfig = PolicyConfig(policy_content="allocate=even_load; scaling=static"),
         event_loop: str = "builtin",
         logging_paths: Tuple[str, ...] = DEFAULT_LOGGING_PATHS,
         logging_level: str = DEFAULT_LOGGING_LEVEL,
@@ -120,9 +120,11 @@ class SchedulerClusterCombo:
                     scheduler_address=self._address,
                     worker_manager_id=worker_manager_id,
                     object_storage_address=self._object_storage_address,
+                    # n_workers is the public promise of this class, and it stays one. Internally it
+                    # is the ceiling the manager advertises, which the static scaling policy then
+                    # asks for in full, so the fleet settles at exactly n_workers.
                     max_task_concurrency=n_workers,
                 ),
-                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
                     per_worker_task_queue_size=per_worker_task_queue_size,

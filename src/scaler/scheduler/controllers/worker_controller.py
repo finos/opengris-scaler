@@ -5,14 +5,13 @@ from typing import Dict, List, Optional, Set, Tuple
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import (
     ClientDisconnect,
-    DisconnectRequest,
-    DisconnectResponse,
     ObjectStorageAddress,
     ProcessorStatus,
     Resource,
     StateWorker,
     Task,
     TaskCancel,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
     WorkerManagerStatus,
@@ -79,6 +78,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             )
             await self._task_controller.on_worker_connect(worker_id)
 
+        if getattr(info, "draining", False):
+            await self.__drain_worker(worker_id)
+
         if worker_id not in self._worker_to_manager:
             self._worker_to_manager[worker_id] = info.workerManagerID
             self._manager_to_workers.setdefault(info.workerManagerID, set()).add(worker_id)
@@ -102,9 +104,25 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         for worker in self._policy_controller.get_worker_ids():
             await self.__shutdown_worker(worker)
 
-    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
-        await self.__disconnect_worker(request.worker)
-        await self._binder.send(worker_id, DisconnectResponse(worker=request.worker), detached=True)
+    async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification):
+        # The notification always refers to its sender, whose identity comes from the binder and
+        # cannot be spoofed by the payload.
+        await self.__disconnect_worker(worker_id)
+
+    async def __drain_worker(self, worker_id: WorkerID) -> None:
+        """Take a draining worker out of service and reclaim the work it has not started.
+
+        A drain cannot be reversed, so this runs once even though the worker keeps reporting the
+        flag in every later heartbeat.
+        """
+        if not self._policy_controller.mark_worker_draining(worker_id):
+            return
+
+        task_ids = self._policy_controller.evacuate_worker(worker_id)
+        logger.info(f"worker {worker_id!r} draining, reclaiming {len(task_ids)} queued task(s)")
+
+        for task_id in task_ids:
+            await self._task_controller.on_task_balance_cancel(task_id)
 
     async def routine(self):
         await self.__clean_workers()
@@ -143,6 +161,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             lagUS=info.latencyUS,
             lastS=last_s,
             itl=debug_info,
+            draining=getattr(info, "draining", False),
             processorStatuses=[
                 ProcessorStatus(
                     pid=p.pid,

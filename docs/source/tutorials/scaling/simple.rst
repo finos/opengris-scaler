@@ -63,7 +63,7 @@ Other quick policy strings for ``simple``:
 
             # No autoscaling
             policy_engine_type = "simple"
-            policy_content = "allocate=even_load; scaling=no"
+            policy_content = "allocate=even_load; scaling=static"
 
             # Capability-aware autoscaling (recommended pair)
             policy_engine_type = "simple"
@@ -74,7 +74,7 @@ Other quick policy strings for ``simple``:
         .. code-block:: text
 
             # No autoscaling
-            --policy-engine-type simple --policy-content "allocate=even_load; scaling=no"
+            --policy-engine-type simple --policy-content "allocate=even_load; scaling=static"
 
             # Capability-aware autoscaling (recommended pair)
             --policy-engine-type simple --policy-content "allocate=capability; scaling=capability"
@@ -106,10 +106,11 @@ Scaling
 
 The ``scaling`` option controls how worker capacity grows or shrinks.
 
-* ``scaling=no``
+* ``scaling=static``
 
-  * Disables scheduler-driven scaling commands.
-  * Use for static capacity or external orchestrators.
+  * Holds the fleet at a fixed size.
+  * With no count, each worker manager is asked for the maximum task concurrency it advertises.
+  * ``scaling=static:N`` asks every manager for ``N`` instead. ``static:0`` provisions nothing.
 
 * ``scaling=vanilla``
 
