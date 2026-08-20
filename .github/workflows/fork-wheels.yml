@@ -1,0 +1,51 @@
+name: Fork wheels
+
+# Fork-only workflow: builds wheels from the current branch without cutting a
+# release. Runs the same composite actions as `publish-artifact.yml` but stops
+# at `upload-artifact`, so nothing reaches PyPI or GHCR.
+
+on:
+  push:
+    branches:
+      - refactor/task-state-machine-mealy-rev2
+      - 'wheels/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Narrowed to two interpreters on one libc to keep the run short; the release
+  # matrix covers the rest. Overrides the `skip` selection in pyproject.toml.
+  CIBW_BUILD: cp312-manylinux_x86_64 cp313-manylinux_x86_64
+
+jobs:
+  build:
+    name: Build wheels (ubuntu-latest, x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-env
+        with:
+          os: ${{ runner.os }}
+          python-version: '3.14'
+
+      - uses: ./.github/actions/create-artifacts
+        with:
+          os: ${{ runner.os }}
+          cibw-archs: x86_64
+        env:
+          CIBW_ARCHS: x86_64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-fork-ubuntu-latest-x86_64
+          path: ./dist/
