@@ -70,23 +70,24 @@ class ClientFutureManager(FutureManager):
             future = self._task_id_to_future.pop(task_id)
             assert result.taskId == future.task_id
 
-            profile_result = retrieve_profiling_result_from_task_result(result)
+        # Setting the future's result should occur without holding the future manager's lock, so that it does not delay
+        # the other tasks running on the client agent's event loop, such as the heartbeats.
 
-            if result_type == TaskResultType.failedWorkerDied:
-                future.set_exception(
-                    WorkerDiedError(f"worker died when processing task: {task_id.hex()}"), profile_result
-                )
+        profile_result = retrieve_profiling_result_from_task_result(result)
 
-            elif result_type == TaskResultType.success:
-                result_object_id = self.__get_result_object_id(result)
-                future.set_result_ready(result_object_id, TaskState.success, profile_result)
+        if result_type == TaskResultType.failedWorkerDied:
+            future.set_exception(WorkerDiedError(f"worker died when processing task: {task_id.hex()}"), profile_result)
 
-            elif result_type == TaskResultType.failed:
-                result_object_id = self.__get_result_object_id(result)
-                future.set_result_ready(result_object_id, TaskState.failed, profile_result)
+        elif result_type == TaskResultType.success:
+            result_object_id = self.__get_result_object_id(result)
+            future.set_result_ready(result_object_id, TaskState.success, profile_result)
 
-            else:
-                raise TypeError(f"{result.taskId.hex()}: Unknown task status: {result.resultType}")
+        elif result_type == TaskResultType.failed:
+            result_object_id = self.__get_result_object_id(result)
+            future.set_result_ready(result_object_id, TaskState.failed, profile_result)
+
+        else:
+            raise TypeError(f"{result.taskId.hex()}: Unknown task status: {result.resultType}")
 
     def on_task_cancel_confirm(self, cancel_confirm: TaskCancelConfirm):
         cancel_confirm_type = TaskCancelConfirmType(cancel_confirm.cancelConfirmType.value)

@@ -2,20 +2,22 @@ import math
 import threading
 import time
 import unittest
-from concurrent.futures import CancelledError, InvalidStateError, TimeoutError, as_completed
+from concurrent.futures import CancelledError, Future, InvalidStateError, TimeoutError, as_completed
 from threading import Event
 from typing import Tuple
 from unittest.mock import Mock
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.client.future import ScalerFuture
+from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import Task, TaskState
 from scaler.utility.exceptions import WorkerDiedError
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.serialization import deserialize_failure
 from tests.utility.utility import logging_test_name
 
 
@@ -103,7 +105,7 @@ class TestFuture(unittest.TestCase):
 
     def test_mocked_success(self):
         task_result = "Task result"
-        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=task_result)
+        client_id, future, _connector_agent, object_buffer = self.__create_mocked_future(future_result=task_result)
 
         # Future should be running
 
@@ -125,16 +127,15 @@ class TestFuture(unittest.TestCase):
         self.assertTrue(future.done())
         self.assertFalse(future.cancelled())
 
-        connector_storage.get_object.assert_not_called()
-        connector_storage.delete_object.assert_not_called()
+        object_buffer.fetch_object.assert_not_called()
 
         # Future is done, the result should have been fetched, then deleted
 
         self.assertEqual(future.result(), task_result)
         self.assertIsNone(future.exception())
 
-        connector_storage.get_object.assert_called_once()
-        connector_storage.delete_object.assert_called_once()
+        object_buffer.fetch_object.assert_called_once()
+        self.assertTrue(object_buffer.fetch_object.call_args.kwargs["delete_after_fetch"])
 
         # Cannot cancel a finished future
 
@@ -144,7 +145,7 @@ class TestFuture(unittest.TestCase):
         """Ensure that a task result notifies as_completed waiters."""
 
         task_result = "Task result"
-        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=task_result)
+        client_id, future, _connector_agent, _object_buffer = self.__create_mocked_future(future_result=task_result)
 
         it = as_completed([future])
 
@@ -157,7 +158,7 @@ class TestFuture(unittest.TestCase):
 
     def test_mocked_task_failure(self):
         exception = ValueError()
-        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=exception)
+        client_id, future, _connector_agent, object_buffer = self.__create_mocked_future(future_result=exception)
 
         # Future is failing with an exception, the exception object has been fetched
 
@@ -167,16 +168,15 @@ class TestFuture(unittest.TestCase):
         self.assertTrue(future.done())
         self.assertFalse(future.cancelled())
 
-        connector_storage.get_object.assert_not_called()
-        connector_storage.delete_object.assert_not_called()
+        object_buffer.fetch_object.assert_not_called()
 
         # Future is done and the exception has been fetched, then deleted
 
         self.assertRaises(ValueError, future.result)
         self.assertIsInstance(future.exception(), ValueError)
 
-        connector_storage.get_object.assert_called_once()
-        connector_storage.delete_object.assert_called_once()
+        object_buffer.fetch_object.assert_called_once()
+        self.assertTrue(object_buffer.fetch_object.call_args.kwargs["is_exception"])
 
         # Cannot cancel a failed future
 
@@ -185,7 +185,7 @@ class TestFuture(unittest.TestCase):
     def test_mocked_worker_failure(self):
         exception = WorkerDiedError()
 
-        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=exception)
+        client_id, future, _connector_agent, object_buffer = self.__create_mocked_future(future_result=exception)
 
         # Future is failing with a local exception, shouldn't reach the object-storage server.
 
@@ -198,11 +198,10 @@ class TestFuture(unittest.TestCase):
         self.assertRaises(WorkerDiedError, future.result)
         self.assertIsInstance(future.exception(), WorkerDiedError)
 
-        connector_storage.get_object.assert_not_called()
-        connector_storage.delete_object.assert_not_called()
+        object_buffer.fetch_object.assert_not_called()
 
     def test_mocked_cancel(self):
-        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=None)
+        client_id, future, _connector_agent, object_buffer = self.__create_mocked_future(future_result=None)
 
         # Cancel the future
 
@@ -227,8 +226,7 @@ class TestFuture(unittest.TestCase):
         with self.assertRaises(InvalidStateError):
             future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.success)
 
-        connector_storage.get_object.assert_not_called()
-        connector_storage.delete_object.assert_not_called()
+        object_buffer.fetch_object.assert_not_called()
 
     def test_mocked_cancel_concurrent(self):
         """
@@ -238,7 +236,7 @@ class TestFuture(unittest.TestCase):
         """
 
         task_result = "Task result"
-        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=task_result)
+        client_id, future, _connector_agent, _object_buffer = self.__create_mocked_future(future_result=task_result)
         task_result_id = ObjectID.generate_object_id(client_id)
 
         # Cancel the finishing future
@@ -260,7 +258,7 @@ class TestFuture(unittest.TestCase):
     def test_mocked_cancel_as_completed(self):
         """Ensure that a canceled future notifies as_completed waiters."""
 
-        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=None)
+        client_id, future, _connector_agent, _object_buffer = self.__create_mocked_future(future_result=None)
 
         it = as_completed([future])
 
@@ -275,9 +273,17 @@ class TestFuture(unittest.TestCase):
     def __create_mocked_future(future_result, is_delayed: bool = True) -> Tuple[ClientID, ScalerFuture, Mock, Mock]:
         client_id = ClientID.generate_client_id()
         connector_agent = Mock(spec=SyncConnector)
-        connector_storage = Mock(spec=SyncObjectStorageConnector)
+        object_buffer = Mock(spec=ObjectBuffer)
 
-        connector_storage.get_object.return_value = DefaultSerializer.serialize(future_result)
+        def fetch_object(object_id: ObjectID, is_exception: bool, delete_after_fetch: bool) -> Future:
+            # The object storage server is not available, the serialized result is returned immediately.
+            payload = DefaultSerializer.serialize(future_result)
+
+            fetched: Future = Future()
+            fetched.set_result(deserialize_failure(payload) if is_exception else DefaultSerializer.deserialize(payload))
+            return fetched
+
+        object_buffer.fetch_object.side_effect = fetch_object
 
         task = Task(
             taskId=TaskID.generate_task_id(),
@@ -294,9 +300,9 @@ class TestFuture(unittest.TestCase):
             group_task_id=None,
             serializer=DefaultSerializer(),
             connector_agent=connector_agent,
-            connector_storage=connector_storage,
+            object_buffer=object_buffer,
         )
 
         future.set_running_or_notify_cancel()
 
-        return client_id, future, connector_agent, connector_storage
+        return client_id, future, connector_agent, object_buffer
