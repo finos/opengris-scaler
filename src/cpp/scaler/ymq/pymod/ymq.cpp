@@ -1,5 +1,6 @@
 #include "scaler/ymq/pymod/ymq.h"
 
+#include <atomic>
 #include <initializer_list>
 #include <new>
 #include <string_view>
@@ -209,6 +210,35 @@ static int YMQ_createType(
     return 0;
 }
 
+// Flips the "interpreter is shutting down" flag that AcquireGIL consults. Registered with atexit at import
+// time, so it runs after any atexit handler user code registers later (atexit is LIFO) but still before
+// CPython starts killing non-Python threads that ask for the GIL.
+static PyObject* YMQ_onInterpreterShutdown(PyObject* Py_UNUSED(self), PyObject* Py_UNUSED(args))
+{
+    scaler::utility::pymod::interpreterIsShuttingDown().store(true, std::memory_order_release);
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef YMQ_onInterpreterShutdownDef = {
+    "_on_interpreter_shutdown", YMQ_onInterpreterShutdown, METH_NOARGS, nullptr};
+
+static int YMQ_registerShutdownHook()
+{
+    OwnedPyObject atexitModule = PyImport_ImportModule("atexit");
+    if (!atexitModule)
+        return -1;
+
+    OwnedPyObject hook = PyCFunction_NewEx(&YMQ_onInterpreterShutdownDef, nullptr, nullptr);
+    if (!hook)
+        return -1;
+
+    OwnedPyObject result = PyObject_CallMethod(atexitModule.get(), "register", "O", hook.get());
+    if (!result)
+        return -1;
+
+    return 0;
+}
+
 static int YMQ_exec(PyObject* pyModule)
 {
     auto state = (YMQState*)PyModule_GetState(pyModule);
@@ -268,6 +298,9 @@ static int YMQ_exec(PyObject* pyModule)
     Py_DECREF(exceptionBases);
 
     if (YMQ_createExceptions(pyModule, state) < 0)
+        return -1;
+
+    if (YMQ_registerShutdownHook() < 0)
         return -1;
 
     return 0;
