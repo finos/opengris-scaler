@@ -8,7 +8,7 @@ import asyncio
 import gc
 import unittest
 from concurrent.futures import Future
-from typing import Any, Callable, Coroutine, List, Tuple
+from typing import Callable, Coroutine, List, Tuple
 
 import numpy as np
 

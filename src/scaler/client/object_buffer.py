@@ -27,11 +27,7 @@ class ObjectCache:
 
 class ObjectBuffer:
     def __init__(
-        self,
-        identity: ClientID,
-        serializer: Serializer,
-        connector_agent: SyncConnector,
-        bridge: ClientAgentBridge,
+        self, identity: ClientID, serializer: Serializer, connector_agent: SyncConnector, bridge: ClientAgentBridge
     ):
         self._identity = identity
         self._serializer = serializer

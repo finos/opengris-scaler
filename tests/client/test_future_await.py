@@ -13,8 +13,9 @@ from typing import Any
 from unittest.mock import Mock
 
 from scaler.client.future import ScalerFuture
+from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 
@@ -35,7 +36,7 @@ def _make_future(is_delayed: bool = False) -> ScalerFuture:
         group_task_id=None,
         serializer=DefaultSerializer(),
         connector_agent=Mock(spec=SyncConnector),
-        connector_storage=Mock(spec=SyncObjectStorageConnector),
+        object_buffer=Mock(spec=ObjectBuffer),
     )
     fut.set_running_or_notify_cancel()
     return fut
