@@ -18,7 +18,6 @@ satisfy, and implements both the native (``IPCAgentBridge``) and browser
 
 from __future__ import annotations
 
-import abc
 import asyncio
 import concurrent.futures
 import struct
@@ -30,6 +29,7 @@ from typing import Any, Awaitable, Callable, Coroutine, Iterable, Iterator, Opti
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
+from scaler.client.agent.mixins import ClientAgentBridge
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig, SocketType
@@ -44,58 +44,6 @@ from scaler.utility.exceptions import ClientQuitException
 from scaler.io.utility import serialize as _capnp_serialize
 from scaler.protocol.capnp import BaseMessage, ClientHeartbeat, Resource
 from scaler.utility.identifiers import ClientID
-
-
-class ClientAgentBridge(abc.ABC):
-    """Bridges a synchronous ``Client`` to an asynchronous ``ClientAgent``.
-
-    Implementations encapsulate the lifecycle of the agent (start/stop/wait)
-    and expose a ``SyncConnector``-compatible handle that delivers messages
-    from the ``Client`` to the agent's receive handler.
-    """
-
-    @abc.abstractmethod
-    def start(self) -> None:
-        """Start the agent. Must be called exactly once, before any other method."""
-
-    @abc.abstractmethod
-    def get_object_storage_address(self) -> AddressConfig:
-        """Block until the object storage address is known and return it.
-
-        Called once after ``start()`` to resolve the address the client will
-        use for direct object-storage reads/writes.
-        """
-
-    @property
-    @abc.abstractmethod
-    def connector(self) -> SyncConnector:
-        """Return the ``SyncConnector`` the ``Client`` uses to talk to the agent.
-
-        Only valid after ``start()`` and ``get_object_storage_address()`` have
-        returned.
-        """
-
-    @abc.abstractmethod
-    def is_alive(self) -> bool:
-        """Return True if the agent is still running."""
-
-    @abc.abstractmethod
-    def join(self) -> None:
-        """Wait for the agent to fully stop. Safe to call multiple times."""
-
-    @abc.abstractmethod
-    def run_in_agent(self, coroutine_factory: Callable[[], Coroutine]) -> concurrent.futures.Future:
-        """Run a coroutine on the agent's event loop, and return a future that completes with its result.
-
-        Can be called from any thread, including from the agent's event loop itself.
-        """
-
-    @abc.abstractmethod
-    async def object_storage_connector(self) -> AsyncObjectStorageConnector:
-        """Return the agent's object storage connector, once it is connected.
-
-        Must be awaited from the agent's event loop, e.g. from within ``run_in_agent()``.
-        """
 
 
 class IPCAgentBridge(ClientAgentBridge):

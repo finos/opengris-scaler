@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 import cloudpickle
 
-from scaler.client.agent.bridge import ClientAgentBridge
+from scaler.client.agent.mixins import ClientAgentBridge
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import ObjectInstruction, ObjectMetadata
