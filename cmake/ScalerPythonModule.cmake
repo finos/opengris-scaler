@@ -1,3 +1,6 @@
+# Directory holding this module, used to locate the linker version script below.
+set(SCALER_PYMOD_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
 # Find Python3 development components for the active build interpreter.
 # Rely on CMake/scikit-build selection instead of the system python3-config,
 # which can point at a different ABI than the environment running the build.
@@ -81,6 +84,14 @@ function(scaler_add_python_module)
         # Hide symbols from statically linked 3rd-party library (e.g. OpenSSL), avoiding conflicts when loading multiple
         # modules from the same Python process.
         target_link_options(${PYMOD_TARGET} PRIVATE "LINKER:--exclude-libs,ALL")
+
+        # --exclude-libs and CXX_VISIBILITY_PRESET do not reach OBJECT libraries (ymq_objs, protocol_objs,
+        # object_storage_server_objs), whose objects are linked in directly rather than through an archive. The version
+        # script is applied to the final link, so it keeps every symbol but PyInit_<module> local.
+        target_link_options(${PYMOD_TARGET} PRIVATE
+            "LINKER:--version-script=${SCALER_PYMOD_CMAKE_DIR}/scaler_pymod_exports.map")
+        set_property(TARGET ${PYMOD_TARGET} APPEND PROPERTY
+            LINK_DEPENDS "${SCALER_PYMOD_CMAKE_DIR}/scaler_pymod_exports.map")
     endif()
 
     if(WIN32)

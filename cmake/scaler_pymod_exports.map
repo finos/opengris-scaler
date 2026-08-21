@@ -1,0 +1,19 @@
+# Linker version script for Scaler's Python extension modules.
+#
+# A Python extension module only needs to expose its PyInit_<module> entry-point. Everything else stays
+# local so that two modules loaded into the same interpreter cannot interpose each other's symbols.
+#
+# This matters because several modules statically link the same code (ymq, the OpenSSL wrapper, the
+# Cap'n Proto protocol objects) and each gets its own copy of the third-party global state. With default
+# ELF visibility the copy that is loaded first wins for every duplicated symbol, so one module ends up
+# calling into another module's OpenSSL instance and corrupting its TLS state.
+#
+# CXX_VISIBILITY_PRESET and --exclude-libs cover the module's own sources and the static archives it
+# links, but not CMake OBJECT libraries, whose objects are linked in directly. The version script covers
+# every case because it is applied to the final link.
+{
+    global:
+        PyInit_*;
+    local:
+        *;
+};
