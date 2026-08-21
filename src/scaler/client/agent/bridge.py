@@ -40,9 +40,9 @@ from scaler.io.mixins import (
     NetworkBackend,
     SyncConnector,
 )
-from scaler.utility.exceptions import ClientQuitException
 from scaler.io.utility import serialize as _capnp_serialize
 from scaler.protocol.capnp import BaseMessage, ClientHeartbeat, Resource
+from scaler.utility.exceptions import ClientQuitException
 from scaler.utility.identifiers import ClientID
 
 

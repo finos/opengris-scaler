@@ -17,7 +17,7 @@ from scaler.client.serializer.mixins import Serializer
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.config.types.address import AddressConfig
-from scaler.io.mixins import NetworkBackend, SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import NetworkBackend, SyncConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task

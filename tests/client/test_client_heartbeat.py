@@ -34,10 +34,7 @@ class TestClientHeartbeat(unittest.TestCase):
 
         FUTURE_RESULT_TIMEOUT = CLIENT_TIMEOUT_SECONDS * 5
 
-        with Client(
-            self.address,
-            timeout_seconds=CLIENT_TIMEOUT_SECONDS,
-        ) as client:
+        with Client(self.address, timeout_seconds=CLIENT_TIMEOUT_SECONDS) as client:
             future = client.submit(large_result, LARGE_RESULT_SIZE_BYTES)
 
             self.assertEqual(len(future.result(timeout=FUTURE_RESULT_TIMEOUT)), LARGE_RESULT_SIZE_BYTES)
