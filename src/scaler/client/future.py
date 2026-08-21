@@ -1,15 +1,16 @@
 import asyncio
 import concurrent.futures
 import sys
+import time
 from typing import Any, Callable, Optional
 
+from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import Task, TaskCancel, TaskState
 from scaler.utility.event_list import EventList
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
-from scaler.utility.serialization import deserialize_failure
 
 
 class ScalerFuture(concurrent.futures.Future):
@@ -32,7 +33,7 @@ class ScalerFuture(concurrent.futures.Future):
         group_task_id: Optional[TaskID],
         serializer: Serializer,
         connector_agent: SyncConnector,
-        connector_storage: SyncObjectStorageConnector,
+        object_buffer: ObjectBuffer,
     ):
         super().__init__()
 
@@ -44,10 +45,14 @@ class ScalerFuture(concurrent.futures.Future):
         self._group_task_id: Optional[TaskID] = group_task_id
         self._serializer: Serializer = serializer
         self._connector_agent: SyncConnector = connector_agent
-        self._connector_storage: SyncObjectStorageConnector = connector_storage
+        self._object_buffer: ObjectBuffer = object_buffer
 
         self._result_object_id: Optional[ObjectID] = None
         self._result_received = False
+
+        # Set as soon as the result object's fetching starts, ensuring the object is never fetched more than once.
+        self._result_object_future: Optional[concurrent.futures.Future] = None
+
         self._task_state: Optional[TaskState] = None
         self._cancel_requested: bool = False
 
@@ -82,7 +87,7 @@ class ScalerFuture(concurrent.futures.Future):
 
             # if it's not delayed future, or if there is any listener (waiter or callback), get the result immediately
             if not self._is_delayed or self._has_result_listeners():
-                self._get_result_object()
+                self._start_result_object_fetch()
 
             self._condition.notify_all()  # type: ignore[attr-defined]
 
@@ -170,21 +175,13 @@ class ScalerFuture(concurrent.futures.Future):
 
     def result(self, timeout: Optional[float] = None) -> Any:
         with self._condition:  # type: ignore[attr-defined]
-            self._wait_result_ready(timeout)
-
-            # if it's delayed future, get the result when future.result() gets called
-            if self._is_delayed:
-                self._get_result_object()
+            self._wait_result_object(timeout)
 
             return super().result()
 
     def exception(self, timeout: Optional[float] = None) -> Optional[BaseException]:
         with self._condition:  # type: ignore[attr-defined]
-            self._wait_result_ready(timeout)
-
-            # if it's delayed future, get the result when future.exception() gets called
-            if self._is_delayed:
-                self._get_result_object()
+            self._wait_result_object(timeout)
 
             return super().exception()
 
@@ -233,7 +230,7 @@ class ScalerFuture(concurrent.futures.Future):
     def add_done_callback(self, fn: Callable[["ScalerFuture"], Any]) -> None:
         with self._condition:
             if self.done():
-                self._get_result_object()
+                self._start_result_object_fetch()
             else:
                 self._done_callbacks.append(fn)  # type: ignore[attr-defined]
                 return
@@ -248,29 +245,92 @@ class ScalerFuture(concurrent.futures.Future):
         with self._condition:  # type: ignore[attr-defined]
             # if it's delayed future, get the result when waiter gets added
             if self._is_delayed and len(self._waiters) > 0:
-                self._get_result_object()
+                self._start_result_object_fetch()
 
     def _has_result_listeners(self) -> bool:
         return len(self._done_callbacks) > 0 or len(self._waiters) > 0  # type: ignore[attr-defined]
 
-    def _get_result_object(self):
+    def _start_result_object_fetch(self):
+        """
+        Starts the fetching of the future's result object, at most once.
+
+        As it never blocks, this can be called from the client agent's event loop.
+        """
+
         with self._condition:  # type: ignore[attr-defined]
             if self._result_object_id is None or self.cancelled() or self._result_received:
                 return
 
-            object_bytes = bytes(self._connector_storage.get_object(self._result_object_id))
-
-            if self._is_simple_task():
-                # immediately delete non graph result objects
-                # TODO: graph task results could also be deleted if these are not required by another task of the graph.
-                self._connector_storage.delete_object(self._result_object_id)
+            if self._result_object_future is not None:
+                return  # the object is already being fetched
 
             if self._task_state == TaskState.success:
-                self.set_result(self._serializer.deserialize(object_bytes))
+                is_exception = False
             elif self._task_state == TaskState.failed:
-                self.set_exception(deserialize_failure(object_bytes))
+                is_exception = True
             else:
                 raise ValueError(f"unexpected task status: {self._task_state}")
+
+            # TODO: graph task results could also be deleted if these are not required by another task of the graph.
+            delete_after_fetch = self._is_simple_task()
+
+            self._result_object_future = self._object_buffer.fetch_object(
+                self._result_object_id, is_exception=is_exception, delete_after_fetch=delete_after_fetch
+            )
+
+        self._result_object_future.add_done_callback(self.__on_result_object_fetched)
+
+    def __on_result_object_fetched(self, _: concurrent.futures.Future) -> None:
+        assert self._result_object_future is not None and self._result_object_future.done()
+        is_exception = self._task_state == TaskState.failed
+
+        try:
+            result_object = self._result_object_future.result()
+        except Exception as exception:
+            # The result object could not be fetched, e.g. the object storage server is unreachable.
+            result_object = exception
+            is_exception = True
+
+        try:
+            if is_exception:
+                self.set_exception(result_object)
+            else:
+                self.set_result(result_object)
+        except concurrent.futures.InvalidStateError:
+            # The future got canceled while its result object was being fetched, e.g. by `Client.disconnect()`.
+            pass
+
+    def _wait_result_object(self, timeout: Optional[float] = None):
+        """
+        Blocks until the future's result object is fetched, starting its fetching if it did not start yet.
+
+        While waiting, this releases the future's condition lock, letting the fetching's callback set the future's
+        result.
+
+        Raises a `TimeoutError` if it blocks more than `timeout` seconds.
+        """
+
+        with self._condition:  # type: ignore[attr-defined]
+            deadline = None if timeout is None else time.monotonic() + timeout
+
+            self._wait_result_ready(timeout)
+
+            # if it's a delayed future, the result object gets fetched when result() or exception() gets called
+            if self._is_delayed:
+                self._start_result_object_fetch()
+
+            if self._result_object_id is None:
+                return  # umbrella graph tasks do not have a result object
+
+            while not self._result_received and not self.cancelled():
+                if deadline is None:
+                    remaining_seconds = None
+                else:
+                    remaining_seconds = deadline - time.monotonic()
+                    if remaining_seconds <= 0:
+                        raise concurrent.futures.TimeoutError()
+
+                self._condition.wait(remaining_seconds)  # type: ignore[attr-defined]
 
     def _wait_result_ready(self, timeout: Optional[float] = None):
         """
