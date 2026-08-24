@@ -69,7 +69,7 @@ class TestClientHeartbeat(unittest.TestCase):
     def tearDown(self) -> None:
         self.combo.shutdown()
 
-    def test_client_long_io(self):
+    def test_client_long_blocking_io(self):
         """Serializing or receiving task objects must not prevent the client agent's event loop to send heart-beats."""
 
         RESULT_TIMEOUT_SECONDS = 60
