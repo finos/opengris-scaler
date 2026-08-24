@@ -18,6 +18,7 @@ SERIALIZATION_DURATION_SECONDS = SCHEDULER_CLIENT_TIMEOUT_SECONDS + 1
 
 CLIENT_HEARTBEAT_INTERVAL_SECONDS = 1
 
+
 class SlowObject:
     """An object that takes a significant amount of time to serialize and deserialize."""
 
