@@ -310,27 +310,28 @@ class ScalerFuture(concurrent.futures.Future):
         Raises a `TimeoutError` if it blocks more than `timeout` seconds.
         """
 
-        with self._condition:  # type: ignore[attr-defined]
-            deadline = None if timeout is None else time.monotonic() + timeout
+        assert self._condition._is_owned()  # type: ignore[attr-defined]
 
-            self._wait_result_ready(timeout)
+        deadline = None if timeout is None else time.monotonic() + timeout
 
-            # if it's a delayed future, the result object gets fetched when result() or exception() gets called
-            if self._is_delayed:
-                self._start_result_object_fetch()
+        self._wait_result_ready(timeout)
 
-            if self._result_object_id is None:
-                return  # umbrella graph tasks do not have a result object
+        # if it's a delayed future, the result object gets fetched when result() or exception() gets called
+        if self._is_delayed:
+            self._start_result_object_fetch()
 
-            while not self._result_received and not self.cancelled():
-                if deadline is None:
-                    remaining_seconds = None
-                else:
-                    remaining_seconds = deadline - time.monotonic()
-                    if remaining_seconds <= 0:
-                        raise concurrent.futures.TimeoutError()
+        if self._result_object_id is None:
+            return  # umbrella graph tasks do not have a result object
 
-                self._condition.wait(remaining_seconds)  # type: ignore[attr-defined]
+        while not self._result_received and not self.cancelled():
+            if deadline is None:
+                remaining_seconds = None
+            else:
+                remaining_seconds = deadline - time.monotonic()
+                if remaining_seconds <= 0:
+                    raise concurrent.futures.TimeoutError()
+
+            self._condition.wait(remaining_seconds)  # type: ignore[attr-defined]
 
     def _wait_result_ready(self, timeout: Optional[float] = None):
         """
@@ -338,6 +339,9 @@ class ScalerFuture(concurrent.futures.Future):
 
         Raises a `TimeoutError` if it blocks more than `timeout` seconds.
         """
+
+        assert self._condition._is_owned()  # type: ignore[attr-defined]
+
         if self.done():
             return
 
