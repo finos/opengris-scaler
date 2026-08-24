@@ -6,7 +6,7 @@ from tests.utility.utility import logging_test_name
 
 SCHEDULER_CLIENT_TIMEOUT_SECONDS = 2
 
-LARGE_RESULT_SIZE_BYTES = 750_000_000
+LARGE_RESULT_SIZE_BYTES = 4_000_000_000
 
 
 def noop(value: int) -> int:
