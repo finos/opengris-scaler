@@ -68,12 +68,11 @@ class ClientAgent(threading.Thread):
         self._client_agent_address = client_agent_address
         self._scheduler_address = scheduler_address
         self._network_backend = network_backend
+
         self._object_storage_address: Future[AddressConfig] = Future()
 
         if object_storage_address is not None:
-            self._object_storage_address_override = AddressConfig.from_string(object_storage_address)
-        else:
-            self._object_storage_address_override = None
+            self._object_storage_address.set_result(AddressConfig.from_string(object_storage_address))
 
         # The event loop is created by the agent's thread, but the client's thread requires it.
         # A future safely publishes it across both threads.
@@ -141,8 +140,6 @@ class ClientAgent(threading.Thread):
 
     def get_object_storage_address(self) -> AddressConfig:
         """Returns the object storage address, or block until it receives it."""
-        if self._object_storage_address_override is not None:
-            return self._object_storage_address_override
         return self._object_storage_address.result()
 
     async def get_object_storage_connector(self) -> AsyncObjectStorageConnector:
@@ -202,11 +199,7 @@ class ClientAgent(threading.Thread):
     async def __connect_object_storage(self):
         """Connects the object storage connector, or waits until the scheduler provides its address."""
 
-        if self._object_storage_address_override is not None:
-            object_storage_address = self._object_storage_address_override
-        else:
-            object_storage_address = await asyncio.wrap_future(self._object_storage_address)
-
+        object_storage_address = await asyncio.wrap_future(self._object_storage_address)
         await self._connector_storage.connect(object_storage_address, security_config=self._security_config)
 
     async def __get_loops(self):

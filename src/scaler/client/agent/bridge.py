@@ -855,11 +855,14 @@ class InProcessAgentBridge(ClientAgentBridge):
         # bring-up (immediately after receiving the scheduler's first message).
         # Block the JSPI stack until that future is resolved; the asyncio loop
         # continues to drive the agent coroutine in the background.
-        if self._agent._object_storage_address_override is not None:  # noqa: SLF001
-            return self._agent._object_storage_address_override  # noqa: SLF001
+        fut = self._agent._object_storage_address  # noqa: SLF001
+
+        # An address provided by the client's user resolves the future before the agent starts, no need to suspend the
+        # WebAssembly stack.
+        if fut.done():
+            return fut.result()
 
         async def _wait() -> AddressConfig:
-            fut = self._agent._object_storage_address  # noqa: SLF001
             # ``fut`` is a ``concurrent.futures.Future``. ``asyncio.wrap_future``
             # adapts it to an awaitable on the current loop without any
             # polling -- the agent task signals completion in the same loop, so
