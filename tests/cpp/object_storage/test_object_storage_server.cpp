@@ -12,8 +12,8 @@
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/connector_socket.h"
 
-using scaler::object_storage::CAPNP_HEADER_SIZE;
-using scaler::object_storage::CAPNP_WORD_SIZE;
+using scaler::object_storage::capnpHeaderSize;
+using scaler::object_storage::capnpWordSize;
 using scaler::object_storage::getAvailableTCPPort;
 using scaler::object_storage::ObjectID;
 using scaler::object_storage::ObjectRequestHeader;
@@ -72,12 +72,12 @@ public:
 
     void readResponse(ObjectResponseHeader& header, std::optional<ReceivedPayload>& payload)
     {
-        std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf {};
+        std::array<uint64_t, capnpHeaderSize / capnpWordSize> buf {};
         auto result = socket.recvMessage();
         ASSERT_TRUE(result.has_value());
 
-        memcpy(buf.data(), result->payload->data(), CAPNP_HEADER_SIZE);
-        ASSERT_EQ(result->payload->size(), CAPNP_HEADER_SIZE);
+        memcpy(buf.data(), result->payload->data(), capnpHeaderSize);
+        ASSERT_EQ(result->payload->size(), capnpHeaderSize);
         header = ObjectResponseHeader::fromBuffer(buf);
 
         if (header.payloadLength > 0) {
@@ -116,7 +116,7 @@ private:
 // This test fixture is for functional testing of the server's core features.
 class ObjectStorageServerTest: public ::testing::Test {
 protected:
-    static constexpr std::string SERVER_HOST = "127.0.0.1";
+    static constexpr std::string serverHost = "127.0.0.1";
     std::unique_ptr<ObjectStorageServer> server;
 
     std::string serverPort;
@@ -140,7 +140,7 @@ protected:
 
         serverThread = std::thread([this] {
             server->run(
-                "tcp://" + SERVER_HOST + ":" + serverPort,
+                "tcp://" + serverHost + ":" + serverPort,
                 "ObjectStorageServerTest",
                 "INFO",
                 "%(levelname)s: %(message)s");
@@ -160,7 +160,7 @@ protected:
 
     std::unique_ptr<ObjectStorageClient> getClient(std::optional<std::string> identity = std::nullopt)
     {
-        return std::make_unique<ObjectStorageClient>(ioContext, SERVER_HOST, serverPort, std::move(identity));
+        return std::make_unique<ObjectStorageClient>(ioContext, serverHost, serverPort, std::move(identity));
     }
 };
 
@@ -635,7 +635,7 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
     {
         auto client = getClient();
 
-        std::array<uint8_t, CAPNP_HEADER_SIZE> malformedHeader;
+        std::array<uint8_t, capnpHeaderSize> malformedHeader;
         malformedHeader.fill(0xAA);
 
         client->writeYMQMessage(
@@ -780,7 +780,7 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
 // This test fixture is specifically for verifying server logging behavior.
 class ObjectStorageLoggingTest: public ::testing::Test {
 protected:
-    static constexpr std::string SERVER_HOST = "127.0.0.1";
+    static constexpr std::string serverHost = "127.0.0.1";
     std::filesystem::path log_filepath;
 
     std::unique_ptr<scaler::object_storage::ObjectStorageServer> server;
@@ -803,7 +803,7 @@ protected:
 
         serverThread = std::thread([this] {
             server->run(
-                "tcp://" + SERVER_HOST + ":" + serverPort,
+                "tcp://" + serverHost + ":" + serverPort,
                 "ObjectStorageLoggingTest",
                 "INFO",
                 "%(levelname)s: %(message)s",
@@ -840,7 +840,7 @@ TEST_F(ObjectStorageLoggingTest, TestServerLogsStartToFile)
 {
     {
         // Use the functional client to connect and then disconnect.
-        ObjectStorageClient client(ioContext, SERVER_HOST, serverPort);
+        ObjectStorageClient client(ioContext, serverHost, serverPort);
     }
     // Give the server time to process the disconnection and write the log.
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

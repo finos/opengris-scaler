@@ -57,6 +57,8 @@ class VanillaClientController(ClientController, Looper, Reporter):
         return client_id in self._client_last_seen
 
     def get_client_id(self, task_id: TaskID) -> Optional[ClientID]:
+        if not self._client_to_task_ids.has_value(task_id):
+            return None
         return self._client_to_task_ids.get_key(task_id)
 
     def on_task_begin(self, client_id: ClientID, task_id: TaskID):

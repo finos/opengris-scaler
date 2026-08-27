@@ -178,7 +178,7 @@ class SchedulerClusterCombo:
         logger.info(f"{self.__get_prefix()} started")
 
     def __del__(self):
-        if not self._shutdown_called:
+        if not self._shutdown_called and not sys.is_finalizing():
             self.shutdown()
 
     def shutdown(self):

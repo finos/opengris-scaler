@@ -4,7 +4,7 @@ import multiprocessing
 import pathlib
 import sys
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
@@ -328,14 +328,24 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         if isinstance(self._backend, ZMQNetworkBackend):
             await self.__graceful_shutdown()
 
+        destroyables: List[Tuple[str, Callable[[], None]]] = []
         if self._connector_external is not None:
-            self._connector_external.destroy()
+            destroyables.append(("connector_external", self._connector_external.destroy))
         if self._processor_manager is not None:
-            self._processor_manager.destroy("quit")
+            destroyables.append(("processor_manager", lambda: self._processor_manager.destroy("quit")))
         if self._binder_internal is not None:
-            self._binder_internal.destroy()
+            destroyables.append(("binder_internal", self._binder_internal.destroy))
         if self._connector_storage is not None:
-            self._connector_storage.destroy()
+            destroyables.append(("connector_storage", self._connector_storage.destroy))
+
+        failed_to_destroy = []
+        for name, destroy in destroyables:
+            try:
+                destroy()
+            except Exception as e:
+                # One resource failing must not skip the ones after it, so keep going and report at the end.
+                logger.exception(f"{self.identity!r}: failed to destroy {name}: {e}")
+                failed_to_destroy.append(name)
 
         if (
             self._address_internal is not None
@@ -344,6 +354,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         ):
             # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
             pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
+
+        if failed_to_destroy:
+            raise RuntimeError(f"failed to destroy {', '.join(failed_to_destroy)}")
 
     def __register_signal(self):
         if isinstance(self._backend, ZMQNetworkBackend):

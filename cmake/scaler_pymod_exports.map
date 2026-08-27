@@ -1,0 +1,8 @@
+# Keep every symbol but the PyInit_<module> entry-point local, so that two modules loaded into the same
+# interpreter cannot interpose each other. See ScalerPythonModule.cmake.
+{
+    global:
+        PyInit_*;
+    local:
+        *;
+};
