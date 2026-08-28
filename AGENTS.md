@@ -54,6 +54,7 @@ python -m unittest discover -v tests -t .
 - Check the gate's own exit status: capture the output to a file, or `set -o pipefail`, so a pipe into `tail` or `grep` cannot mask a red.
 - Scoped test runs guide iteration between commits.
 - Run a command because the task needs its result, never because a document lists it.
+- A build or test sequence used by more than one workflow lives in one composite action under `.github/actions/`.
 
 ## Principles
 
@@ -61,8 +62,10 @@ Coding principles inspired by the Zen of Python (`python -c 'import this'`), app
 
 - **Simple is better than complex.** The least code that solves the problem, in a shape a beginner can follow.
 - **Explicit is better than implicit.** Defaults as visible values, behaviour keyed off state the reader can see.
-- **Errors should never pass silently.** Entry points and tests fail loudly with the cause. A daemon (scheduler, worker, object storage server) logs a misbehaving peer and keeps serving the others.
-- **In the face of ambiguity, refuse the temptation to guess.** State assumptions. Discuss a request with several readings, or a simpler approach, before coding it.
+- **Errors should never pass silently.**
+  - Entry points and tests fail loudly with the cause
+  - A daemon (scheduler, worker, object storage server) logs a misbehaving peer and keeps serving the others
+- **In the face of ambiguity, refuse the temptation to guess.** State assumptions, and discuss a request with several readings, or a simpler approach, before coding it.
 - **There should be one obvious way to do it.** One mechanism per job: a second one drifts.
 - **Special cases aren't special enough to break the rules.** A fix that needs a special case is the wrong fix.
 - **If the implementation is hard to explain, it's a bad idea.** Explain a change in one sentence before writing it.
@@ -72,7 +75,8 @@ Coding principles inspired by the Zen of Python (`python -c 'import this'`), app
 - **Practicality beats purity.** Simplicity over DRY: a little duplication beats a single-use abstraction.
 - **Namespaces are one honking great idea.** Directories, files, modules, namespaces, and tests match each other by name.
 - **Fix the root cause.** A workaround, blind retry, or guard that hides the defect is not a fix.
-- **Right-shaped data.** Fix the data shape first and the code around it gets small. Constant conversion between shapes, or a field that can be half-set, means the shape is wrong.
+- **Right-shaped data.** Fix the data shape first and the code around it gets small.
+  - Constant conversion between shapes, or a field that can be half-set, means the shape is wrong
 - **Least surprise.** A command, class, or flag does the expected thing, and learning one teaches its siblings.
 - **Surfaces tell the truth.** `scaler top`, the web monitor, and the logs show the real state: a failed task never reads as done, a dead worker never looks busy.
 - **Evidence over opinion.** A claim about behaviour, timing, or performance is verified by running the code.
@@ -87,15 +91,21 @@ Coding principles inspired by the Zen of Python (`python -c 'import this'`), app
 - A new helper appears only when nothing suitable exists, where the next reader will look.
 - When a task forks (a trade-off, growing scope, several designs, a new dependency), ask a one-line question and first do everything that does not depend on the answer.
 - When these rules already decide, act.
-- Turn the task into a verifiable goal: a bug becomes a test that is red before the fix and green after, a refactor keeps the suite green before and after, a feature names the check that proves it.
-- A clean hole gets fixed. A trade-off gets a config option. Anything architectural gets a writeup and is the maintainers' call.
+- Turn the task into a verifiable goal:
+  - a bug: a test that is red before the fix and green after
+  - a refactor: the suite green before and after
+  - a feature: the check that proves it
+- The fix matches the problem:
+  - a clean hole gets fixed
+  - a trade-off gets a config option
+  - anything architectural gets a writeup and is the maintainers' call
 - These rules bind as written, neither looser nor stricter.
 
 ### Changing code
 
 - Every changed line traces to the task.
 - Match the surrounding style.
-- Remove what your change orphaned. Report unrelated dead code rather than deleting it.
+- Remove what your change orphaned, and report unrelated dead code rather than deleting it.
 - A refactor ships in its own commit, separate from behaviour changes.
 - A change to a CLI flag, config key, or documented behaviour updates `docs/source/tutorials/` in the same change.
 
@@ -155,8 +165,12 @@ Applies to replies, PR descriptions, and handoffs.
   - Functions, variables, constants: `camelCase`
   - Fields: `_camelCase`, private, behind getters and setters
   - Files: `snake_case`, `.h` and `.cpp`
-- Member order: `public` before `private`, and within each nested types, fields, constructors and destructor, methods, static methods.
-- Namespaces: `scaler::`, matching the directory, and fully qualified names at every use (no `using namespace`).
+- Member order:
+  - `public` before `private`
+  - Nested types, then fields, constructors and destructor, methods, static methods
+- Namespaces:
+  - `scaler::`, matching the directory structure
+  - Fully qualified names at every use, no `using namespace`
 - Modern C++:
   - C++20 features that GCC, Clang, and MSVC all support
   - RAII and smart pointers, which make custom copy and move members unnecessary
@@ -174,10 +188,6 @@ Applies to replies, PR descriptions, and handoffs.
 - Tests import what they need directly: the environment has the `all` extra and the `dev` group installed.
 - `skipIf` and `skipUnless` are for platform and Python-version limits and for dependencies no package index provides (`soamapi`).
 
-### CI
-
-- A build or test sequence used by more than one workflow lives in one composite action under `.github/actions/`.
-
 ## Writing
 
 Applies to everything written here: comments, docstrings, docs, commit messages, log messages, CLI output, reviews, replies, and this file.
@@ -187,7 +197,7 @@ Applies to everything written here: comments, docstrings, docs, commit messages,
 - The shortest version that carries the point, stopping at unambiguous rather than at shortest.
 - Lead with the point, and add rationale only when a reader could not reconstruct it.
 - One idea per sentence, one topic per paragraph, active voice, at most about 25 words.
-- Plain punctuation: periods, commas, colons, parentheses. A semicolon or em dash marks a sentence to split.
+- Plain punctuation (periods, commas, colons, parentheses): a semicolon or em dash marks a sentence to split.
 - Plain, literal verbs: start (not spin up), analyze (not perform an analysis).
 - Concrete over abstract: name the command, the field, the number ("retries twice, then fails the task", not "handles failures robustly").
 - An intensifier or marketing adjective gives way to the measurement.
