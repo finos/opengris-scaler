@@ -84,6 +84,9 @@ struct WorkerHeartbeat {
     capabilities @7 :List(CommonType.TaskCapability);
     workerManagerID @8 :Data;
     memLimit @9 :UInt64;  # memory limit in bytes the worker runs under (cgroup if set, else system total); 0 if unknown
+    hostname @10 :Text;   # machine this worker runs on, so the monitor can group workers by host
+    netSentBytes @11 :UInt64;  # host-wide counters, identical for workers sharing a host; the monitor
+    netRecvBytes @12 :UInt64;  # reads them once per hostname rather than summing them
 }
 
 struct WorkerHeartbeatEcho {
@@ -176,6 +179,7 @@ struct StateTask {
     worker @3 :Data;
     capabilities @4 :List(CommonType.TaskCapability);
     metadata @5 :Data;
+    objectBytes @6 :UInt64;  # payload bytes this task's arguments move, so a heavy task is visible
 }
 
 struct StateGraphTask {

@@ -58,6 +58,10 @@ class ObjectController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def get_object_size(self, object_id: bytes) -> int:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def has_object(self, object_id: ObjectID) -> bool:
         raise NotImplementedError()
 

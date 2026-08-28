@@ -405,8 +405,21 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 worker=worker,
                 capabilities=dict_to_capabilities(capabilities),
                 metadata=metadata,
+                objectBytes=self.__task_object_bytes(task_id),
             )
         )
+
+    def __task_object_bytes(self, task_id: TaskID) -> int:
+        """Payload bytes a task's function and arguments move, 0 if the task is already gone."""
+        task = self._task_id_to_task.get(task_id)
+        if task is None or self._object_controller is None:
+            return 0
+
+        total = self._object_controller.get_object_size(task.funcObjectId)
+        for argument in task.functionArgs:
+            if argument.type == Task.Argument.ArgumentType.objectID:
+                total += self._object_controller.get_object_size(argument.data)
+        return total
 
     async def __routing(self, task_id: TaskID, transition: TaskTransition, **kwargs):
         state_machine = self._task_state_manager.on_transition(task_id, transition)

@@ -64,9 +64,11 @@ WORKER_SORT_NUMERIC_FIELDS = frozenset(
     {"agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended"}
 )
 # Columns whose display value is preformatted; sort them by the raw number behind it instead.
-WORKER_SORT_RAW_FIELDS = {"lag": "lag_us", "last_seen": "last_s"}
+WORKER_SORT_RAW_FIELDS = {"lag": "lag_us", "last_seen": "last_s", "task_age": "task_age_s"}
 WORKER_SORT_FIELDS = frozenset(
-    WORKER_SORT_NUMERIC_FIELDS | set(WORKER_SORT_RAW_FIELDS) | {"name", "manager_id", "itl", "capabilities"}
+    WORKER_SORT_NUMERIC_FIELDS
+    | set(WORKER_SORT_RAW_FIELDS)
+    | {"name", "manager_id", "itl", "capabilities", "host", "task"}
 )
 
 
@@ -142,6 +144,25 @@ class _RenderCache:
         if key not in self._memory:
             self._memory[key] = app._memory_chart.get_render_data(window_seconds, scale)
         return self._memory[key]
+
+
+def _oldest_task_age(processor_statuses) -> int:
+    """Age of the longest-running task on a worker, 0 when it is idle.
+
+    The oldest is the interesting one: a worker wedged on a single task shows an age that keeps climbing.
+    """
+    ages = [status.taskAgeSeconds for status in processor_statuses if status.hasTask]
+    return max(ages) if ages else 0
+
+
+def _current_task_label(processor_statuses) -> str:
+    """Short id of the task a worker is running, or a count when it is running several."""
+    busy = [status for status in processor_statuses if status.hasTask]
+    if not busy:
+        return "\u2014"
+    if len(busy) == 1:
+        return bytes(busy[0].currentTaskId).hex()[:12]
+    return f"{len(busy)} tasks"
 
 
 def paginate(items: List[Any], page: int, size: int) -> Tuple[List[Any], int, int]:
@@ -649,8 +670,31 @@ class MemoryChartState:
     def __init__(self) -> None:
         self._start_time = datetime.datetime.now()
         self._points: List[Tuple[float, int]] = []  # (timestamp, memory_bytes)
+        # What the fleet is actually using right now, sampled per scheduler update. The derived series
+        # above only ever moved when a task *finished*, so a cluster sitting on held memory read as idle.
+        self._live: List[Tuple[float, int, float]] = []  # (timestamp, rss_bytes, cpu_percent)
         self._memory_store_time = datetime.timedelta(minutes=30)
         self._lock = threading.Lock()
+
+    def record_fleet_sample(self, rss_bytes: int, cpu_percent: float) -> None:
+        now = datetime.datetime.now().timestamp()
+        cutoff = now - self._memory_store_time.total_seconds()
+        with self._lock:
+            self._live.append((now, rss_bytes, cpu_percent))
+            if self._live and self._live[0][0] < cutoff:
+                self._live = [point for point in self._live if point[0] >= cutoff]
+
+    def _live_series(self, now_ts: float, window_seconds: float) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        with self._lock:
+            samples = list(self._live)
+        memory, cpu = [], []
+        for ts, rss, cpu_percent in samples:
+            x = ts - now_ts
+            if x < -window_seconds:
+                continue
+            memory.append({"x": round(x, 2), "y": rss})
+            cpu.append({"x": round(x, 2), "y": round(cpu_percent, 1)})
+        return memory, cpu
 
     def handle_task_state(self, state_task: StateTask) -> None:
         if state_task.metadata == b"":
@@ -707,7 +751,23 @@ class MemoryChartState:
             val = int(max_mem * i / 4)
             y_ticks.append({"val": val, "label": format_bytes(val)})
 
-        return {"points": chart_points, "y_ticks": y_ticks, "scale": scale, "window": window_seconds}
+        live_memory, live_cpu = self._live_series(now_ts, window_seconds)
+        if live_memory:
+            # prefer what the fleet is actually holding over the figure derived from finished tasks
+            chart_points = live_memory
+            max_live = max(point["y"] for point in live_memory)
+            y_ticks = [
+                {"val": int(max(max_live, 1024**3) * i / 4), "label": format_bytes(int(max(max_live, 1024**3) * i / 4))}
+                for i in range(5)
+            ]
+
+        return {
+            "points": chart_points,
+            "y_ticks": y_ticks,
+            "scale": scale,
+            "window": window_seconds,
+            "cpu_points": live_cpu,
+        }
 
 
 class WebUIApp:
@@ -733,6 +793,10 @@ class WebUIApp:
         self._workers_data: Dict[str, Dict[str, Any]] = {}
         self._worker_capabilities: Dict[str, Dict[str, int]] = {}
         self._task_log: Deque[Dict[str, Any]] = deque(maxlen=self._task_log_max_size)
+        # Append-only history: one row per state change rather than one row per task, so a task that is
+        # rebalanced, cancelled and retried leaves a trail instead of overwriting itself.
+        self._task_events: Deque[Dict[str, Any]] = deque(maxlen=self._task_log_max_size)
+        self._task_event_seq: int = 0
         self._active_tasks: Dict[str, Dict[str, Any]] = {}  # task_id_hex -> entry (running tasks)
         self._task_id_to_function: Dict[str, str] = {}
         self._task_stream = TaskStreamState()
@@ -809,10 +873,11 @@ class WebUIApp:
                             worker_events.append(event)
                     elif isinstance(msg, StateTask):
                         log_entry = self._process_task_state(msg)
+                        self._record_task_event(msg)
                         if log_entry:
                             new_task_logs.append(log_entry)
                     elif isinstance(msg, StateBalanceAdvice):
-                        pass  # unused
+                        self._record_balance_advice(msg)
                 except Exception:
                     _logger.exception("error processing scheduler message")
 
@@ -834,6 +899,7 @@ class WebUIApp:
             if new_task_logs:
                 shared["task_updates"] = new_task_logs
                 shared["task_log_total"] = self._task_log_total
+                shared["task_events"] = list(self._task_events)
 
             if has_scheduler_update:
                 shared["worker_managers"] = list(self._worker_managers_data.values())
@@ -844,6 +910,7 @@ class WebUIApp:
                 lambda view: {
                     **shared,
                     **(self._workers_section(view, cache) if has_scheduler_update else {}),
+                    **(self._machines_section() if has_scheduler_update else {}),
                     **(self._processors_section(view, cache) if has_scheduler_update else {}),
                     "task_stream": self._stream_section(view, cache),
                     "memory_chart": cache.memory(
@@ -948,6 +1015,14 @@ class WebUIApp:
                 "mem_limit": mem_limit,
                 "mem_used": mem_used,
                 "mem_used_pct": mem_used_pct,
+                "host": worker_data.hostname or "\u2014",
+                "net_sent": worker_data.netSentBytes,
+                "net_recv": worker_data.netRecvBytes,
+                # the oldest running task on this worker: a worker that is stuck shows a task age that
+                # keeps climbing while its last-seen also grows
+                "task": _current_task_label(worker_data.processorStatuses),
+                "task_age": format_seconds(_oldest_task_age(worker_data.processorStatuses)),
+                "task_age_s": _oldest_task_age(worker_data.processorStatuses),
                 "free": worker_data.free,
                 "sent": worker_data.sent,
                 "queued": worker_data.queued,
@@ -984,6 +1059,8 @@ class WebUIApp:
                         "initialized": bool(ps.initialized),
                         "has_task": bool(ps.hasTask),
                         "suspended": bool(ps.suspended),
+                        "task": bytes(ps.currentTaskId).hex()[:12] if ps.hasTask else "\u2014",
+                        "task_age": format_seconds(ps.taskAgeSeconds) if ps.hasTask else "\u2014",
                     }
                 )
 
@@ -1000,6 +1077,15 @@ class WebUIApp:
         # Aggregate per-manager summary stats over every worker the backend received (the whole fleet by
         # default) -- so these sums are complete even though each browser is sent only a bounded subset for
         # display. worker_count keeps the full per-manager total computed above.
+        # One live sample of what the whole fleet is holding, for the memory and CPU charts.
+        fleet_rss = sum(
+            (worker.get("proc_rss", 0) + worker.get("agt_rss", 0)) for worker in self._workers_data.values()
+        )
+        fleet_cpu = sum(
+            (worker.get("proc_cpu", 0.0) + worker.get("agt_cpu", 0.0)) for worker in self._workers_data.values()
+        )
+        self._memory_chart.record_fleet_sample(int(fleet_rss * 1e6), fleet_cpu)
+
         for manager_id, mgr_data in self._worker_managers_data.items():
             mgr_proc_cpu = 0.0
             mgr_proc_rss = 0
@@ -1097,6 +1183,8 @@ class WebUIApp:
                 "duration": duration_str,
                 "peak_mem": peak_mem_str,
                 "status": state_task.state.name,
+                "objects": format_bytes(state_task.objectBytes) if state_task.objectBytes else "\u2014",
+                "object_bytes": state_task.objectBytes,
                 "capabilities": caps_str,
             }
             self._task_log.appendleft(entry)
@@ -1122,6 +1210,8 @@ class WebUIApp:
                 "duration": "",
                 "peak_mem": "",
                 "status": state_task.state.name,
+                "objects": format_bytes(state_task.objectBytes) if state_task.objectBytes else "\u2014",
+                "object_bytes": state_task.objectBytes,
                 "capabilities": caps_str,
             }
             self._active_tasks[task_id_hex] = entry
@@ -1161,6 +1251,107 @@ class WebUIApp:
                 return str(worker.get(raw_field, "")).lower()
 
         return sorted(workers, key=key, reverse=not ascending)
+
+    def _record_task_event(self, state_task: StateTask) -> None:
+        """One immutable row per state change, so the sequence a task went through stays readable."""
+        worker = state_task.worker.decode() if state_task.worker else ""
+        self._task_event_seq += 1
+        self._task_events.appendleft(
+            {
+                "seq": self._task_event_seq,
+                "time": datetime.datetime.now().strftime("%H:%M:%S"),
+                "task_id": state_task.taskId.hex(),
+                "function": state_task.functionName.decode(errors="replace") if state_task.functionName else "",
+                "event": state_task.state.name,
+                "worker": _format_worker_name(worker) if worker else "\u2014",
+                "detail": format_bytes(state_task.objectBytes) if state_task.objectBytes else "",
+            }
+        )
+
+    def _record_balance_advice(self, advice: StateBalanceAdvice) -> None:
+        """A rebalance moves tasks off a worker; without this the trail just shows them reappearing."""
+        worker = advice.workerId.decode() if advice.workerId else ""
+        for task_id in advice.taskIds:
+            self._task_event_seq += 1
+            self._task_events.appendleft(
+                {
+                    "seq": self._task_event_seq,
+                    "time": datetime.datetime.now().strftime("%H:%M:%S"),
+                    "task_id": bytes(task_id).hex(),
+                    "function": "",
+                    "event": "rebalance",
+                    "worker": _format_worker_name(worker) if worker else "\u2014",
+                    "detail": "moved off this worker",
+                }
+            )
+
+    def _machines_section(self) -> Dict[str, Any]:
+        """One row per physical machine, however many workers it hosts.
+
+        `netSentBytes`/`netRecvBytes` are host-wide, so every worker on a box reports the same pair;
+        they are read once per hostname rather than summed, which would multiply them by the worker
+        count. Everything else is genuinely per-worker and is added up.
+        """
+        machines: Dict[str, Dict[str, Any]] = {}
+        for worker in self._workers_data.values():
+            host = worker.get("host") or "\u2014"
+            entry = machines.setdefault(
+                host,
+                {
+                    "host": host,
+                    "workers": 0,
+                    "busy": 0,
+                    "proc_cpu": 0.0,
+                    "agt_cpu": 0.0,
+                    "proc_rss": 0,
+                    "agt_rss": 0,
+                    "rss_free": 0,
+                    "mem_limit": 0,
+                    "queued": 0,
+                    "sent": 0,
+                    "net_sent": 0,
+                    "net_recv": 0,
+                    "managers": set(),
+                },
+            )
+            entry["workers"] += 1
+            entry["busy"] += 1 if worker.get("task", "\u2014") != "\u2014" else 0
+            entry["proc_cpu"] += worker.get("proc_cpu", 0.0)
+            entry["agt_cpu"] += worker.get("agt_cpu", 0.0)
+            entry["proc_rss"] += worker.get("proc_rss", 0)
+            entry["agt_rss"] += worker.get("agt_rss", 0)
+            entry["queued"] += worker.get("queued", 0)
+            entry["sent"] += worker.get("sent", 0)
+            entry["managers"].add(worker.get("manager_id", "\u2014"))
+            # host-wide, so take one reading rather than accumulating
+            entry["rss_free"] = max(entry["rss_free"], worker.get("rss_free", 0))
+            entry["mem_limit"] = max(entry["mem_limit"], worker.get("mem_limit", 0))
+            entry["net_sent"] = max(entry["net_sent"], worker.get("net_sent", 0))
+            entry["net_recv"] = max(entry["net_recv"], worker.get("net_recv", 0))
+
+        rows = []
+        for entry in machines.values():
+            used = entry["proc_rss"] + entry["agt_rss"]
+            rows.append(
+                {
+                    "host": entry["host"],
+                    "workers": entry["workers"],
+                    "busy": entry["busy"],
+                    "idle": entry["workers"] - entry["busy"],
+                    "managers": ", ".join(sorted(m for m in entry["managers"] if m)),
+                    "cpu": round(entry["proc_cpu"] + entry["agt_cpu"], 1),
+                    "rss": used,
+                    "rss_free": entry["rss_free"],
+                    "mem_limit": entry["mem_limit"],
+                    "mem_used_pct": round(100 * used / (used + entry["rss_free"]), 1) if entry["rss_free"] else 0,
+                    "queued": entry["queued"],
+                    "sent": entry["sent"],
+                    "net_sent": format_bytes(entry["net_sent"]),
+                    "net_recv": format_bytes(entry["net_recv"]),
+                }
+            )
+        rows.sort(key=lambda row: row["host"])
+        return {"machines": rows, "machines_total": len(rows)}
 
     def _workers_section(self, view: ClientView, cache: "_RenderCache") -> Dict[str, Any]:
         workers = cache.sorted_workers(self, view)
@@ -1310,7 +1501,9 @@ class WebUIApp:
         return {
             "scheduler": sched,
             **self._workers_section(view, cache),
+            **self._machines_section(),
             "task_log": initial_task_log,
+            "task_events": list(self._task_events),
             "task_log_max_size": self._task_log_max_size,
             "task_log_total": self._task_log_total,
             "task_stream": stream_data,
@@ -1326,6 +1519,7 @@ class WebUIApp:
         stream_data = self._stream_section(view, cache)
         return {
             **self._workers_section(view, cache),
+            **self._machines_section(),
             **self._processors_section(view, cache),
             "task_stream": stream_data,
             "memory_chart": cache.memory(self, stream_data["window"], view.memory_scale),

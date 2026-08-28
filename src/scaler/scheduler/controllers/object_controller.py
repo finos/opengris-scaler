@@ -1,7 +1,7 @@
 import dataclasses
 import logging
 from asyncio import Queue
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
 from scaler.protocol.capnp import ObjectInstruction, ObjectManagerStatus, ObjectMetadata
@@ -38,6 +38,9 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncPublisher] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+        # payload bytes per object, keyed by the raw id bytes: callers pass ids straight off the wire and
+        # constructing an ObjectID here would validate a length the monitor has no reason to care about
+        self._object_sizes: Dict[bytes, int] = {}
 
         self._client_manager: Optional[ClientController] = None
         self._worker_manager: Optional[WorkerController] = None
@@ -95,6 +98,10 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
     async def routine(self):
         await self.__routine_send_objects_deletions()
 
+    def get_object_size(self, object_id: bytes) -> int:
+        """Payload bytes for an object, 0 if it was created by a client that does not report sizes."""
+        return self._object_sizes.get(bytes(object_id), 0)
+
     def has_object(self, object_id: ObjectID) -> bool:
         return self._object_tracker.has_object(object_id)
 
@@ -130,18 +137,26 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
 
         for object_id in deleted_object_ids:
             await self._connector_storage.delete_object(object_id)
+            self.__forget_object_size(object_id)
 
     def __on_object_create(self, source: bytes, instruction: ObjectInstruction):
         if not self._client_manager.has_client_id(instruction.objectUser):
             logger.error(f"received object creation from {source!r} for unknown client {instruction.objectUser!r}")
             return
 
-        for object_id, object_type, object_name in zip(
-            instruction.objectMetadata.objectIds,
-            instruction.objectMetadata.objectTypes,
-            instruction.objectMetadata.objectNames,
+        # objectSizes is newer than the other three; an older client omits it, so pad rather than zip short
+        sizes = list(instruction.objectMetadata.objectSizes)
+        object_ids = list(instruction.objectMetadata.objectIds)
+        sizes += [0] * (len(object_ids) - len(sizes))
+
+        for object_id, object_type, object_name, object_size in zip(
+            object_ids, instruction.objectMetadata.objectTypes, instruction.objectMetadata.objectNames, sizes
         ):
+            self._object_sizes[bytes(object_id)] = object_size
             self.on_add_object(instruction.objectUser, object_id, object_type, object_name)
+
+    def __forget_object_size(self, object_id: ObjectID) -> None:
+        self._object_sizes.pop(bytes(object_id), None)
 
     def __finished_object_storage(self, creation: _ObjectCreation):
         logger.debug(f"del object cache object_name={creation.object_name!r}, object_id={creation.object_id!r}")

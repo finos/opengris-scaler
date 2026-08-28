@@ -64,6 +64,15 @@ var streamLegend = $("stream-legend");
 var memoryCanvas = $("memory-canvas");
 var memoryCtx = memoryCanvas.getContext("2d");
 var processorsContainer = $("processors-container");
+var machinesBody = $("machines-body");
+var taskEventsBody = $("taskevents-body");
+var taskEventsCount = $("taskevents-count");
+var taskEventsClear = $("taskevents-clear");
+var taskEventsFilterLabel = $("taskevents-filter-label");
+var lastTaskEvents = [];
+var taskEventFilter = null;
+var machinesTotal = $("machines-total");
+var lastMachinesData = [];
 var tooltip = $("tooltip");
 
 // -- Tabs --
@@ -94,10 +103,14 @@ function renderActiveTab() {
         if (lastSchedulerData) renderScheduler(lastSchedulerData);
         renderWorkers();
         renderManagers();
-    } else if (activeTab === "tasklog") {
+    } else if (activeTab === "tasklist") {
         renderTaskLog();
+    } else if (activeTab === "tasklog") {
+        renderTaskEvents();
     } else if (activeTab === "processors") {
         renderProcessors();
+    } else if (activeTab === "machines") {
+        renderMachines();
     } else if (activeTab === "stream") {
         renderStreamStatic();
         streamNeedsRedraw = true;
@@ -250,6 +263,8 @@ function handleMessage(data) {
         applyPageInfo(data);
         updateWorkers(data.workers);
     }
+    if (data.machines) updateMachines(data.machines);
+    if (data.task_events) updateTaskEvents(data.task_events);
     if (data.worker_managers) {
         updateWorkerManagers(data.worker_managers);
     }
@@ -263,6 +278,7 @@ function handleMessage(data) {
     if (data.task_stream) {
         updateTaskStream(data.task_stream);
     }
+    if (data.memory_chart && data.memory_chart.cpu_points) lastCpuPoints = data.memory_chart.cpu_points;
     if (data.memory_chart) {
         updateMemoryChart(data.memory_chart);
     }
@@ -289,6 +305,8 @@ function handleFullState(data) {
     if (data.scheduler) updateScheduler(data.scheduler);
     applyPageInfo(data);
     if (data.workers) updateWorkers(data.workers);
+    if (data.machines) updateMachines(data.machines);
+    if (data.task_events) updateTaskEvents(data.task_events);
     if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (typeof data.task_log_max_size === "number" && data.task_log_max_size > 0) {
         TASK_LOG_MAX_SIZE = data.task_log_max_size;
@@ -298,6 +316,7 @@ function handleFullState(data) {
         setTaskLog(data.task_log);
     }
     if (data.task_stream) updateTaskStream(data.task_stream);
+    if (data.memory_chart && data.memory_chart.cpu_points) lastCpuPoints = data.memory_chart.cpu_points;
     if (data.memory_chart) updateMemoryChart(data.memory_chart);
     if (data.processors) updateProcessors(data.processors);
     if (data.settings) applySettings(data.settings);
@@ -412,12 +431,90 @@ function renderManagers() {
 
 // -- Live Tab: Workers --
 // Column order of the workers table; a header click sends the field name to the server.
-var WORKER_FIELDS = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct",
-                     "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
+var WORKER_FIELDS = ["name", "manager_id", "host", "task", "task_age", "agt_cpu", "agt_rss", "proc_cpu",
+                     "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended", "lag", "itl",
+                     "last_seen", "capabilities"];
 
 function updateWorkers(workers) {
     lastWorkersData = workers;
     if (activeTab === "live") renderWorkers();
+}
+
+var MACHINE_FIELDS = ["host", "workers", "busy", "idle", "managers", "cpu", "rss", "rss_free",
+                      "mem_used_pct", "queued", "sent", "net_sent", "net_recv"];
+
+var TASK_EVENT_FIELDS = ["time", "task_id", "event", "worker", "function", "detail"];
+
+var lastCpuPoints = [];
+
+function updateTaskEvents(events) {
+    lastTaskEvents = events || [];
+    if (activeTab === "tasklog") renderTaskEvents();
+}
+
+function renderTaskEvents() {
+    var rows = taskEventFilter
+        ? lastTaskEvents.filter(function(e) { return e.task_id === taskEventFilter; })
+        : lastTaskEvents;
+
+    taskEventsBody.innerHTML = "";
+    for (var i = 0; i < rows.length; i++) {
+        var ev = rows[i];
+        var tr = document.createElement("tr");
+        tr.className = "clickable";
+        tr.title = "Click to show only this task";
+        (function(taskId) {
+            tr.addEventListener("click", function() {
+                taskEventFilter = taskId;
+                renderTaskEvents();
+            });
+        })(ev.task_id);
+        for (var f = 0; f < TASK_EVENT_FIELDS.length; f++) {
+            var td = document.createElement("td");
+            var value = ev[TASK_EVENT_FIELDS[f]];
+            if (TASK_EVENT_FIELDS[f] === "task_id" && value) value = value.slice(0, 12);
+            td.textContent = (value === undefined || value === null || value === "") ? "\u2014" : value;
+            tr.appendChild(td);
+        }
+        taskEventsBody.appendChild(tr);
+    }
+    if (taskEventsCount) {
+        taskEventsCount.textContent = taskEventFilter
+            ? "(" + rows.length + " of " + lastTaskEvents.length + ")"
+            : "(" + lastTaskEvents.length + ")";
+    }
+    if (taskEventsClear) taskEventsClear.style.display = taskEventFilter ? "" : "none";
+    if (taskEventsFilterLabel) {
+        taskEventsFilterLabel.textContent = taskEventFilter ? "filtered to " + taskEventFilter.slice(0, 12) : "";
+    }
+}
+
+if (taskEventsClear) {
+    taskEventsClear.addEventListener("click", function() {
+        taskEventFilter = null;
+        renderTaskEvents();
+    });
+}
+
+function updateMachines(machines) {
+    lastMachinesData = machines || [];
+    if (activeTab === "machines") renderMachines();
+}
+
+function renderMachines() {
+    machinesBody.innerHTML = "";
+    for (var i = 0; i < lastMachinesData.length; i++) {
+        var m = lastMachinesData[i];
+        var tr = document.createElement("tr");
+        for (var f = 0; f < MACHINE_FIELDS.length; f++) {
+            var td = document.createElement("td");
+            var value = m[MACHINE_FIELDS[f]];
+            td.textContent = (value === undefined || value === null) ? "\u2014" : value;
+            tr.appendChild(td);
+        }
+        machinesBody.appendChild(tr);
+    }
+    if (machinesTotal) machinesTotal.textContent = lastMachinesData.length ? "(" + lastMachinesData.length + ")" : "";
 }
 
 function renderWorkers() {
@@ -588,7 +685,7 @@ function handleTaskUpdates(entries) {
             }
         }
     }
-    if (activeTab === "tasklog") renderTaskLog();
+    if (activeTab === "tasklist") renderTaskLog();
     else updateTaskLogBadge();  // the badge (server total) stays current even while the tab is hidden
 }
 
@@ -598,7 +695,7 @@ function setTaskLog(entries) {
     taskLogById = {};
     for (var i = 0; i < taskLogData.length; i++) taskLogById[taskLogData[i].task_id] = taskLogData[i];
     taskLogPage = 0;
-    if (activeTab === "tasklog") renderTaskLog();
+    if (activeTab === "tasklist") renderTaskLog();
     else updateTaskLogBadge();
 }
 
@@ -643,6 +740,7 @@ function makeTaskLogRow(e) {
     tr.appendChild(makeCell(formatTime(e.time)));
     tr.appendChild(makeCell(e.duration));
     tr.appendChild(makeCell(e.peak_mem));
+    tr.appendChild(makeCell(e.objects));
     var tdStatus = makeCell(e.status);
     tdStatus.className = statusClass(e.status);
     tr.appendChild(tdStatus);
@@ -1089,6 +1187,29 @@ function drawMemoryChart() {
     memoryCtx.strokeStyle = "#3b82f6";
     memoryCtx.lineWidth = 2;
     memoryCtx.stroke();
+
+    // CPU on the same axes, scaled to its own maximum: the shape is what matters, and it shows at a
+    // glance whether a cluster holding memory is actually computing.
+    if (lastCpuPoints && lastCpuPoints.length > 1) {
+        var maxCpu = 0;
+        for (var c = 0; c < lastCpuPoints.length; c++) {
+            if (lastCpuPoints[c].y > maxCpu) maxCpu = lastCpuPoints[c].y;
+        }
+        if (maxCpu > 0) {
+            memoryCtx.beginPath();
+            for (var k = 0; k < lastCpuPoints.length; k++) {
+                var cx = mapX(lastCpuPoints[k].x);
+                var cy = plotTop + plotHeight - (lastCpuPoints[k].y / maxCpu) * plotHeight;
+                if (k === 0) memoryCtx.moveTo(cx, cy);
+                else memoryCtx.lineTo(cx, cy);
+            }
+            memoryCtx.strokeStyle = "#f59e0b";
+            memoryCtx.lineWidth = 1.5;
+            memoryCtx.setLineDash([4, 3]);
+            memoryCtx.stroke();
+            memoryCtx.setLineDash([]);
+        }
+    }
 
     memoryCtx.lineWidth = 1;
 }

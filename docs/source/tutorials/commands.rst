@@ -1024,8 +1024,9 @@ UI arguments
      - Interval between updates the web GUI pushes to connected browsers.
    * - ``-tl``, ``--task-log-max-size``
      - No
-     - ``500``
-     - Maximum completed tasks kept and shown in the task log.
+     - ``50000``
+     - Completed tasks and task-log events the GUI keeps. It pages through them server-side, so this
+       bounds memory rather than what you can browse.
    * - ``-sri``, ``--status-report-interval-seconds``
      - No
      - ``1``

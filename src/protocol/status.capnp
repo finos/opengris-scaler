@@ -36,6 +36,8 @@ struct ProcessorStatus {
     hasTask @2 :Bool;
     suspended @3 :Bool;
     resource @4 :Resource;
+    currentTaskId @5 :Data;      # task this processor is running, empty when idle
+    taskAgeSeconds @6 :UInt32;   # how long it has been on that task, so a stuck one is visible
 }
 
 struct WorkerStatus {
@@ -51,6 +53,9 @@ struct WorkerStatus {
     lastS @8 :UInt16;
     itl @9 :Text;
     processorStatuses @10 :List(ProcessorStatus);
+    hostname @12 :Text;          # machine this worker runs on, so the UI can group by host
+    netSentBytes @13 :UInt64;    # host-wide network counters; identical for workers sharing a host,
+    netRecvBytes @14 :UInt64;    # so the UI reads them once per hostname
 }
 
 struct WorkerManagerStatus {
