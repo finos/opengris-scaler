@@ -14,7 +14,6 @@ from scaler.protocol.capnp import (
     TaskResult,
 )
 
-
 T = TypeVar("T")
 
 
