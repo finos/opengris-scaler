@@ -25,7 +25,7 @@ import sys
 import threading
 import time
 import uuid
-from typing import Any, Awaitable, Callable, Coroutine, Iterable, Iterator, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Iterable, Iterator, Optional, TypeVar
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -44,6 +44,8 @@ from scaler.io.utility import serialize as _capnp_serialize
 from scaler.protocol.capnp import BaseMessage, ClientHeartbeat, Resource
 from scaler.utility.exceptions import ClientQuitException
 from scaler.utility.identifiers import ClientID
+
+T = TypeVar("T")
 
 
 class IPCAgentBridge(ClientAgentBridge):
@@ -122,13 +124,9 @@ class IPCAgentBridge(ClientAgentBridge):
     def join(self) -> None:
         self._agent.join()
 
-    def run_in_agent(self, coroutine_factory: Callable[[], Coroutine]) -> concurrent.futures.Future:
-        loop = self._agent.get_loop()
-
-        coroutine = coroutine_factory()
-
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> concurrent.futures.Future[T]:
         try:
-            return asyncio.run_coroutine_threadsafe(coroutine, loop)
+            return self._agent.run_in_agent(coroutine)
         except RuntimeError as exc:
             # The agent terminated (e.g. lost contact with the scheduler) and closed its event loop. Closing the
             # coroutine avoids a "coroutine was never awaited" warning.
@@ -726,7 +724,7 @@ class _InProcessSyncConnector(SyncConnector):
             pass
 
 
-class _InProcessFuture(concurrent.futures.Future):
+class _InProcessFuture(concurrent.futures.Future[T]):
     """A future for a coroutine that runs on the browser's single event loop.
 
     The client and the agent share that event loop, so blocking on a regular future would prevent the agent from ever
@@ -734,13 +732,13 @@ class _InProcessFuture(concurrent.futures.Future):
     ``InProcessAgentBridge.get_object_storage_address()`` does, which lets the event loop keep driving the agent.
     """
 
-    def __init__(self, coroutine: Coroutine) -> None:
+    def __init__(self, coroutine: Coroutine[Any, Any, T]) -> None:
         super().__init__()
 
         self._task = asyncio.ensure_future(coroutine)
         self._task.add_done_callback(self.__on_task_done)
 
-    def result(self, timeout: Optional[float] = None) -> Any:
+    def result(self, timeout: Optional[float] = None) -> T:
         self.__wait(timeout)
         return super().result(timeout=0)
 
@@ -885,9 +883,7 @@ class InProcessAgentBridge(ClientAgentBridge):
             return False
         return self._running and not self._task.done()
 
-    def run_in_agent(self, coroutine_factory: Callable[[], Coroutine]) -> concurrent.futures.Future:
-        coroutine = coroutine_factory()
-
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> concurrent.futures.Future[T]:
         if not self.is_alive():
             # Closing the coroutine avoids a "coroutine was never awaited" warning.
             coroutine.close()

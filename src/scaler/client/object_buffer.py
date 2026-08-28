@@ -1,10 +1,9 @@
 import asyncio
+import concurrent.futures
 import dataclasses
 import hashlib
 import pickle
 import weakref
-from concurrent.futures import Future
-from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Set
 
 import cloudpickle
@@ -107,7 +106,7 @@ class ObjectBuffer:
         # uploaded one round-trip at a time.
 
         pending_uploads = [
-            self._bridge.run_in_agent(partial(self.__set_object, obj_cache.object_id, obj_cache.object_payload))
+            self._bridge.run_in_agent(self.__set_object(obj_cache.object_id, obj_cache.object_payload))
             for obj_cache in self._pending_objects
         ]
 
@@ -120,14 +119,19 @@ class ObjectBuffer:
         # across separate submit() calls uploads once.
         self._cycle_dedup_cache.clear()
 
-    def fetch_object(self, object_id: ObjectID, is_exception: bool, delete_after_fetch: bool) -> Future:
+    def fetch_object(
+        self, object_id: ObjectID, is_exception: bool, delete_after_fetch: bool
+    ) -> concurrent.futures.Future:
         """
         Starts fetching and deserializing an object from the object storage server.
+
+        If `is_exception` is True, the object is deserialized using the exception deserializer. Otherwise, the object is
+        deserialized using the user-defined deserializer.
         """
 
         # Do the actual object download within the agent's asyncio loop
 
-        return self._bridge.run_in_agent(partial(self.__get_object, object_id, is_exception, delete_after_fetch))
+        return self._bridge.run_in_agent(self.__get_object(object_id, is_exception, delete_after_fetch))
 
     def clear(self):
         """

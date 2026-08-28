@@ -8,7 +8,7 @@ import asyncio
 import gc
 import unittest
 from concurrent.futures import Future
-from typing import Callable, Coroutine, List, Tuple
+from typing import Any, Coroutine, List, Tuple, TypeVar
 
 import numpy as np
 
@@ -16,6 +16,8 @@ from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.protocol.capnp import BaseMessage
 from scaler.utility.identifiers import ClientID, ObjectID
+
+T = TypeVar("T")
 
 
 class _FakeAgentConnector:
@@ -44,9 +46,9 @@ class _FakeAgentBridge:
     def __init__(self, connector_storage: _FakeStorageConnector) -> None:
         self._connector_storage = connector_storage
 
-    def run_in_agent(self, coroutine_factory: Callable[[], Coroutine]) -> Future:
-        result: Future = Future()
-        result.set_result(asyncio.run(coroutine_factory()))
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> Future[T]:
+        result: Future[T] = Future()
+        result.set_result(asyncio.run(coroutine))
         return result
 
     async def object_storage_connector(self) -> _FakeStorageConnector:

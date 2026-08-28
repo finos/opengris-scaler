@@ -3,7 +3,7 @@ import logging
 import sys
 import threading
 from concurrent.futures import Future
-from typing import Callable, Optional
+from typing import Any, Callable, Coroutine, Optional, TypeVar
 
 from scaler.client.agent.disconnect_manager import ClientDisconnectManager
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -38,6 +38,8 @@ from scaler.utility.exceptions import (
 from scaler.utility.identifiers import ClientID
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class ClientAgent(threading.Thread):
@@ -74,8 +76,10 @@ class ClientAgent(threading.Thread):
         if object_storage_address is not None:
             self._object_storage_address.set_result(AddressConfig.from_string(object_storage_address))
 
-        # The event loop is created by the agent's thread, but the client's thread requires it.
-        # A future safely publishes it across both threads.
+        # The loop is started by the agent, but the client's thread needs it to schedule coroutines on the agent. A
+        # future safely publishes it across both threads, and lets the client wait if it gets there first. The client
+        # does get there first when the object storage address is known upfront, as it then does not wait on the
+        # scheduler before submitting objects.
         self._loop: Future[asyncio.AbstractEventLoop] = Future()
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
@@ -126,17 +130,21 @@ class ClientAgent(threading.Thread):
         self._heartbeat_manager.register(connector_external=self._connector_external)
 
     def run(self):
-        loop = asyncio.new_event_loop()
-        self._loop.set_result(loop)
-        run_task_forever(loop, self._run())
+        run_task_forever(asyncio.new_event_loop(), self._run())
 
     async def _run(self):
+        self._loop.set_result(asyncio.get_running_loop())
+
         self.__initialize()
         await self.__get_loops()
 
-    def get_loop(self) -> asyncio.AbstractEventLoop:
-        """Returns the agent's event loop, or blocks until the agent's thread starts it."""
-        return self._loop.result()
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> Future[T]:
+        """Schedules a coroutine on the agent's event loop, returns a future that completes with its result.
+
+        Can be called from any thread, but blocks until the agent starts its event loop. Raises a `RuntimeError` if
+        the agent's loop is closed.
+        """
+        return asyncio.run_coroutine_threadsafe(coroutine, self._loop.result())
 
     def get_object_storage_address(self) -> AddressConfig:
         """Returns the object storage address, or block until it receives it."""

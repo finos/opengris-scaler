@@ -1,6 +1,6 @@
 import abc
 from concurrent.futures import Future
-from typing import Callable, Coroutine
+from typing import Any, Coroutine, TypeVar
 
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncObjectStorageConnector, SyncConnector
@@ -14,6 +14,9 @@ from scaler.protocol.capnp import (
     TaskCancelConfirm,
     TaskResult,
 )
+
+
+T = TypeVar("T")
 
 
 class ClientAgentBridge(abc.ABC):
@@ -54,10 +57,12 @@ class ClientAgentBridge(abc.ABC):
         """Wait for the agent to fully stop. Safe to call multiple times."""
 
     @abc.abstractmethod
-    def run_in_agent(self, coroutine_factory: Callable[[], Coroutine]) -> Future:
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> Future[T]:
         """Run a coroutine on the agent's event loop, and return a future that completes with its result.
 
         Can be called from any thread, including from the agent's event loop itself.
+
+        Takes ownership of the coroutine, closing it if the agent is not running anymore.
         """
 
     @abc.abstractmethod
