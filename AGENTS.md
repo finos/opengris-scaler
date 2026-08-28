@@ -15,14 +15,13 @@ src/scaler/              Python: client/, scheduler/, worker/, worker_manager_ad
 src/cpp/scaler/          C++20: ymq/ (network layer over libuv), object_storage/, protocol/, wrapper/, utility/
 src/protocol/            Cap'n Proto schemas
 tests/                   mirrors src/scaler (unittest); tests/cpp mirrors src/cpp/scaler (GTest)
-scripts/                 build.sh, test.sh, library_tool.sh (third-party C++ libraries), *.ps1 for Windows
+scripts/                 build.sh, test.sh, library_tool.sh (third-party C++ libraries)
 docs/source/tutorials/   user documentation; commands.rst documents CLI flags and config keys
 examples/                runnable examples, executed by CI
 ```
 
 ## Build and test
 
-Devcontainer and Windows setup: `docs/source/tutorials/development/`.
 The devcontainer (`REMOTE_CONTAINERS=true`) ships the third-party C++ libraries. Elsewhere, build them once:
 
 ```bash
@@ -39,7 +38,7 @@ uv pip install -e ".[all]" --group dev    # also builds the C++ extensions (scik
 ./scripts/build.sh                              # standalone C++ build, required by ./scripts/test.sh
 ```
 
-The gate, before every commit that touches code:
+The gate, run by CI on Linux, macOS, and Windows, before every commit that touches code:
 
 ```bash
 python_dirs="src tests examples benchmarks docs/source"    # "." would also scan virtualenvs and build directories
@@ -49,7 +48,6 @@ python -m unittest discover -v tests -t .
 ./scripts/test.sh                               # C++
 ```
 
-- CI (`.github/workflows/build-and-test.yml`) runs the gate on Linux, macOS, and Windows, with clang-format 21.
 - A pipe into `tail` or `grep` masks the gate's exit status: `set -o pipefail`, or write the output to a file.
 - Run a command for its result, never because a document lists it.
 - A build or test sequence shared by workflows is one composite action under `.github/actions/`.
@@ -199,10 +197,10 @@ Everything written here (comments, docstrings, docs, commit messages, logs, CLI 
 - Body only for what the diff cannot say: what was wrong, why it matters, what was verified, in point form.
 - A message stands without the conversation: no "as discussed", no session structure, no local paths, hostnames, or emails.
 - One concern per commit, each passing the gate on its own: a refactor ships apart from behaviour changes.
-- A fix to unpushed work folds into the commit it fixes.
+- A fix to unpushed work folds into the commit it fixes, and pushed work gets a new commit.
 - Stage named files: scratch notes, generated output, and session artifacts stay out.
 - Commit as the configured author (`git config user.name`, `git config user.email`), and ask when none is set.
-- Every name on a commit is a human with a CLA on file: the configured author, and no agent trailer.
+- Every name on a commit is a human with a CLA on file: the configured author, and no agent `Co-authored-by` trailer.
 
 ### Replies and reports
 
