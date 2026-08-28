@@ -274,6 +274,10 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
             # if graph is already in canceling or aborting, we don't need to proceed whole graph canceling again
             return
 
+        # must stay before the gather: the cancels below re-enter the task router, which locks per task, and this is
+        # one of the two guards that keep that lock acquisition graph acyclic. the other is __mark_node_done and
+        # __mark_node_canceled removing the task from running_task_ids before they fan out here, so that a task is
+        # never a member of its own fan-out set. either one alone is enough, do not drop both
         graph_info.status = _GraphState.Canceling
 
         await asyncio.gather(
@@ -321,6 +325,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
 
         graph_info.sorter.done(task_cancel_confirm.taskId)
 
+        # must stay before the caller fans out to __cancel_whole_graph, see the comment there
         if task_cancel_confirm.taskId in graph_info.running_task_ids:
             graph_info.running_task_ids.remove(task_cancel_confirm.taskId)
 
@@ -392,6 +397,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         self.__clean_intermediate_result(graph_task_id, result.taskId)
         graph_info.sorter.done(result.taskId)
 
+        # must stay before the caller fans out to __cancel_whole_graph, see the comment there
         if result.taskId in graph_info.running_task_ids:
             graph_info.running_task_ids.remove(result.taskId)
 
