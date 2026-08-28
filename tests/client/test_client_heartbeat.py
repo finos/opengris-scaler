@@ -80,7 +80,12 @@ class TestClientHeartbeat(unittest.TestCase):
         ) as client:
             # Serializing the argument, and deserializing the result, both take longer than the scheduler's client
             # timeout.
+
+            # Registering a callback forces the result object to be deserialized as soon as the task finishes, on the
+            # agent's event loop.
             future = client.submit(slow_task, SlowObject())
+            future.add_done_callback(lambda _: None)
+
             self.assertIsInstance(future.result(timeout=RESULT_TIMEOUT_SECONDS), SlowObject)
 
             # The client must still be connected to the scheduler, i.e. it kept exchanging heartbeats while fetching the
