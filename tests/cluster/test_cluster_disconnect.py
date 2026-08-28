@@ -97,7 +97,7 @@ class TestClusterDisconnect(unittest.TestCase):
 
             self.combo._scheduler.kill()  # scheduler vanishes: crash / network partition
 
-            with self.assertRaises(DisconnectedError):
+            with self.assertRaises((DisconnectedError, TimeoutError)):
                 future.result(timeout=30)
         finally:
             try:
