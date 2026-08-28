@@ -493,7 +493,7 @@ _original_wait: Optional[Callable[..., concurrent.futures._base.DoneAndNotDoneFu
 _original_as_completed: Optional[Callable[..., Iterator[concurrent.futures.Future]]] = None
 
 
-def _jspi_wait(
+def jspi_wait(
     fs: Iterable[concurrent.futures.Future],
     timeout: Optional[float] = None,
     return_when: str = concurrent.futures.ALL_COMPLETED,
@@ -532,7 +532,7 @@ def _jspi_wait(
     return concurrent.futures._base.DoneAndNotDoneFutures(done, not_done)
 
 
-def _jspi_as_completed(
+def jspi_as_completed(
     fs: Iterable[concurrent.futures.Future], timeout: Optional[float] = None
 ) -> Iterator[concurrent.futures.Future]:
     fs = list(fs)
@@ -544,7 +544,7 @@ def _jspi_as_completed(
             yield f
 
     while pending:
-        result = _jspi_wait(pending, timeout=timeout, return_when=concurrent.futures.FIRST_COMPLETED)
+        result = jspi_wait(pending, timeout=timeout, return_when=concurrent.futures.FIRST_COMPLETED)
         if not result.done:
             raise concurrent.futures.TimeoutError(f"{len(pending)} (of {len(fs)}) futures unfinished")
         for f in result.done:
@@ -583,7 +583,7 @@ def _install_concurrent_futures_jspi_patch() -> None:
         return
     _original_wait = concurrent.futures.wait
     _original_as_completed = concurrent.futures.as_completed
-    _rebind_in_loaded_modules(_original_wait, _original_as_completed, _jspi_wait, _jspi_as_completed)
+    _rebind_in_loaded_modules(_original_wait, _original_as_completed, jspi_wait, jspi_as_completed)
     _concurrent_futures_patched = True
 
 
@@ -592,7 +592,7 @@ def _uninstall_concurrent_futures_jspi_patch() -> None:
     if not _concurrent_futures_patched:
         return
     if _original_wait is not None and _original_as_completed is not None:
-        _rebind_in_loaded_modules(_jspi_wait, _jspi_as_completed, _original_wait, _original_as_completed)
+        _rebind_in_loaded_modules(jspi_wait, jspi_as_completed, _original_wait, _original_as_completed)
     _original_wait = None
     _original_as_completed = None
     _concurrent_futures_patched = False

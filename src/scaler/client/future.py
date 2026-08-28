@@ -331,6 +331,16 @@ class ScalerFuture(concurrent.futures.Future):
                 if remaining_seconds <= 0:
                     raise concurrent.futures.TimeoutError
 
+            if sys.platform == "emscripten":
+                # The client agent runs on this very thread under Pyodide, so `Condition.wait()` would block the only
+                # thread that can complete the fetch. Suspend on the fetch's future instead, releasing the condition so
+                # that the fetch's callback can set this future's result.
+                #
+                # The fetch always started by now: the future is done, has a result object, and did not receive it yet.
+                assert self._result_object_future is not None
+                self.__jspi_wait_future_settled(self._result_object_future, remaining_seconds)
+                continue
+
             self._condition.wait(remaining_seconds)  # type: ignore[attr-defined]
 
     def _wait_result_ready(self, timeout: Optional[float] = None) -> None:
@@ -346,39 +356,14 @@ class ScalerFuture(concurrent.futures.Future):
             return
 
         if sys.platform == "emscripten":
-            # On Pyodide the agent task runs on the same single-threaded
-            # asyncio loop as this caller. ``threading.Condition.wait`` blocks
-            # the only thread, so the agent never gets a chance to run and
-            # signal completion -> deadlock. Instead, suspend the wasm stack
-            # via JSPI while the asyncio loop continues to drive the agent.
-            from pyodide.ffi import run_sync  # type: ignore[import-not-found]
+            # The client agent runs on this very thread under Pyodide, so `Condition.wait()` would block the only
+            # thread that can mark this future as done. Suspend on this future instead, releasing the condition so that
+            # the agent can acquire it in `set_result_ready()`.
+            self.__jspi_wait_future_settled(self, timeout)
 
-            async def _await_done() -> None:
-                fut: asyncio.Future = asyncio.wrap_future(self)
-                if timeout is None:
-                    await fut
-                else:
-                    await asyncio.wait_for(fut, timeout)
+            if not self.done():
+                raise concurrent.futures.TimeoutError
 
-            # ``self._condition`` is held by the caller; release it while we
-            # suspend so the agent (running on the same loop) can acquire it
-            # in ``set_result_ready`` to mark the future done.
-            self._condition.release()  # type: ignore[attr-defined]
-            try:
-                try:
-                    run_sync(_await_done())
-                except asyncio.TimeoutError as exc:
-                    raise concurrent.futures.TimeoutError() from exc
-                except (asyncio.CancelledError, concurrent.futures.CancelledError):
-                    # ``asyncio.wrap_future`` raises ``CancelledError`` once
-                    # the underlying ``ScalerFuture`` transitions to
-                    # cancelled. The native ``Condition.wait`` path also
-                    # returns silently in that case (it is just woken up by
-                    # ``notify_all``), so callers like ``cancel()`` only
-                    # care that the future has settled.
-                    pass
-            finally:
-                self._condition.acquire()  # type: ignore[attr-defined]
             return
 
         if not self._condition.wait(timeout):
@@ -395,3 +380,29 @@ class ScalerFuture(concurrent.futures.Future):
             return "GraphUmbrellaTask"
         else:
             return "GraphSubTask"
+
+    def __jspi_wait_future_settled(self, future: concurrent.futures.Future, timeout: Optional[float]) -> None:
+        """
+        Suspends the WebAssembly stack until `future` settles, or until `timeout` seconds elapsed.
+
+        On Pyodide, the client agent runs on this thread's asyncio event loop, so `threading.Condition.wait()` would
+        block the only thread able to settle `future`. `jspi_wait()` suspends the WebAssembly stack instead, letting
+        the event loop keep driving the agent.
+
+        Like `Condition.wait()`, this neither raises on timeout nor propagates `future`'s outcome (including its
+        cancellation): callers re-check their own predicate and deadline. It also never cancels `future`, as that
+        would abort what the future stands for, e.g. an in-flight object download.
+        """
+
+        assert self._condition._is_owned()  # type: ignore[attr-defined]
+
+        from scaler.client.agent.bridge import jspi_wait
+
+        # The condition is held by the caller; release it while suspended so that the agent (running on the same event
+        # loop) can acquire it. `_release_save()` drops the whole recursion count of the underlying re-entrant lock, as
+        # `Condition.wait()` does.
+        saved_state = self._condition._release_save()  # type: ignore[attr-defined]
+        try:
+            jspi_wait([future], timeout=timeout)
+        finally:
+            self._condition._acquire_restore(saved_state)  # type: ignore[attr-defined]
