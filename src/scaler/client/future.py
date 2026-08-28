@@ -264,12 +264,13 @@ class ScalerFuture(concurrent.futures.Future):
             if self._result_object_future is not None:
                 return  # the object is already being fetched
 
-            if self._task_state == TaskState.success:
-                is_exception = False
-            elif self._task_state == TaskState.failed:
-                is_exception = True
-            else:
-                raise ValueError(f"unexpected task status: {self._task_state}")
+            match self._task_state:
+                case TaskState.success:
+                    is_exception = False
+                case TaskState.failed:
+                    is_exception = True
+                case _:
+                    raise ValueError(f"unexpected task status: {self._task_state}")
 
             # TODO: graph task results could also be deleted if these are not required by another task of the graph.
             delete_after_fetch = self._is_simple_task()
@@ -278,11 +279,10 @@ class ScalerFuture(concurrent.futures.Future):
                 self._result_object_id, is_exception=is_exception, delete_after_fetch=delete_after_fetch
             )
 
-        self._result_object_future.add_done_callback(self.__on_result_object_fetched)
+        self._result_object_future.add_done_callback(lambda _: self.__on_result_object_fetched(is_exception))
 
-    def __on_result_object_fetched(self, _: concurrent.futures.Future) -> None:
+    def __on_result_object_fetched(self, is_exception: bool) -> None:
         assert self._result_object_future is not None and self._result_object_future.done()
-        is_exception = self._task_state == TaskState.failed
 
         try:
             result_object = self._result_object_future.result()
@@ -300,7 +300,7 @@ class ScalerFuture(concurrent.futures.Future):
             # The future got canceled while its result object was being fetched, e.g. by `Client.disconnect()`.
             pass
 
-    def _wait_result_object(self, timeout: Optional[float] = None):
+    def _wait_result_object(self, timeout: Optional[float] = None) -> None:
         """
         Blocks until the future's result object is fetched, starting its fetching if it did not start yet.
 
@@ -329,11 +329,11 @@ class ScalerFuture(concurrent.futures.Future):
             else:
                 remaining_seconds = deadline - time.monotonic()
                 if remaining_seconds <= 0:
-                    raise concurrent.futures.TimeoutError()
+                    raise concurrent.futures.TimeoutError
 
             self._condition.wait(remaining_seconds)  # type: ignore[attr-defined]
 
-    def _wait_result_ready(self, timeout: Optional[float] = None):
+    def _wait_result_ready(self, timeout: Optional[float] = None) -> None:
         """
         Blocks until the future is done (either successfully, or on failure/cancellation).
 
@@ -382,7 +382,7 @@ class ScalerFuture(concurrent.futures.Future):
             return
 
         if not self._condition.wait(timeout):
-            raise concurrent.futures.TimeoutError()
+            raise concurrent.futures.TimeoutError
 
     def _is_simple_task(self):
         return self._group_task_id is None and self._task_id is not None

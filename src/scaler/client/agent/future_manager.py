@@ -75,19 +75,20 @@ class ClientFutureManager(FutureManager):
 
         profile_result = retrieve_profiling_result_from_task_result(result)
 
-        if result_type == TaskResultType.failedWorkerDied:
-            future.set_exception(WorkerDiedError(f"worker died when processing task: {task_id.hex()}"), profile_result)
+        match result_type:
+            case TaskResultType.failedWorkerDied:
+                future.set_exception(
+                    WorkerDiedError(f"worker died when processing task: {task_id.hex()}"), profile_result
+                )
 
-        elif result_type == TaskResultType.success:
-            result_object_id = self.__get_result_object_id(result)
-            future.set_result_ready(result_object_id, TaskState.success, profile_result)
+            case TaskResultType.success:
+                future.set_result_ready(self.__get_result_object_id(result), TaskState.success, profile_result)
 
-        elif result_type == TaskResultType.failed:
-            result_object_id = self.__get_result_object_id(result)
-            future.set_result_ready(result_object_id, TaskState.failed, profile_result)
+            case TaskResultType.failed:
+                future.set_result_ready(self.__get_result_object_id(result), TaskState.failed, profile_result)
 
-        else:
-            raise TypeError(f"{result.taskId.hex()}: Unknown task status: {result.resultType}")
+            case _:
+                raise TypeError(f"{result.taskId.hex()}: Unknown task status: {result.resultType}")
 
     def on_task_cancel_confirm(self, cancel_confirm: TaskCancelConfirm):
         cancel_confirm_type = TaskCancelConfirmType(cancel_confirm.cancelConfirmType.value)
