@@ -250,7 +250,7 @@ class ScalerFuture(concurrent.futures.Future):
     def _has_result_listeners(self) -> bool:
         return len(self._done_callbacks) > 0 or len(self._waiters) > 0  # type: ignore[attr-defined]
 
-    def _start_result_object_fetch(self):
+    def _start_result_object_fetch(self) -> None:
         """
         Starts the fetching of the future's result object, at most once.
 
