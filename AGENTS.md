@@ -163,47 +163,43 @@ Coding principles inspired by the Zen of Python (`python -c 'import this'`), app
 
 ## Writing
 
-Applies to everything written here: comments, docstrings, docs, commit messages, log messages, CLI output, reviews, replies, and this file.
+Everything written here (comments, docstrings, docs, commit messages, logs, CLI output, reviews, replies, this file) says only what needs saying, in the fewest words that leave no ambiguity.
 
 ### Every sentence
 
-- The shortest version that carries the point, stopping at unambiguous rather than at shortest.
-- Lead with the point, and add rationale only when a reader could not reconstruct it.
-- One idea per sentence, one topic per paragraph, active voice, at most about 25 words.
-- Plain punctuation (periods, commas, colons, parentheses): a semicolon or em dash marks a sentence to split.
-- Plain, literal verbs: start (not spin up), analyze (not perform an analysis).
-- Concrete over abstract: the command, the field, the measurement, never an intensifier ("retries twice, then fails the task", not "handles failures robustly").
+- The point first, rationale only when the reader could not reconstruct it.
+- One idea per sentence, one topic per paragraph, active voice, about 25 words at most.
+- Plain punctuation: a semicolon or em dash marks a sentence to split.
+- Plain verbs: start (not spin up), analyze (not perform an analysis).
+- Concrete: the command, the field, the measurement, never an intensifier.
 - One name per concept, the project's own: scheduler, worker, agent, processor, worker manager, object storage, task, graph.
 - Statements, not questions.
-- Prose that names code is a claim to verify: every symbol, default, and flag it states matches the source.
-- Present state only: "now", "previously", "no longer", and "used to" belong to the commit message.
-- Keep every hedge that carries real uncertainty: "may have failed" stays "may have failed".
-- A rewrite keeps every fact and adds none.
-- Three or more steps or conditions become a list, numbered when ordered, one bounded action per step.
+- Prose that names code matches the source: every symbol, default, flag.
+- Present state only: "now", "previously", "used to" belong in the commit message.
+- Every fact and every real hedge stays, none is added: "may have failed" is not "failed".
+- Three or more steps or conditions: a list, numbered when ordered, one action per step.
 
 ### Comments
 
-- A comment says what the code and a grep cannot: the why, an invariant, a gotcha, a measured number, a link to a decision.
-- One line: a paragraph means the code needs a better shape, or the explanation belongs in the commit message.
-- For the next reader of the code, not the reviewer of this change: no "as requested", no PR or issue numbers.
+- Only what the code and a grep cannot say: the why, an invariant, a gotcha, a measured number, a link to a decision.
+- One line: more belongs in the commit message, or the code needs a better shape.
+- For the next reader, not this change's reviewer: no "as requested", no PR or issue numbers.
 - A test docstring names the behaviour the test pins.
 
 ### Replies and reports
 
-- Lead with the next action when there is one.
-- Say what was measured, not that it works: the number, the failing output, the skipped step.
-- State an error as its cause, then the fix.
-- Finish one issue before raising the next: pre-existing breakage early, as a decision, and unrelated findings at the end.
-- A list longer than five items splits into now and later.
-- End when the answer is done, after restating where the task stands: done, in progress, next.
+- The next action first, when there is one.
+- What was measured, not that it works: the number, the failing output, the skipped step.
+- An error: its cause, then the fix.
+- One issue at a time: pre-existing breakage raised early as a decision, unrelated findings at the end.
+- Over five items: split into now and later.
+- Close with the task's state (done, in progress, next), and nothing after.
 
 ### Documentation and this file
 
-- Flat: a heading, then short bullets or paragraphs.
-- One bullet per line, unwrapped, one rule per bullet.
-- A section answers one question and is named for its subject, and a page is named for what it holds.
-- One owner per fact, and everything else links to it.
-- Moving content deletes the old home and repoints every reference in the same change.
+- Flat: a heading, then one-line bullets, one rule each, unwrapped.
+- A section answers one question and is named for its subject, a page for what it holds.
+- One owner per fact, everything else links to it, and a move repoints every link in the same change.
 - Bold marks lead-in labels only.
 
 ## Commits
