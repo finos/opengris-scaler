@@ -95,6 +95,7 @@ class Scheduler:
         self._task_controller.register(
             self._binder,
             self._binder_monitor,
+            self._connector_storage,
             self._client_manager,
             self._object_controller,
             self._worker_controller,
