@@ -144,14 +144,7 @@ class Client:
         )
         self._bridge.start()
 
-        logger.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
-
-        # Blocks until the agent receives the object storage address
-        self._object_storage_address = self._bridge.get_object_storage_address()
-
         self._connector_agent = self._bridge.connector
-
-        logger.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
 
         # The object storage server is accessed by the client agent, on its event loop.
         self._object_buffer = ObjectBuffer(self._identity, self._serializer, self._connector_agent, self._bridge)

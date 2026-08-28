@@ -1,8 +1,8 @@
 import asyncio
+import concurrent.futures
 import logging
 import sys
 import threading
-from concurrent.futures import Future
 from typing import Any, Callable, Coroutine, Optional, TypeVar
 
 from scaler.client.agent.disconnect_manager import ClientDisconnectManager
@@ -71,7 +71,7 @@ class ClientAgent(threading.Thread):
         self._scheduler_address = scheduler_address
         self._network_backend = network_backend
 
-        self._object_storage_address: Future[AddressConfig] = Future()
+        self._object_storage_address: concurrent.futures.Future[AddressConfig] = concurrent.futures.Future()
 
         if object_storage_address is not None:
             self._object_storage_address.set_result(AddressConfig.from_string(object_storage_address))
@@ -80,7 +80,7 @@ class ClientAgent(threading.Thread):
         # future safely publishes it across both threads, and lets the client wait if it gets there first. The client
         # does get there first when the object storage address is known upfront, as it then does not wait on the
         # scheduler before submitting objects.
-        self._loop: Future[asyncio.AbstractEventLoop] = Future()
+        self._loop: concurrent.futures.Future[asyncio.AbstractEventLoop] = concurrent.futures.Future()
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
         self._future_manager = future_manager
@@ -138,17 +138,13 @@ class ClientAgent(threading.Thread):
         self.__initialize()
         await self.__get_loops()
 
-    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> Future[T]:
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> concurrent.futures.Future[T]:
         """Schedules a coroutine on the agent's event loop, returns a future that completes with its result.
 
         Can be called from any thread, but blocks until the agent starts its event loop. Raises a `RuntimeError` if
         the agent's loop is closed.
         """
         return asyncio.run_coroutine_threadsafe(coroutine, self._loop.result())
-
-    def get_object_storage_address(self) -> AddressConfig:
-        """Returns the object storage address, or block until it receives it."""
-        return self._object_storage_address.result()
 
     async def get_object_storage_connector(self) -> AsyncObjectStorageConnector:
         """Returns the agent's object storage connector, or blocks until it is connected."""
@@ -208,12 +204,16 @@ class ClientAgent(threading.Thread):
         """Connects the object storage connector, or waits until the scheduler provides its address."""
 
         object_storage_address = await asyncio.wrap_future(self._object_storage_address)
+
+        logger.info(f"{self.__class__.__name__}: connect to object storage at {object_storage_address}")
         await self._connector_storage.connect(object_storage_address, security_config=self._security_config)
 
     async def __get_loops(self):
         exception = None
         try:
             await self._connector_internal.bind(self._client_agent_address)
+
+            logger.info(f"{self.__class__.__name__}: connect to scheduler at {self._scheduler_address}")
             await self._connector_external.connect(
                 self._scheduler_address, ConnectorRemoteType.Binder, security_config=self._security_config
             )

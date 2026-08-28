@@ -2,7 +2,6 @@ import abc
 from concurrent.futures import Future
 from typing import Any, Coroutine, TypeVar
 
-from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncObjectStorageConnector, SyncConnector
 from scaler.protocol.capnp import (
     ClientDisconnect,
@@ -31,21 +30,12 @@ class ClientAgentBridge(abc.ABC):
     def start(self) -> None:
         """Start the agent. Must be called exactly once, before any other method."""
 
-    @abc.abstractmethod
-    def get_object_storage_address(self) -> AddressConfig:
-        """Block until the object storage address is known and return it.
-
-        Called once after ``start()`` to resolve the address the client will
-        use for direct object-storage reads/writes.
-        """
-
     @property
     @abc.abstractmethod
     def connector(self) -> SyncConnector:
         """Return the ``SyncConnector`` the ``Client`` uses to talk to the agent.
 
-        Only valid after ``start()`` and ``get_object_storage_address()`` have
-        returned.
+        Only valid after ``start()`` has returned.
         """
 
     @abc.abstractmethod

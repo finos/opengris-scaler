@@ -111,7 +111,7 @@ class ObjectBuffer:
         ]
 
         for pending_upload in pending_uploads:
-            pending_upload.result()
+            _ = pending_upload.result()
 
         self._pending_objects.clear()
 

@@ -90,7 +90,3 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
 
         await self.send_heartbeat()
         self._start_timestamp_ns = time.time_ns()
-
-    def get_object_storage_address(self) -> AddressConfig:
-        """Returns the object storage configuration, or block until it receives it."""
-        return self._object_storage_address.result()

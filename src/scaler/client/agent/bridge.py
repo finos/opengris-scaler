@@ -102,15 +102,10 @@ class IPCAgentBridge(ClientAgentBridge):
     def start(self) -> None:
         self._agent.start()
 
-    def get_object_storage_address(self) -> AddressConfig:
-        return self._agent.get_object_storage_address()
-
     @property
     def connector(self) -> SyncConnector:
         if self._connector is None:
-            # Lazily create the sync connector so we don't pay the cost until the
-            # agent has reported that the object-storage address is ready (which
-            # matches the ordering in the pre-refactor Client.__initialize__).
+            # Lazily created so we don't pay the cost until the client actually asks for it.
             self._connector = self._backend.create_sync_connector(
                 identity=self._identity,
                 connector_remote_type=ConnectorRemoteType.Connector,
@@ -176,9 +171,9 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
 # A previous attempt drove the heartbeat from ``sys.setprofile``. That works
 # for pure-Python heavy code (e.g. cloudpickle has many call/return events),
 # but breaks down when the wasm stack is JSPI-suspended inside a single
-# ``run_sync`` call (e.g. the Client's initial scheduler handshake waiting
-# on ``get_object_storage_address``): the user's Python stack has no frames
-# executing while suspended, so the profile callback never fires.
+# ``run_sync`` call (e.g. the Client's initial scheduler handshake):
+# the user's Python stack has no frames executing while suspended, so the
+# profile callback never fires.
 #
 # This implementation uses a JavaScript ``setInterval`` instead. The timer
 # fires from the browser's event loop, which runs even while wasm is
@@ -728,8 +723,8 @@ class _InProcessFuture(concurrent.futures.Future[T]):
     """A future for a coroutine that runs on the browser's single event loop.
 
     The client and the agent share that event loop, so blocking on a regular future would prevent the agent from ever
-    completing it. ``result()`` instead suspends the WebAssembly stack with ``run_sync()``, like
-    ``InProcessAgentBridge.get_object_storage_address()`` does, which lets the event loop keep driving the agent.
+    completing it. ``result()`` instead suspends the WebAssembly stack with ``run_sync()``, which lets the event loop
+    keep driving the agent.
     """
 
     def __init__(self, coroutine: Coroutine[Any, Any, T]) -> None:
@@ -847,32 +842,6 @@ class InProcessAgentBridge(ClientAgentBridge):
             _install_concurrent_futures_jspi_patch()
             _install_time_sleep_jspi_patch()
             _setup_browser_websocket_heartbeat(self._agent)
-
-    def get_object_storage_address(self) -> AddressConfig:
-        # ClientAgent resolves ``_object_storage_address`` early during its
-        # bring-up (immediately after receiving the scheduler's first message).
-        # Block the JSPI stack until that future is resolved; the asyncio loop
-        # continues to drive the agent coroutine in the background.
-        fut = self._agent._object_storage_address  # noqa: SLF001
-
-        # An address provided by the client's user resolves the future before the agent starts, no need to suspend the
-        # WebAssembly stack.
-        if fut.done():
-            return fut.result()
-
-        async def _wait() -> AddressConfig:
-            # ``fut`` is a ``concurrent.futures.Future``. ``asyncio.wrap_future``
-            # adapts it to an awaitable on the current loop without any
-            # polling -- the agent task signals completion in the same loop, so
-            # awaiting the wrapped future yields back to asyncio exactly once
-            # and resumes when the future is set. A previous version used
-            # ``while not fut.done(): await asyncio.sleep(0.01)``, which under
-            # ``pyodide.ffi.run_sync`` (JSPI) created a long chain of nested
-            # ``setTimeout`` callbacks and could trigger Pyodide WebLoop
-            # crashes ("memory access out of bounds" / "null function").
-            return await asyncio.wrap_future(fut)
-
-        return _run_sync(_wait())
 
     @property
     def connector(self) -> SyncConnector:

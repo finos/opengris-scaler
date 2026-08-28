@@ -185,7 +185,7 @@ class BridgeSurfaceParityTest(unittest.TestCase):
     so an implementation drift gets caught here rather than at runtime."""
 
     def test_both_bridges_implement_the_abstract_methods(self) -> None:
-        methods = {"start", "get_object_storage_address", "connector", "is_alive", "join"}
+        methods = {"start", "connector", "is_alive", "join", "run_in_agent"}
         for cls in (IPCAgentBridge, InProcessAgentBridge):
             for name in methods:
                 self.assertTrue(hasattr(cls, name), f"{cls.__name__} is missing required bridge method {name!r}")
