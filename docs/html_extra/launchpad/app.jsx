@@ -1,4 +1,4 @@
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 const IS_ADVANCED = new URLSearchParams(window.location.search).has('advanced');
 const IS_DEV = new URLSearchParams(window.location.search).has('dev');
@@ -1292,6 +1292,1088 @@ with Client(address="${addr}") as client:
   );
 }
 
+/* ── Try it tab: Pyodide + Monaco + Jedi ── */
+
+// Last-known-good Pyodide version, used only if launchpad_pyodide.json (written at doc-build
+// time by scripts/generate_jupyterlite_config.py from jupyterlite-pyodide-kernel's pin in
+// pyproject.toml -- the actual source of truth) can't be fetched, e.g. when serving this
+// directory directly without a `make html` pass.
+const PYODIDE_VERSION_FALLBACK = "314.0.1";
+const pyodideCdnUrl = (version) => `https://cdn.jsdelivr.net/pyodide/v${version}/full/pyodide.js`;
+
+const MONACO_VS = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+
+// localStorage key: a dev/advanced override for the Try-it tab, kept out of the per-deployment
+// scaler_state blob since it describes the browser sandbox, not the cluster.
+const TRYIT_PYODIDE_VERSION_KEY = "launchpad-tryit-pyodide-version";
+// jedi powers autocomplete/hover in this tab (registerJediCompletion / registerJediHover below) and
+// docstring_parser turns the docstrings jedi returns into structured Markdown for the hover tooltip
+// -- both are infra for the editor, not something the user's code depends on, so they're always
+// installed alongside whatever the worker managers' requirements.txt union resolves to.
+const TRYIT_INFRA_PACKAGES = ["jedi", "docstring_parser"];
+
+const parseRequirements = (text) =>
+  text.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+
+// Package name portion of a requirement line, stripped of extras/version specifiers/markers, used
+// to de-duplicate the union below (e.g. "opengris-scaler[all]>=1.0" -> "opengris-scaler").
+const requirementPackageName = (line) => line.split(/[=<>!~;\[\s]/, 1)[0].toLowerCase();
+
+// Same as requirementPackageName, but also splits on "@" (PEP 508's direct-reference marker) so a
+// bare, not-quite-valid line like "scaler@some-branch" is still recognised as the scaler package
+// below rather than falling through as one opaque name.
+const SCALER_PACKAGE_NAMES = new Set(["opengris-scaler", "scaler"]);
+const SCALER_DEFAULT_REQUIREMENT = "opengris-scaler[all]";
+const isGitScalerRequirement = (line) => {
+  const name = line.split(/[=<>!~;\[\s@]/, 1)[0].toLowerCase();
+  return SCALER_PACKAGE_NAMES.has(name) && line.includes("@");
+};
+
+// Tasks the client submits can land on any worker manager in the cluster, so a package the client
+// imports has to be installed on every worker manager that might run it -- otherwise the worker
+// fails to unpickle/execute the task. We union every worker manager's requirements.txt so the
+// client has everything the cluster can possibly provide, de-duplicating by package name and
+// keeping the first-seen spec.
+const unionWorkerRequirements = (workerManagers) => {
+  const seen = new Set();
+  const lines = [];
+  for (const wm of workerManagers) {
+    for (const line of parseRequirements(wm.requirements || "")) {
+      // A worker manager may point its own opengris-scaler install at a git branch/commit (e.g.
+      // "opengris-scaler @ git+https://...@my-branch") to try an unreleased server-side change.
+      // Pyodide/micropip can only install pure-Python or prebuilt wasm wheels -- it can never
+      // build the C++ extension from source, and a direct reference isn't even always valid PEP
+      // 508 syntax (a bare "scaler@my-branch" has no URL) -- so forward the default PyPI install
+      // for the browser-side client instead of this line.
+      const isScalerGitInstall = isGitScalerRequirement(line);
+      const effectiveLine = isScalerGitInstall ? SCALER_DEFAULT_REQUIREMENT : line;
+      const name = isScalerGitInstall ? "opengris-scaler" : requirementPackageName(effectiveLine);
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      lines.push(effectiveLine);
+    }
+  }
+  return lines.join("\n");
+};
+
+// After a micropip.install, the requirement lines in requirements.txt (e.g. "numpy>=1.20", or no
+// version at all) don't say what actually landed in the sandbox -- micropip resolves them against
+// whatever wheels are available for this Pyodide build, which can differ from what a real venv
+// would pick. Look up the resolved version of each top-level requirement via importlib.metadata so
+// the Try-it tab can show what's really importable rather than the unresolved spec.
+const resolveInstalledPackages = async (pyodide, requirementsText) => {
+  const seen = new Set();
+  const names = [];
+  for (const line of parseRequirements(requirementsText)) {
+    const name = requirementPackageName(line);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  if (names.length === 0) return [];
+  pyodide.globals.set("_tryit_pkg_names", pyodide.toPy(names));
+  const jsonText = await pyodide.runPythonAsync(
+    "import importlib.metadata as _tryit_im, json\n" +
+    "def _tryit_pkg_version(name):\n" +
+    "    try:\n" +
+    "        return _tryit_im.version(name)\n" +
+    "    except _tryit_im.PackageNotFoundError:\n" +
+    "        return None\n" +
+    "json.dumps([[name, _tryit_pkg_version(name)] for name in _tryit_pkg_names])"
+  );
+  const resolved = JSON.parse(jsonText).map(([name, version]) => ({ name, version }));
+  resolved.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return resolved;
+};
+
+const readLocalStorage = (key, fallback = "") => {
+  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+};
+const writeLocalStorage = (key, value) => {
+  try { localStorage.setItem(key, value); } catch {}
+};
+
+function loadMonacoOnce() {
+  if (window._monacoReady) return window._monacoReady;
+  window.MonacoEnvironment = { getWorkerUrl: () => "data:text/javascript;charset=utf-8," };
+  window._monacoReady = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = MONACO_VS + "/loader.js";
+    s.onload = () => {
+      require.config({ paths: { vs: MONACO_VS } });
+      require(["vs/editor/editor.main"], resolve);
+    };
+    s.onerror = () => reject(new Error("Failed to load Monaco from CDN"));
+    document.head.appendChild(s);
+  });
+  return window._monacoReady;
+}
+
+function registerJediCompletion(pyodide) {
+  const KIND = {
+    function:  monaco.languages.CompletionItemKind.Function,
+    class:     monaco.languages.CompletionItemKind.Class,
+    module:    monaco.languages.CompletionItemKind.Module,
+    instance:  monaco.languages.CompletionItemKind.Variable,
+    keyword:   monaco.languages.CompletionItemKind.Keyword,
+    statement: monaco.languages.CompletionItemKind.Variable,
+    param:     monaco.languages.CompletionItemKind.TypeParameter,
+    path:      monaco.languages.CompletionItemKind.File,
+  };
+  return monaco.languages.registerCompletionItemProvider("python", {
+    triggerCharacters: [".", "(", "'", '"'],
+    provideCompletionItems: async (model, position) => {
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber:   position.lineNumber,
+        startColumn:     word.startColumn,
+        endColumn:       position.column,
+      };
+      try {
+        pyodide.globals.set("_jedi_code", model.getValue());
+        pyodide.globals.set("_jedi_line", position.lineNumber);
+        pyodide.globals.set("_jedi_col",  position.column - 1);
+        const raw = await pyodide.runPythonAsync(
+          'import jedi as _j, json as _js\n' +
+          '_cs = _j.Interpreter(_jedi_code, [globals()]).complete(_jedi_line, _jedi_col)\n' +
+          '_js.dumps([{"name": c.name, "type": c.type} for c in _cs[:80]])'
+        );
+        return {
+          suggestions: JSON.parse(raw).map(({ name, type }) => ({
+            label: name,
+            kind: KIND[type] ?? monaco.languages.CompletionItemKind.Text,
+            insertText: name,
+            range,
+          })),
+        };
+      } catch {
+        return { suggestions: [] };
+      }
+    },
+  });
+}
+
+const AUTO_IMPORT_PY =
+  "import ast as _ast\n" +
+  "try:\n" +
+  "    _tree = _ast.parse(_auto_import_src)\n" +
+  "    _stmts = [n for n in _tree.body if isinstance(n, (_ast.Import, _ast.ImportFrom))]\n" +
+  "    if _stmts:\n" +
+  "        exec(compile(_ast.Module(_stmts, []), '<auto-imports>', 'exec'), globals())\n" +
+  "except Exception:\n" +
+  "    pass\n";
+
+function runAutoImports(pyodide, src) {
+  pyodide.globals.set("_auto_import_src", src);
+  return pyodide.runPythonAsync(AUTO_IMPORT_PY).catch(() => {});
+}
+
+// Jedi reads a docstring off the definition it resolved and does not walk the MRO, so a method that
+// inherits its documentation (ScalerFuture.result -> concurrent.futures.Future.result) comes back
+// with an empty docstring even when the name resolved perfectly. Re-resolve the dotted name it gives
+// us against the live modules and let inspect.getdoc() do the inheritance.
+const HOVER_INHERITED_DOC_PY =
+  'import importlib as _il\n' +
+  'def _hover_inherited_doc(full_name, generic):\n' +
+  '    _parts = [p for p in (full_name or "").split(".") if p]\n' +
+  '    for _i in range(len(_parts) - 1, 0, -1):\n' +
+  '        try:\n' +
+  '            _target = _il.import_module(".".join(_parts[:_i]))\n' +
+  '        except Exception:\n' +
+  '            continue\n' +
+  '        for _attr in _parts[_i:]:\n' +
+  '            _target = getattr(_target, _attr, None)\n' +
+  '            if _target is None:\n' +
+  '                break\n' +
+  '        if _target is None:\n' +
+  '            continue\n' +
+  '        _found = _ins.getdoc(_target) or ""\n' +
+  '        return "" if _found in generic else _found\n' +
+  '    return ""\n';
+
+// Monaco's Python grammar colours only its keyword list (`def`, `class`, `None`, `str`, `int`, ...);
+// every other token renders in the plain foreground. A signature made purely of identifiers -- e.g.
+// `submit(fn: Callable, *args, **kwargs) -> ScalerFuture` -- therefore comes out uniformly white,
+// while one that happens to mention `str`/`None` looks highlighted. Leading the line with `def` or
+// `class` (as Sphinx renders signatures) gives every signature a coloured keyword, so highlighting
+// no longer depends on which annotations a function happens to use.
+//
+// Default values that are object instances repr as `<pkg.mod.Cls object at 0x7f...>`; the address is
+// noise that also changes between runs, so collapse it to the bare class name.
+const HOVER_SIGNATURE_PY =
+  'import re as _re\n' +
+  'def _hover_signature(prefix, name, obj):\n' +
+  '    try:\n' +
+  '        _text = name + str(_ins.signature(obj))\n' +
+  '    except (TypeError, ValueError):\n' +
+  '        return ""\n' +
+  '    _text = _re.sub(r"<[\\w.]*?(\\w+) object at 0x[0-9a-fA-F]+>", r"<\\1 object>", _text)\n' +
+  '    return prefix + _text\n';
+
+// Shared Python tail for both hover lookups: turns `_doc` (a raw docstring) into the structured
+// fields the renderer needs. docstring_parser handles reST, Google and NumPy styles uniformly, so
+// a user's own docstrings format as well as scaler's reST ones. If it can't parse (or isn't
+// installed), fall back to showing the docstring verbatim rather than dropping the hover.
+const HOVER_DOC_PARSE_PY =
+  'try:\n' +
+  '    import docstring_parser as _dp\n' +
+  '    _p = _dp.parse(_doc) if _doc else None\n' +
+  'except Exception:\n' +
+  '    _p = None\n' +
+  'if _p is not None:\n' +
+  '    _parsed = {\n' +
+  '        "summary": _p.short_description or "",\n' +
+  '        "description": _p.long_description or "",\n' +
+  '        "params": [{"name": _x.arg_name or "", "type": _x.type_name or "",\n' +
+  '                    "description": _x.description or ""} for _x in _p.params],\n' +
+  '        "returns": ({"type": _p.returns.type_name or "",\n' +
+  '                     "description": _p.returns.description or ""} if _p.returns else None),\n' +
+  '        "raises": [{"type": _x.type_name or "", "description": _x.description or ""}\n' +
+  '                   for _x in _p.raises],\n' +
+  '    }\n' +
+  'else:\n' +
+  '    _parsed = {"summary": _doc, "description": "", "params": [],\n' +
+  '               "returns": None, "raises": []}\n';
+
+// Descriptions are wrapped across lines in the source docstring; Markdown list items must stay on
+// one line, so collapse the internal whitespace.
+const collapseWhitespace = (text) => (text || "").replace(/\s+/g, " ").trim();
+
+const formatHoverType = (type) => (type ? " (`" + type + "`)" : "");
+
+// Monaco renders hover contents as Markdown. A reST field list is not Markdown -- rendered raw it
+// collapses into one run-on paragraph -- so emit real bullet lists instead.
+function renderHoverMarkdown(parsed) {
+  if (!parsed) return "";
+  const sections = [];
+
+  const prose = [parsed.summary, parsed.description].filter(Boolean).join("\n\n");
+  if (prose) sections.push(prose);
+
+  if (parsed.params && parsed.params.length) {
+    const items = parsed.params.map(
+      (param) => "- `" + param.name + "`" + formatHoverType(param.type) + ": " + collapseWhitespace(param.description)
+    );
+    sections.push("**Parameters**\n\n" + items.join("\n"));
+  }
+
+  if (parsed.returns) {
+    const description = collapseWhitespace(parsed.returns.description);
+    const type = parsed.returns.type ? "`" + parsed.returns.type + "`" : "";
+    const detail = [type, description].filter(Boolean).join(": ");
+    if (detail) sections.push("**Returns**\n\n- " + detail);
+  }
+
+  if (parsed.raises && parsed.raises.length) {
+    const items = parsed.raises.map((entry) => {
+      const type = entry.type ? "`" + entry.type + "`" : "";
+      return "- " + [type, collapseWhitespace(entry.description)].filter(Boolean).join(": ");
+    });
+    sections.push("**Raises**\n\n" + items.join("\n"));
+  }
+
+  return sections.join("\n\n");
+}
+
+const hoverHasDocumentation = (result) => Boolean(result && renderHoverMarkdown(result.parsed));
+
+function registerJediHover(pyodide) {
+  return monaco.languages.registerHoverProvider("python", {
+    provideHover: async (model, position) => {
+      const wordInfo = model.getWordAtPosition(position);
+      if (!wordInfo) return null;
+
+      // Primary: look up the name in globals() via Python so we can do proper
+      // fallback to __init__.__doc__ when the class-level __doc__ is empty.
+      const lookUpGlobals = async () => {
+        try {
+          pyodide.globals.set("_hover_word", wordInfo.word);
+          const raw = await pyodide.runPythonAsync(
+            'import json as _js, inspect as _ins\n' +
+            HOVER_SIGNATURE_PY +
+            '_obj = globals().get(_hover_word)\n' +
+            '_doc = ""\n' +
+            '_name = ""\n' +
+            '_sig = ""\n' +
+            '_generic = {_ins.getdoc(object) or "", _ins.getdoc(object.__init__) or ""}\n' +
+            'if _obj is not None:\n' +
+            // getdoc() inherits a base class's docstring when the attribute defines none of its own
+            // (ScalerFuture.result -> concurrent.futures.Future.result), then __init__ covers classes
+            // whose installed wheel strips the class-level docstring. Anything inherited all the way
+            // up from `object` is boilerplate, not documentation for this name.
+            '    _doc = _ins.getdoc(_obj) or ""\n' +
+            '    if _doc in _generic:\n' +
+            '        _doc = ""\n' +
+            '    if not _doc:\n' +
+            '        _doc = _ins.getdoc(getattr(_obj, "__init__", None)) or ""\n' +
+            '        _doc = "" if _doc in _generic else _doc\n' +
+            // getdoc() on an instance returns its *type's* docstring, so hovering a string constant
+            // would answer with "str(object=\'\') -> str" -- documentation about str, not about the
+            // name under the cursor. Useless for a builtin; still worth showing for an instance of a
+            // documented class (hovering `client` reporting what a Client is).
+            '    if (not (_ins.isclass(_obj) or _ins.isroutine(_obj) or _ins.ismodule(_obj))\n' +
+            '            and type(_obj).__module__ == "builtins"):\n' +
+            '        _doc = ""\n' +
+            '    _name = (getattr(_obj, "__qualname__", None) or\n' +
+            '             getattr(_obj, "__name__", None) or _hover_word)\n' +
+            '    if _ins.isclass(_obj):\n' +
+            '        _sig = _hover_signature("class ", _name, _obj)\n' +
+            '    elif _ins.isroutine(_obj):\n' +
+            '        _sig = _hover_signature("def ", _name, _obj)\n' +
+            '    else:\n' +
+            '        _sig = _hover_signature("", _name, _obj)\n' +
+            HOVER_DOC_PARSE_PY +
+            '_js.dumps({"name": _name, "signature": _sig, "parsed": _parsed})'
+          );
+          const item = JSON.parse(raw);
+          return item?.name ? item : null;
+        } catch {
+          return null;
+        }
+      };
+
+      // Fallback: Jedi for attributes, local variables and other names not in globals().
+      // `get_signatures()` already renders the name with its parameters (and without `self`), and
+      // `docstring(raw=True)` returns the body alone, so the signature is not repeated in the prose.
+      //
+      // Two kinds of name carry nothing worth a tooltip: a keyword ("with", "for", "import") resolves
+      // to a dump of the language reference, and a keyword argument at a call site resolves to the
+      // parameter itself, whose signature is the useless "NoneType()".
+      const lookUpWithJedi = async () => {
+        try {
+          pyodide.globals.set("_jedi_code", model.getValue());
+          pyodide.globals.set("_jedi_line", position.lineNumber);
+          pyodide.globals.set("_jedi_col",  position.column - 1);
+          const raw = await pyodide.runPythonAsync(
+            'import json as _js, inspect as _ins\n' +
+            HOVER_INHERITED_DOC_PY +
+            '_generic = {_ins.getdoc(object) or "", _ins.getdoc(object.__init__) or ""}\n' +
+            '_doc = ""\n' +
+            '_name = ""\n' +
+            '_sig = ""\n' +
+            'try:\n' +
+            '    import jedi as _j\n' +
+            '    _hs = _j.Interpreter(_jedi_code, [globals()]).help(_jedi_line, _jedi_col)\n' +
+            '    _h = _hs[0] if _hs else None\n' +
+            '    if _h is not None and _h.type not in ("keyword", "param"):\n' +
+            '        _sigs = _h.get_signatures()\n' +
+            '        _name = _h.full_name or _h.name or ""\n' +
+            '        _prefix = {"class": "class ", "function": "def "}.get(_h.type, "")\n' +
+            '        _sig = (_prefix + _sigs[0].to_string()) if _sigs else ""\n' +
+            '        _doc = _h.docstring(raw=True) or ""\n' +
+            '        if _doc in _generic:\n' +
+            '            _doc = ""\n' +
+            '        if not _doc:\n' +
+            '            _doc = _hover_inherited_doc(_h.full_name, _generic)\n' +
+            'except Exception:\n' +
+            '    pass\n' +
+            HOVER_DOC_PARSE_PY +
+            '_js.dumps({"name": _name, "signature": _sig, "parsed": _parsed})'
+          );
+          const item = JSON.parse(raw);
+          return item?.name ? item : null;
+        } catch {
+          return null;
+        }
+      };
+
+      let result = await lookUpGlobals();
+      if (!hoverHasDocumentation(result)) {
+        const viaJedi = await lookUpWithJedi();
+        if (hoverHasDocumentation(viaJedi)) result = viaJedi;
+        else result = result || viaJedi;
+      }
+      if (!result) return null;
+
+      const body = renderHoverMarkdown(result.parsed);
+      // With neither a signature nor documentation there is nothing to say: echoing the resolved
+      // name back ("__main__.results") is noise, not a tooltip. A documented name that simply isn't
+      // callable -- a module, say -- still gets its name as the heading.
+      if (!result.signature && !body) return null;
+      const signature = result.signature || result.name;
+
+      const contents = [];
+      // Fencing the signature as Python is what gets it syntax highlighted; left as prose it
+      // renders in the same flat foreground colour as the rest of the tooltip.
+      if (signature) contents.push({ value: "```python\n" + signature + "\n```" });
+      if (body) contents.push({ value: body });
+
+      return {
+        range: {
+          startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+          startColumn: wordInfo.startColumn, endColumn: wordInfo.endColumn,
+        },
+        contents,
+      };
+    },
+  });
+}
+
+function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
+  const [pyStatus, setPyStatus]   = useState("idle"); // idle | loading | ready | error
+  const [pyError, setPyError]     = useState("");
+  const [usingLocalWheels, setUsingLocalWheels] = useState(false);
+  const [output, setOutput]       = useState([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [monacoReady, setMonacoReady] = useState(false);
+
+  const [showRequirements, setShowRequirements] = useState(false);
+  const [packagesDropdownStyle, setPackagesDropdownStyle] = useState({});
+  // The requirements union actually installed into the running interpreter. Frozen at the point
+  // the deploy's scheduler address first appears (boot) or changes (redeploy) -- edits to a
+  // worker manager's requirements.txt back in the Config tab only take effect on the next deploy,
+  // they never live-sync into an already-running interpreter.
+  const [appliedRequirements, setAppliedRequirements] = useState("");
+  // Resolved {name, version} pairs for appliedRequirements, as actually installed by micropip --
+  // see resolveInstalledPackages. Kept alongside appliedRequirements rather than derived from it in
+  // render, since resolving requires an async round-trip into the Pyodide interpreter.
+  const [installedPackages, setInstalledPackages] = useState([]);
+  const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | error
+  const [syncError, setSyncError] = useState("");
+  const [pyodideVersionInput, setPyodideVersionInput] = useState(
+    () => readLocalStorage(TRYIT_PYODIDE_VERSION_KEY, "")
+  );
+
+  const packagesButtonRef      = useRef(null);
+  const packagesDropdownRef    = useRef(null);
+  const editorContainerRef     = useRef(null);
+  const editorRef              = useRef(null);
+  const editorAddressRef       = useRef(null); // scheduler address currently reflected in the editor
+  const pyodideRef             = useRef(null);
+  const completionDisposable   = useRef(null);
+  const hoverDisposable        = useRef(null);
+  const hasInitEditor          = useRef(false);
+  const isRunningRef           = useRef(false);
+  const importTimerRef         = useRef(null);
+  const resolvedPyodideVersionRef         = useRef(null);
+  const resolvedPyodideVersionOverrideRef = useRef(false);
+  const outputCallbackRef      = useRef(null);
+  const interruptBufferRef     = useRef(null);
+  const cancelledRef           = useRef(false);
+
+  const defaultCode = [
+    "from scaler import Client",
+    "",
+    "# This is the address of the scheduler you launched",
+    `SCHEDULER_ADDRESS = "${schedulerAddress}"`,
+    "",
+    "with Client(address=SCHEDULER_ADDRESS) as client:",
+    "    futures = [client.submit(pow, 2, n) for n in range(8)]",
+    "    results = [f.result() for f in futures]",
+    "",
+    "print(results)",
+    "",
+  ].join("\n");
+
+  const runCode = useCallback(async () => {
+    if (!editorRef.current || !pyodideRef.current || isRunningRef.current) return;
+    isRunningRef.current = true;
+    setIsRunning(true);
+    setOutput([]);
+
+    const pyodide = pyodideRef.current;
+    cancelledRef.current = false;
+    let hasOutput = false;
+    const appendErr = (text) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls: "err" }]); };
+    outputCallbackRef.current = (text, cls) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls }]); };
+
+    try {
+      pyodide.globals.set("_editor_code", editorRef.current.getValue());
+      await pyodide.runPythonAsync(
+        "import sys as _s, logging as _log\n" +
+        "_log_h = _log.StreamHandler(_s.stdout)\n" +
+        "_log_h.setFormatter(_log.Formatter('%(levelname)s:%(name)s: %(message)s'))\n" +
+        "_root = _log.getLogger()\n" +
+        "_saved_level = _root.level\n" +
+        "_root.addHandler(_log_h)\n" +
+        "if _root.level == 0 or _root.level > _log.INFO:\n" +
+        "    _root.setLevel(_log.INFO)\n" +
+        "try:\n" +
+        "    exec(compile(_editor_code, '<editor>', 'exec'))\n" +
+        "finally:\n" +
+        "    _root.removeHandler(_log_h)\n" +
+        "    _root.setLevel(_saved_level)\n"
+      );
+      if (!hasOutput) setOutput([{ text: "(no output)\n", cls: "dim" }]);
+    } catch (err) {
+      if (!cancelledRef.current) appendErr(err.message || String(err));
+    } finally {
+      outputCallbackRef.current = null;
+      if (interruptBufferRef.current) Atomics.store(interruptBufferRef.current, 0, 0);
+      isRunningRef.current = false;
+      setIsRunning(false);
+    }
+  }, []);
+
+  const cancelRun = useCallback(() => {
+    if (!isRunningRef.current) return;
+    cancelledRef.current = true;
+    outputCallbackRef.current = null;
+    if (interruptBufferRef.current) Atomics.store(interruptBufferRef.current, 0, 2);
+    setOutput((prev) => [...prev, { text: "Cancelled.\n", cls: "dim" }]);
+  }, []);
+
+  // Packages dropdown floats over the editor/output split via a portal (see the render below)
+  // rather than sitting inline in the toolbar, so a long package list never pushes the editor
+  // down -- it just scrolls within its own max-height instead.
+  const togglePackagesDropdown = useCallback(() => {
+    setShowRequirements((wasOpen) => {
+      if (!wasOpen && packagesButtonRef.current) {
+        const r = packagesButtonRef.current.getBoundingClientRect();
+        setPackagesDropdownStyle({ position: "fixed", top: r.bottom + 6, left: r.left });
+      }
+      return !wasOpen;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!showRequirements) return;
+    const handleClick = (e) => {
+      if (
+        packagesButtonRef.current && !packagesButtonRef.current.contains(e.target) &&
+        packagesDropdownRef.current && !packagesDropdownRef.current.contains(e.target)
+      ) setShowRequirements(false);
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setShowRequirements(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showRequirements]);
+
+  // Monaco init — once, on first activation
+  useEffect(() => {
+    if (!isActive || hasInitEditor.current) return;
+    hasInitEditor.current = true;
+    loadMonacoOnce().then(() => {
+      if (!editorContainerRef.current) return;
+      editorAddressRef.current = schedulerAddress;
+      editorRef.current = monaco.editor.create(editorContainerRef.current, {
+        value: defaultCode,
+        language: "python",
+        theme: theme === "light" ? "vs" : "vs-dark",
+        minimap: { enabled: false },
+        fontSize: 13,
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        automaticLayout: true,
+        scrollBeyondLastLine: false,
+        padding: { top: 12, bottom: 12 },
+      });
+      // Remeasure after custom fonts load so cursor aligns with JetBrains Mono glyphs
+      document.fonts.ready.then(() => monaco.editor.remeasureFonts());
+      editorRef.current.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+        () => runCode()
+      );
+      editorRef.current.onDidChangeModelContent(() => {
+        clearTimeout(importTimerRef.current);
+        importTimerRef.current = setTimeout(() => {
+          if (!pyodideRef.current) return;
+          runAutoImports(pyodideRef.current, editorRef.current?.getValue() ?? "");
+        }, 600);
+      });
+      setMonacoReady(true);
+    });
+  }, [isActive]);
+
+  // A new deployment (destroy + relaunch) hands out a new scheduler address -- overwrite the
+  // editor with the default snippet again so SCHEDULER_ADDRESS stays accurate, rather than
+  // leaving it pointed at a cluster that no longer exists. Only fires on an actual change, so it
+  // doesn't clobber in-progress edits from switching tabs or re-rendering within one deployment.
+  // Also clears the output panel -- otherwise it keeps showing results/logs from a run against
+  // the previous, now-torn-down cluster.
+  //
+  // This is also the one place we pick up the worker managers' requirements.txt union: it's
+  // frozen for the lifetime of a deployment, the same as the address, so re-installing here
+  // (rather than watching workerRequirements directly) means edits made back in the Config tab
+  // don't affect an already-running interpreter -- only the requirements in effect at the moment
+  // a deploy's address showed up here do. Deliberately reads workerRequirements from the closure
+  // instead of listing it as a dependency, for that same reason.
+  useEffect(() => {
+    if (!editorRef.current || !schedulerAddress) return;
+    if (editorAddressRef.current === schedulerAddress) return;
+    editorAddressRef.current = schedulerAddress;
+    editorRef.current.setValue(defaultCode);
+    setOutput([]);
+
+    if (!pyodideRef.current || usingLocalWheels) return;
+    const requirementsText = workerRequirements || "";
+    if (requirementsText.trim() === appliedRequirements.trim()) return;
+    let cancelled = false;
+    setSyncStatus("syncing");
+    setSyncError("");
+    (async () => {
+      try {
+        const pyodide = pyodideRef.current;
+        const requirements = parseRequirements(requirementsText);
+        pyodide.globals.set("_requirements", pyodide.toPy([...requirements, ...TRYIT_INFRA_PACKAGES]));
+        await pyodide.runPythonAsync(
+          "import micropip\n" +
+          "await micropip.install(list(_requirements))"
+        );
+        const resolvedPackages = await resolveInstalledPackages(pyodide, requirementsText);
+        if (cancelled) return;
+        pyodide._installedRequirements = requirementsText;
+        pyodide._resolvedPackages = resolvedPackages;
+        setAppliedRequirements(requirementsText);
+        setInstalledPackages(resolvedPackages);
+        setSyncStatus("idle");
+      } catch (err) {
+        if (cancelled) return;
+        setSyncError(String(err));
+        setSyncStatus("error");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [schedulerAddress]);
+
+  // Re-measure editor when tab becomes visible again (display:none collapses dimensions)
+  useEffect(() => {
+    if (isActive) editorRef.current?.layout();
+  }, [isActive]);
+
+  // Dispose editor and completion provider only on unmount
+  useEffect(() => {
+    return () => {
+      completionDisposable.current?.dispose();
+      hoverDisposable.current?.dispose();
+      editorRef.current?.dispose();
+    };
+  }, []);
+
+  // Sync Monaco theme when the app theme changes
+  useEffect(() => {
+    if (!monacoReady) return;
+    monaco.editor.setTheme(theme === "light" ? "vs" : "vs-dark");
+  }, [theme, monacoReady]);
+
+  // Pyodide init -- once per page load, guarded at window level so remounts reuse the same instance.
+  // A version override (advanced field below) or a requirements.txt edit only takes effect on the
+  // *next* boot -- there's no in-place swap of an already-running Pyodide runtime -- so both are
+  // read fresh from localStorage here rather than from React state, and a version change prompts
+  // for a full page reload (see pyodideVersionDirty below) rather than pretending to hot-apply.
+  useEffect(() => {
+    if (!isActive || pyodideRef.current) return;
+    setPyStatus("loading");
+    (async () => {
+      try {
+        if (!window._pyodideReady) {
+          window._pyodideReady = (async () => {
+            const versionOverride = readLocalStorage(TRYIT_PYODIDE_VERSION_KEY, "").trim();
+            let pyodideVersion = versionOverride;
+            if (!pyodideVersion) {
+              try {
+                const resp = await fetch("../_static/wasm/launchpad_pyodide.json");
+                if (resp.ok) {
+                  const data = await resp.json();
+                  if (data.pyodide_version) pyodideVersion = data.pyodide_version;
+                }
+              } catch {}
+            }
+            if (!pyodideVersion) pyodideVersion = PYODIDE_VERSION_FALLBACK;
+
+            // Lazy-load the Pyodide bootstrap script (~10 MB, deferred until tab open)
+            await new Promise((resolve, reject) => {
+              if (window.loadPyodide) { resolve(); return; }
+              const s = document.createElement("script");
+              s.src = pyodideCdnUrl(pyodideVersion);
+              s.onload = resolve;
+              s.onerror = () => reject(new Error(`Failed to load Pyodide ${pyodideVersion} from CDN`));
+              document.head.appendChild(s);
+            });
+
+            const pyodide = await window.loadPyodide();
+            pyodide._pyodideVersion = pyodideVersion;
+            pyodide._pyodideVersionOverride = !!versionOverride;
+            await pyodide.loadPackage(["micropip"]);
+
+            // Dev override: this manifest only exists when a developer explicitly opted in
+            // with LAUNCHPAD_TRYIT_LOCAL_WHEELS=1 before `make html` (see generate_jupyterlite_config.py)
+            // to try an in-progress local wasm-client build (scripts/build_wasm.sh) without
+            // publishing to PyPI first. Plain wheel-staging (e.g. CI building the offline
+            // JupyterLite gallery) does NOT write this file, so production always installs from
+            // PyPI. The requirements.txt pane is ignored in this mode -- the local build is
+            // already a fixed set of wheels.
+            let manifest = null;
+            try {
+              const resp = await fetch("../_static/wasm/launchpad_wheels.json");
+              if (resp.ok) manifest = await resp.json();
+            } catch {}
+
+            if (manifest) {
+              pyodide._usingLocalWheels = true;
+              const base = new URL("../_static/wasm/", window.location.href).href;
+              pyodide.globals.set(
+                "_wheel_urls",
+                pyodide.toPy(manifest.local_wheels.map((f) => base + f))
+              );
+              pyodide.globals.set("_infra_packages", pyodide.toPy(TRYIT_INFRA_PACKAGES));
+              await pyodide.runPythonAsync(
+                "import micropip\n" +
+                "await micropip.install(list(_wheel_urls) + list(_infra_packages))"
+              );
+            } else {
+              // Default path: install the union of every worker manager's requirements.txt,
+              // plus the fixed infra packages (jedi, docstring_parser) the editor itself needs.
+              const requirementsText = workerRequirements || "";
+              const requirements = parseRequirements(requirementsText);
+              pyodide.globals.set("_requirements", pyodide.toPy([...requirements, ...TRYIT_INFRA_PACKAGES]));
+              await pyodide.runPythonAsync(
+                "import micropip\n" +
+                "await micropip.install(list(_requirements))"
+              );
+              pyodide._installedRequirements = requirementsText;
+              pyodide._resolvedPackages = await resolveInstalledPackages(pyodide, requirementsText);
+            }
+
+            return pyodide;
+          })();
+        }
+
+        const pyodide = await window._pyodideReady;
+        pyodideRef.current = pyodide;
+        resolvedPyodideVersionRef.current = pyodide._pyodideVersion;
+        resolvedPyodideVersionOverrideRef.current = !!pyodide._pyodideVersionOverride;
+        if (pyodide._usingLocalWheels) setUsingLocalWheels(true);
+        else {
+          setAppliedRequirements(pyodide._installedRequirements || "");
+          setInstalledPackages(pyodide._resolvedPackages || []);
+        }
+        pyodide.setStdout({ batched: (text) => outputCallbackRef.current?.(text, "info") });
+        pyodide.setStderr({ batched: (text) => outputCallbackRef.current?.(text, "err")  });
+        try {
+          const buf = new Int32Array(new SharedArrayBuffer(4));
+          pyodide.setInterruptBuffer(buf);
+          interruptBufferRef.current = buf;
+        } catch {}
+        setPyStatus("ready");
+      } catch (err) {
+        console.error("Pyodide init failed:", err);
+        setPyError(String(err));
+        setPyStatus("error");
+      }
+    })();
+  }, [isActive]);
+
+  const pyodideVersionDirty =
+    resolvedPyodideVersionRef.current !== null &&
+    (pyodideVersionInput.trim()
+      ? pyodideVersionInput.trim() !== resolvedPyodideVersionRef.current
+      : resolvedPyodideVersionOverrideRef.current);
+
+  // Persisted immediately (unlike requirements.txt, which needs its own Install click) since the
+  // only way this ever takes effect is a page reload -- see the "Reload to apply" button below.
+  useEffect(() => {
+    writeLocalStorage(TRYIT_PYODIDE_VERSION_KEY, pyodideVersionInput.trim());
+  }, [pyodideVersionInput]);
+
+  // Register Jedi completions and hover once both Monaco and Pyodide are ready,
+  // and eagerly run the editor's import statements so autocomplete works immediately.
+  useEffect(() => {
+    if (!monacoReady || pyStatus !== "ready" || !pyodideRef.current) return;
+    completionDisposable.current?.dispose();
+    hoverDisposable.current?.dispose();
+    completionDisposable.current = registerJediCompletion(pyodideRef.current);
+    hoverDisposable.current      = registerJediHover(pyodideRef.current);
+    runAutoImports(pyodideRef.current, editorRef.current?.getValue() ?? "");
+  }, [monacoReady, pyStatus]);
+
+  const canRun = monacoReady && pyStatus === "ready" && !isRunning;
+
+  const statusNode = (() => {
+    if (pyStatus === "idle") return null;
+    if (pyStatus === "loading")
+      return (
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          <span style={{ animation: "blink 1s step-start infinite", marginRight: 5 }}>●</span>
+          Loading Pyodide…
+        </span>
+      );
+    if (pyStatus === "error")
+      return (
+        <span style={{ fontSize: 11, color: "var(--text-danger)" }}>
+          ● Pyodide failed
+        </span>
+      );
+    return (
+      <span style={{ fontSize: 11, color: "var(--text-success)" }}>
+        ● ready
+        {usingLocalWheels && (
+          <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+            (local dev wasm build)
+          </span>
+        )}
+        {IS_ADVANCED && resolvedPyodideVersionRef.current && (
+          <span style={{ color: "var(--text-dim)", marginLeft: 6 }}>
+            pyodide v{resolvedPyodideVersionRef.current}
+          </span>
+        )}
+      </span>
+    );
+  })();
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {/* Toolbar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "7px 16px",
+        background: "var(--bg-panel)",
+        borderBottom: "1px solid var(--border-accent)",
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={isRunning ? cancelRun : (canRun ? runCode : undefined)}
+          disabled={!canRun && !isRunning}
+          style={{
+            padding: "5px 14px",
+            background: isRunning
+              ? "transparent"
+              : canRun
+              ? "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)"
+              : "var(--bg-surface)",
+            border: "1px solid " + (isRunning ? "var(--text-danger)" : canRun ? "oklch(0.55 0.16 155)" : "var(--border-accent)"),
+            borderRadius: 3,
+            color: isRunning ? "var(--text-danger)" : canRun ? "oklch(0.92 0.1 155)" : "var(--text-dim)",
+            fontFamily: "inherit", fontSize: 11, fontWeight: 700,
+            cursor: (canRun || isRunning) ? "pointer" : "default",
+            flexShrink: 0,
+          }}
+        >
+          {isRunning ? "✕ Cancel" : "▶ Run  Ctrl+Enter"}
+        </button>
+        <button
+          ref={packagesButtonRef}
+          onClick={togglePackagesDropdown}
+          style={{
+            padding: "5px 10px",
+            background: showRequirements ? "var(--bg-surface)" : "transparent",
+            border: "1px solid var(--border-accent)",
+            borderRadius: 3,
+            color: pyodideVersionDirty ? "var(--text-warning)" : "var(--text-muted)",
+            fontFamily: "inherit", fontSize: 11, cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          Packages{pyodideVersionDirty ? " •" : ""}
+        </button>
+        <div style={{ flex: 1 }} />
+        {statusNode}
+      </div>
+
+      {/* Available packages dropdown -- floats over the editor/output split via a portal instead
+          of sitting inline, so a long package list scrolls within its own max-height rather than
+          pushing the editor down. */}
+      {showRequirements && ReactDOM.createPortal(
+        <div
+          ref={packagesDropdownRef}
+          style={{
+            ...packagesDropdownStyle,
+            zIndex: 9999,
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 4,
+            boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+            padding: "10px 16px",
+            minWidth: 260,
+            maxWidth: 420,
+            maxHeight: "min(360px, calc(100vh - " + (packagesDropdownStyle.top || 0) + "px - 16px))",
+            overflowY: "auto",
+            color: "var(--text-primary)",
+            fontFamily: "inherit",
+            fontSize: 11,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: "var(--text-label)" }}>Available packages</span>
+            <HelpTip text={
+              "The packages available in the editor, determined from the union of every worker " +
+              "manager's requirements.txt (Config tab)."
+            } />
+            <div style={{ flex: 1 }} />
+            {usingLocalWheels ? (
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                Ignored while using a local dev wasm build
+              </span>
+            ) : (
+              syncStatus === "syncing" && (
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Syncing…</span>
+              )
+            )}
+          </div>
+          {installedPackages.length === 0 ? (
+            <div style={{ color: "var(--text-muted)" }}>
+              {pyStatus !== "ready" ? "Loading…" : "(no worker manager requirements)"}
+            </div>
+          ) : (
+            <table style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{
+                    textAlign: "left", fontWeight: "normal", color: "var(--text-label)",
+                    borderBottom: "1px solid var(--border-accent)", padding: "2px 0 6px",
+                  }}>
+                    Package
+                  </th>
+                  <th style={{
+                    textAlign: "left", fontWeight: "normal", color: "var(--text-label)",
+                    borderBottom: "1px solid var(--border-accent)", padding: "2px 0 6px",
+                  }}>
+                    Version
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {installedPackages.map(({ name, version }) => (
+                  <tr key={name}>
+                    <td style={{ padding: "3px 12px 3px 0" }}>{name}</td>
+                    <td style={{ padding: "3px 0", color: "var(--text-muted)" }}>
+                      {version || "(version unknown)"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {syncStatus === "error" && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-danger)", whiteSpace: "pre-wrap" }}>
+              {syncError}
+            </div>
+          )}
+
+          {IS_ADVANCED && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: 11, color: "var(--text-label)" }}>Pyodide version</span>
+                <HelpTip text={
+                  "The Pyodide/Emscripten build loaded in this tab. Must exactly match the build any " +
+                  "wasm wheel in requirements.txt was built for -- there is no forward/backward " +
+                  "compatibility. Blank uses the version generated from pyproject.toml's " +
+                  "jupyterlite-pyodide-kernel pin. Changing this only takes effect after a reload."
+                } />
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="text"
+                  value={pyodideVersionInput}
+                  onChange={(e) => setPyodideVersionInput(e.target.value)}
+                  placeholder={resolvedPyodideVersionRef.current || PYODIDE_VERSION_FALLBACK}
+                  spellCheck={false}
+                  style={{
+                    width: 140,
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-accent)",
+                    borderRadius: 3,
+                    padding: "6px 10px",
+                    color: "var(--text-primary)",
+                    fontFamily: "inherit",
+                    fontSize: 11,
+                    outline: "none",
+                  }}
+                />
+                {pyodideVersionDirty && (
+                  <>
+                    <span style={{ fontSize: 10, color: "var(--text-warning)" }}>
+                      Requires a reload to apply
+                    </span>
+                    <button
+                      onClick={() => window.location.reload()}
+                      style={{
+                        padding: "4px 12px",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-accent)",
+                        borderRadius: 3,
+                        color: "var(--text-primary)",
+                        fontFamily: "inherit", fontSize: 11, fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Reload tab
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+
+      {/* Editor | Output split */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <div
+          ref={editorContainerRef}
+          style={{ flex: "0 0 60%", minHeight: 0, position: "relative" }}
+        >
+          {!monacoReady && (
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "var(--text-dim)", fontSize: 12,
+              background: "var(--bg-page)",
+            }}>
+              Loading editor…
+            </div>
+          )}
+        </div>
+
+        {/* Output panel */}
+        <div style={{
+          flex: "0 0 40%", minHeight: 0,
+          borderLeft: "1px solid var(--border-accent)",
+          display: "flex", flexDirection: "column",
+        }}>
+          <div style={{
+            padding: "5px 12px",
+            fontSize: 10,
+            color: "var(--text-dim)",
+            borderBottom: "1px solid var(--border-accent)",
+            background: "var(--bg-panel)",
+            flexShrink: 0,
+            letterSpacing: "0.06em",
+          }}>
+            OUTPUT
+          </div>
+          <div style={{
+            flex: 1, minHeight: 0, overflowY: "auto",
+            background: "var(--term-bg)",
+            padding: "10px 14px",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            lineHeight: 1.7,
+          }}>
+            {output.length === 0 && !isRunning && pyStatus === "ready" && (
+              <span style={{ color: "var(--text-dim)", fontStyle: "italic" }}>
+                Press ▶ Run or Ctrl+Enter to execute
+              </span>
+            )}
+            {output.map((line, i) => (
+              <div key={i} style={{
+                color: line.cls === "err"  ? "var(--text-danger)"
+                     : line.cls === "warn" ? "var(--text-warning)"
+                     : line.cls === "dim"  ? "var(--text-dim)"
+                     : "var(--text-secondary)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+              }}>
+                {line.text}
+              </div>
+            ))}
+            {isRunning && (
+              <span style={{ color: "var(--text-success)", animation: "blink 1s step-end infinite" }}>▌</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── TopNav ── */
 function TopNav({
   activeTab,
@@ -1299,21 +2381,16 @@ function TopNav({
   theme,
   setTheme,
   showPostLaunch,
+  schedulerReady,
   launchControl,
-  workerMonitorAddress,
 }) {
   const tabs = [
     { id: "config", label: "Config" },
     { id: "deployment", label: "Deployment", postLaunch: true },
-    { id: "logs", label: "Scheduler Logs", postLaunch: true },
+    { id: "logs", label: "Scheduler Logs", requiresScheduler: true },
     // { id: "worker-monitor", label: "Worker Monitor", postLaunch: true },
-    {
-      id: "worker-monitor",
-      label: "Worker Monitor",
-      postLaunch: true,
-      isLink: true,
-      href: workerMonitorAddress,
-    },
+    { id: "worker-monitor", label: "Worker Monitor", requiresScheduler: true },
+    { id: "try-it", label: "Try it", requiresScheduler: true },
   ];
   return (
     <div
@@ -1333,7 +2410,7 @@ function TopNav({
       />
       <div style={{ display: "flex", flex: 1 }}>
         {tabs.map((t) => {
-          const disabled = t.postLaunch && !showPostLaunch;
+          const disabled = (t.postLaunch && !showPostLaunch) || (t.requiresScheduler && !schedulerReady);
           return t.isLink ? (
             <a
               key={t.id}
@@ -1651,6 +2728,13 @@ function App() {
       localStorage.setItem("scaler_state", JSON.stringify(partial));
     } catch (_) {}
   }, []);
+
+  // Client-side requirements for the Try-it tab: a task submitted from there can land on any
+  // worker manager, so it's derived from the union of all of them rather than set independently.
+  const tryItRequirements = useMemo(
+    () => unionWorkerRequirements(workerManagers),
+    [workerManagers],
+  );
 
   const allInstances = window.SCALER_INSTANCES || [];
   const schedulerInst = allInstances.find((i) => i.type === schedulerType) || {
@@ -2322,10 +3406,10 @@ function App() {
         setTheme={setTheme}
         showPostLaunch={
           (phase !== "idle" && phase !== "error") ||
-          ["deployment", "logs", "worker-monitor"].includes(activeTab)
+          activeTab === "deployment"
         }
+        schedulerReady={phase === "ready" && !!provState?.scheduler_address}
         launchControl={launchControl}
-        workerMonitorAddress={phase === "ready" ? provState?.worker_monitor_address : undefined}
       />
 
       {/* ── Config Tab ── */}
@@ -3346,26 +4430,7 @@ function App() {
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 {provState.worker_monitor_address}
               </span>
-              <a
-                href={provState.worker_monitor_address}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-accent)",
-                  border: "1px solid var(--border-accent)",
-                  borderRadius: 3,
-                  padding: "2px 8px",
-                  textDecoration: "none",
-                }}
-              >
-                Open in new tab
-              </a>
-              {workerMonitorReady ? (
-                <span style={{ fontSize: 10, color: "var(--text-success)" }}>
-                  server ready
-                </span>
-              ) : (
+              {!workerMonitorReady && (
                 <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
                   waiting for server… {workerMonitorElapsed}s
                 </span>
@@ -3403,6 +4468,23 @@ function App() {
             )}
           </>
         )}
+      </div>
+
+      {/* ── Try it Tab ── */}
+      <div
+        style={{
+          display: activeTab === "try-it" ? "flex" : "none",
+          flex: 1,
+          flexDirection: "column",
+          minHeight: 0,
+        }}
+      >
+        <TryItTab
+          isActive={activeTab === "try-it"}
+          theme={theme}
+          schedulerAddress={phase === "ready" ? provState?.scheduler_address : ""}
+          workerRequirements={tryItRequirements}
+        />
       </div>
     </div>
   );

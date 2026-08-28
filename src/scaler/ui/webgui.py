@@ -15,5 +15,16 @@ def start_webgui(config: WebGUIConfig) -> None:
     )
 
     app = create_app(config)
-    logger.info(f"Web GUI is now listening on: http://{config.gui_address}")
-    uvicorn.run(app, host=config.gui_address.host, port=config.gui_address.port)
+
+    if config.security.has_credentials():
+        logger.info(f"Web GUI is now listening on: https://{config.gui_address}")
+        uvicorn.run(
+            app,
+            host=config.gui_address.host,
+            port=config.gui_address.port,
+            ssl_certfile=config.security.tls_cert,
+            ssl_keyfile=config.security.tls_key,
+        )
+    else:
+        logger.info(f"Web GUI is now listening on: http://{config.gui_address}")
+        uvicorn.run(app, host=config.gui_address.host, port=config.gui_address.port)

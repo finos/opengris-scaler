@@ -50,13 +50,13 @@ aws = [
     "botocore[crt]",
 ]
 orb = [
-    "orb-py==1.7.0; python_version >= '3.10'",
+    "orb-py==1.8.5; python_version >= '3.10'",
     "boto3",
     "packaging",
     "botocore[crt]",
 ]
 oci = [
-    "oci==2.177.0",
+    "oci==2.185.0",
 ]
 all = [
     "opengris-scaler[aws]",
