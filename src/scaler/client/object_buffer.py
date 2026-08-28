@@ -78,6 +78,11 @@ class ObjectBuffer:
 
     def commit_send_objects(self):
         if not self._pending_objects:
+            # Nothing to upload does not mean nothing was buffered: an object whose payload was already uploaded
+            # reuses that object ID, so it gets recorded in `_cycle_dedup_cache` without being added to
+            # `_pending_objects`. That cache is keyed by `id()`, which Python can reuse once an object is freed, so it
+            # must be cleared at the end of every cycle.
+            self._cycle_dedup_cache.clear()
             return
 
         object_instructions_to_send = [
