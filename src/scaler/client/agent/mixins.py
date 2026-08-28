@@ -1,5 +1,6 @@
 import abc
 from concurrent.futures import Future
+from typing import Optional
 
 from scaler.protocol.capnp import (
     ClientDisconnect,
@@ -63,7 +64,7 @@ class FutureManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def cancel_all_futures(self):
+    def cancel_all_futures(self, timeout_seconds: Optional[float] = None):
         raise NotImplementedError()
 
     @abc.abstractmethod

@@ -41,6 +41,9 @@ DEFAULT_WORKER_TIMEOUT_SECONDS = 60
 # tasks for this client
 DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 
+# total time disconnect() waits for cancel confirms; a cancel that is never answered must not block the client
+DEFAULT_CLIENT_DISCONNECT_CANCEL_TIMEOUT_SECONDS = 10
+
 # if didn't receive heartbeat for following seconds, then scheduler will treat worker manager as dead and disconnect it
 DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 
