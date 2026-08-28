@@ -1,13 +1,13 @@
-# AGENTS.md: rules for changing OpenGRIS Scaler
+# AGENTS.md: rules for humans and agents changing OpenGRIS Scaler
 
-Rules for humans and coding agents changing this repository: how the code is laid out, built, verified, changed, and written about.
-What Scaler is and how to use it: `README.md` and `docs/`.
-Dependencies, supported Python versions, and Python tool configuration live in `pyproject.toml`, C++ formatting in `.clang-format`, and CI in `.github/`.
-`.agents-local.md` (gitignored) holds one developer's overrides, such as build parallelism: read it before any build, install, or shell command.
+- These rules bind as written, neither looser nor stricter: where they decide, act.
+- What Scaler is and how to use it: `README.md` and `docs/`.
+- Dependencies, supported Python versions, and Python tool settings: `pyproject.toml`. C++ formatting: `.clang-format`. CI: `.github/`.
+- `.agents-local.md` (gitignored) holds one developer's overrides: read it before any build, install, or shell command.
 
 ## Layout
 
-Scaler is a distributed task scheduler: a Python client, scheduler, worker, and worker managers, with the network layer (YMQ) and the object storage server in C++, speaking Cap'n Proto.
+Scaler is a distributed task scheduler: client, scheduler, worker, and worker managers in Python, the network layer (YMQ) and the object storage server in C++, all speaking Cap'n Proto.
 
 ```
 src/scaler/              Python: client/, scheduler/, worker/, worker_manager_adapter/, entry_points/ (CLIs),
@@ -22,8 +22,8 @@ examples/                runnable examples, executed by CI
 
 ## Build and test
 
-Environment setup for the devcontainer and for Windows: `docs/source/tutorials/development/`.
-The devcontainer ships the third-party C++ libraries (`REMOTE_CONTAINERS=true` inside it). Elsewhere, build them once:
+Devcontainer and Windows setup: `docs/source/tutorials/development/`.
+The devcontainer (`REMOTE_CONTAINERS=true`) ships the third-party C++ libraries. Elsewhere, build them once:
 
 ```bash
 for library in capnp libuv openssl; do
@@ -42,68 +42,69 @@ uv pip install -e ".[all]" --group dev    # also builds the C++ extensions (scik
 The gate, before every commit that touches code:
 
 ```bash
-python_dirs="src tests examples benchmarks docs/source"
+python_dirs="src tests examples benchmarks docs/source"    # "." would also scan virtualenvs and build directories
 isort $python_dirs && black $python_dirs && pflake8 $python_dirs && mypy .
 clang-format --Werror --dry-run <the .cpp and .h files you changed>
 python -m unittest discover -v tests -t .
 ./scripts/test.sh                               # C++
 ```
 
-- CI (`.github/workflows/build-and-test.yml`) runs this gate on a clean checkout on Linux, macOS, and Windows, plus clang-format 21 and the `examples/` scripts on Linux.
-- The gate names the tracked directories because the Python tools also scan stray virtualenvs and build directories.
-- Check the gate's own exit status: capture the output to a file, or `set -o pipefail`, so a pipe into `tail` or `grep` cannot mask a red.
-- Run a command because the task needs its result, never because a document lists it.
-- A build or test sequence used by more than one workflow lives in one composite action under `.github/actions/`.
+- CI (`.github/workflows/build-and-test.yml`) runs the gate on Linux, macOS, and Windows, with clang-format 21.
+- A pipe into `tail` or `grep` masks the gate's exit status: `set -o pipefail`, or write the output to a file.
+- Run a command for its result, never because a document lists it.
+- A build or test sequence shared by workflows is one composite action under `.github/actions/`.
 
 ## Principles
 
-Coding principles inspired by the Zen of Python (`python -c 'import this'`), applied to the C++ as much as to the Python.
+After the Zen of Python (`python -c 'import this'`), for the C++ as much as the Python.
 
 - **Simple is better than complex.** The least code that solves the problem, in a shape a beginner can follow.
 - **Explicit is better than implicit.** Defaults as visible values, behaviour keyed off state the reader can see.
 - **Errors should never pass silently.**
   - Entry points and tests fail loudly with the cause
   - A daemon (scheduler, worker, object storage server) logs a misbehaving peer and keeps serving the others
-- **In the face of ambiguity, refuse the temptation to guess.** State assumptions, and when a request forks (several readings, a simpler approach, a trade-off, growing scope, a new dependency), ask a one-line question and first do everything that does not depend on the answer.
-- **There should be one obvious way to do it.** One mechanism per job: find the existing one and extend it, adding a helper only when nothing suitable exists, where the next reader will look.
+- **In the face of ambiguity, refuse the temptation to guess.**
+  - State assumptions
+  - A fork (several readings, a simpler approach, a trade-off, growing scope, a new dependency) gets a one-line question, after everything independent of the answer
+- **There should be one obvious way to do it.**
+  - One mechanism per job: extend the existing one
+  - A new helper only when nothing fits, where the next reader will look
 - **Special cases aren't special enough to break the rules.** A fix that needs a special case is the wrong fix.
 - **If the implementation is hard to explain, it's a bad idea.** Explain a change in one sentence before writing it.
-- **Now is better than never, although never is often better than right now.** Build what the task needs now: no speculative features, single-use abstractions, configurability nobody asked for, or handling for impossible states.
+- **Now is better than never, although never is often better than right now.** Only what the task needs now: no speculative features, configurability nobody asked for, or handling for impossible states.
 - **Flat is better than nested.** Guard clauses over nested conditionals, flat documents over deep hierarchies.
 - **Readability counts.** Short functions, and modules a reviewer reads top to bottom in one sitting.
 - **Practicality beats purity.** Simplicity over DRY: a little duplication beats a single-use abstraction.
 - **Namespaces are one honking great idea.** Directories, files, modules, namespaces, and tests match each other by name.
 - **Fix the root cause.** A workaround, blind retry, or guard that hides the defect is not a fix.
-- **Right-shaped data.** Fix the data shape first and the code around it gets small.
-  - Constant conversion between shapes, or a field that can be half-set, means the shape is wrong
+- **Right-shaped data.** Fix the shape before the code: constant conversion between shapes, or a field that can be half-set, means the shape is wrong.
 - **Least surprise.** A command, class, or flag does the expected thing, and learning one teaches its siblings.
 - **Surfaces tell the truth.** `scaler top`, the web monitor, and the logs show the real state: a failed task never reads as done, a dead worker never looks busy.
-- **Evidence over opinion.** A claim about behaviour, timing, or performance is verified by running the code.
+- **Evidence over opinion.** A claim about behaviour, timing, or performance comes from running the code.
 - **Minimal additions, liberal removals.** A change leaves what it touched simpler than it found it.
 
 ## Changing code
 
-- Read the whole path the change touches, end to end, before proposing a fix.
+- Read the whole path the change touches before proposing a fix.
 - Turn the task into a verifiable goal:
-  - a bug: a test that is red before the fix and green after
+  - a bug: a test red before the fix, green after
   - a refactor: the suite green before and after
   - a feature: the check that proves it
 - The fix matches the problem:
   - a clean hole gets fixed
   - a trade-off gets a config option
   - anything architectural gets a writeup and is the maintainers' call
-- These rules bind as written, neither looser nor stricter: when they already decide, act.
 - Every changed line traces to the task.
-- Remove what your change orphaned, and report unrelated dead code rather than deleting it.
-- A change to a CLI flag, config key, or documented behaviour updates `docs/source/tutorials/` in the same change.
+- Remove what the change orphans, and report other dead code rather than deleting it.
+- A changed CLI flag, config key, or documented behaviour updates `docs/source/tutorials/` in the same change.
 
 ## Verifying
 
 - Reproduce a reported bug (a review finding, an issue, a stack dump) before fixing it.
-- A test whose setup dodges the real path pins nothing, however green it runs.
+- A test whose setup dodges the real path pins nothing.
 - Test options in the combinations users run, such as an allocate policy with a scaling policy.
 - Attack a fix from the position it assumes (the same dying peer, the same load) before calling it done.
-- A tool reporting success is not evidence that the edit landed: confirm by behaviour.
+- A tool reporting success is not evidence the edit landed: confirm by behaviour.
 - A failing test is a finding about the code, the test, or the harness: the failing process's log decides which.
 - A recurring problem has a systematic cause: correlate every occurrence before calling it transient, and say so when the cause stays unfound.
 - After three failed attempts at the same fix, stop and name the assumption that may be wrong.
@@ -116,7 +117,7 @@ Coding principles inspired by the Zen of Python (`python -c 'import this'`), app
 - An index is named for what it indexes: `msg_i`, not `i`, over a list of messages.
 - Every number that means something is a named constant.
 - Composition over inheritance: shared behaviour lives in standalone functions or injected collaborators.
-- Abstract classes and mixins declare only abstract methods, so no concrete method is ever inherited.
+- Abstract classes and mixins declare only abstract methods.
 - A rename carries every derived name: subclasses, variables, parameters, fields.
 - ASCII in code, comments, and log messages, non-ASCII only inside other string literals.
 
@@ -156,8 +157,7 @@ Coding principles inspired by the Zen of Python (`python -c 'import this'`), app
 
 ### Tests
 
-- Tests mirror the code under test: `tests/` for `src/scaler` (unittest), `tests/cpp` for `src/cpp/scaler` (GTest), with matching file names.
-- Tests import what they need directly: the environment has the `all` extra and the `dev` group installed.
+- Tests import what they need directly: the environment has `[all]` and `dev` installed.
 - `skipIf` and `skipUnless` are for platform and Python-version limits and for dependencies no package index provides (`soamapi`).
 - Tear down every process a test starts, also when the test fails.
 
@@ -165,7 +165,7 @@ Coding principles inspired by the Zen of Python (`python -c 'import this'`), app
 
 Everything written here (comments, docstrings, docs, commit messages, logs, CLI output, reviews, replies, this file) says only what needs saying, in the fewest words that leave no ambiguity.
 
-### Every sentence
+### Everywhere
 
 - The point first, rationale only when the reader could not reconstruct it.
 - One idea per sentence, one topic per paragraph, active voice, about 25 words at most.
@@ -186,6 +186,24 @@ Everything written here (comments, docstrings, docs, commit messages, logs, CLI 
 - For the next reader, not this change's reviewer: no "as requested", no PR or issue numbers.
 - A test docstring names the behaviour the test pins.
 
+### Documentation and this file
+
+- Flat: a heading, then one-line bullets, one rule each, unwrapped.
+- A section answers one question and is named for its subject, a page for what it holds.
+- One owner per fact, everything else links to it, and a move repoints every link in the same change.
+- Bold marks lead-in labels only.
+
+### Commits
+
+- Subject: [Conventional Commits](https://www.conventionalcommits.org/), a type (`fix`, `feat`, `docs`, `test`, `refactor`, `build`, `ci`) and an optional scope (`fix(ymq):`), then the change in the imperative.
+- Body only for what the diff cannot say: what was wrong, why it matters, what was verified, in point form.
+- A message stands without the conversation: no "as discussed", no session structure, no local paths, hostnames, or emails.
+- One concern per commit, each passing the gate on its own: a refactor ships apart from behaviour changes.
+- A fix to unpushed work folds into the commit it fixes.
+- Stage named files: scratch notes, generated output, and session artifacts stay out.
+- Commit as the configured author (`git config user.name`, `git config user.email`), and ask when none is set.
+- Every name on a commit is a human with a CLA on file: the configured author, and no agent trailer.
+
 ### Replies and reports
 
 - The next action first, when there is one.
@@ -194,21 +212,3 @@ Everything written here (comments, docstrings, docs, commit messages, logs, CLI 
 - One issue at a time: pre-existing breakage raised early as a decision, unrelated findings at the end.
 - Over five items: split into now and later.
 - Close with the task's state (done, in progress, next), and nothing after.
-
-### Documentation and this file
-
-- Flat: a heading, then one-line bullets, one rule each, unwrapped.
-- A section answers one question and is named for its subject, a page for what it holds.
-- One owner per fact, everything else links to it, and a move repoints every link in the same change.
-- Bold marks lead-in labels only.
-
-## Commits
-
-- Commit as the git author already configured (`git config user.name`, `git config user.email`), and ask when none is set.
-- Every name on a commit is a human with a CLA on file: the configured author, and no agent trailer.
-- One concern per commit, each passing the gate on its own: a refactor ships apart from behaviour changes.
-- A fix to unpushed work folds into the commit it fixes.
-- Stage named files: scratch notes, generated output, and session artifacts stay out.
-- Subject: [Conventional Commits](https://www.conventionalcommits.org/), a type (`fix`, `feat`, `docs`, `test`, `refactor`, `build`, `ci`) and an optional scope (`fix(ymq):`), then the change in the imperative.
-- Body only for what the diff cannot say: what was wrong, why it matters, what was verified, in point form without hedging.
-- A message reads identically to someone with no access to the conversation: no session structure, no "as discussed", no local paths, hostnames, or emails.
