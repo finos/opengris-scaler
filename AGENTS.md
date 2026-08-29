@@ -11,8 +11,9 @@ Scaler is a distributed task scheduler: client, scheduler, worker, and worker ma
 
 ```
 src/scaler/              Python: client/, scheduler/, worker/, worker_manager_adapter/, entry_points/ (CLIs),
-                         io/ (YMQ bindings), protocol/, config/, ui/ (web monitor), utility/
-src/cpp/scaler/          C++20: ymq/ (network layer over libuv), object_storage/, protocol/, wrapper/, utility/
+                         cluster/ (scheduler and workers in one process), io/ (YMQ and ZMQ backends), protocol/,
+                         config/, ui/ (web monitor), compat/ (Ray-style API), utility/
+src/cpp/scaler/          C++23: ymq/ (network layer over libuv), object_storage/, protocol/, wrapper/, error/, logging/, utility/
 src/protocol/            Cap'n Proto schemas
 tests/                   mirrors src/scaler (unittest); tests/cpp mirrors src/cpp/scaler (GTest)
 scripts/                 build.sh, test.sh, library_tool.sh (third-party C++ libraries)
@@ -143,7 +144,7 @@ After the Zen of Python (`python -c 'import this'`), for the C++ as much as the 
   - `scaler::`, matching the directory structure
   - Fully qualified names at every use, no `using namespace`
 - Modern C++:
-  - C++20 features that GCC, Clang, and MSVC all support
+  - C++23 features that GCC, Clang, and MSVC all support
   - RAII and smart pointers, which make custom copy and move members unnecessary
   - Type-safe handles for every resource
   - `{}` initialization
