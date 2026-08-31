@@ -7,10 +7,15 @@ from typing import Any, Callable, Optional
 from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.mixins import SyncConnector
-from scaler.protocol.capnp import Task, TaskCancel, TaskState
+from scaler.protocol.capnp import Task, TaskCancel, TaskResultType
 from scaler.utility.event_list import EventList
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
+
+if sys.version_info >= (3, 11):
+    from typing import assert_never
+else:
+    from typing_extensions import assert_never
 
 
 class ScalerFuture(concurrent.futures.Future):
@@ -53,7 +58,7 @@ class ScalerFuture(concurrent.futures.Future):
         # Set as soon as the result object's fetching starts, ensuring the object is never fetched more than once.
         self._result_object_future: Optional[concurrent.futures.Future] = None
 
-        self._task_state: Optional[TaskState] = None
+        self._task_result_type: Optional[TaskResultType] = None
         self._cancel_requested: bool = False
 
         self._profiling_info: Optional[ProfileResult] = None
@@ -70,7 +75,10 @@ class ScalerFuture(concurrent.futures.Future):
             return self._profiling_info
 
     def set_result_ready(
-        self, object_id: Optional[ObjectID], task_state: TaskState, profile_result: Optional[ProfileResult] = None
+        self,
+        object_id: Optional[ObjectID],
+        task_result_type: TaskResultType,
+        profile_result: Optional[ProfileResult] = None,
     ) -> None:
         with self._condition:  # type: ignore[attr-defined]
             if self.done():
@@ -80,7 +88,7 @@ class ScalerFuture(concurrent.futures.Future):
 
             self._result_object_id = object_id
 
-            self._task_state = task_state
+            self._task_result_type = task_result_type
 
             if profile_result is not None:
                 self._profiling_info = profile_result
@@ -264,13 +272,15 @@ class ScalerFuture(concurrent.futures.Future):
             if self._result_object_future is not None:
                 return  # the object is already being fetched
 
-            match self._task_state:
-                case TaskState.success:
+            assert self._task_result_type is not None
+
+            match self._task_result_type:
+                case TaskResultType.success:
                     is_exception = False
-                case TaskState.failed:
+                case TaskResultType.failed | TaskResultType.failedWorkerDied:
                     is_exception = True
                 case _:
-                    raise ValueError(f"unexpected task status: {self._task_state}")
+                    assert_never(self._task_result_type)
 
             # TODO: graph task results could also be deleted if these are not required by another task of the graph.
             delete_after_fetch = self._is_simple_task()

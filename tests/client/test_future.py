@@ -12,7 +12,7 @@ from scaler.client.future import ScalerFuture
 from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.io.mixins import SyncConnector
-from scaler.protocol.capnp import Task, TaskState
+from scaler.protocol.capnp import Task, TaskResultType
 from scaler.utility.exceptions import WorkerDiedError
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
@@ -121,7 +121,7 @@ class TestFuture(unittest.TestCase):
 
         # Future is done, but result should not have been fetched yet
 
-        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.success)
+        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskResultType.success)
 
         self.assertFalse(future.running())
         self.assertTrue(future.done())
@@ -149,7 +149,7 @@ class TestFuture(unittest.TestCase):
 
         it = as_completed([future])
 
-        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.success)
+        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskResultType.success)
 
         # The iterator should yield the finished future
 
@@ -162,7 +162,7 @@ class TestFuture(unittest.TestCase):
 
         # Future is failing with an exception, the exception object has been fetched
 
-        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.failed)
+        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskResultType.failed)
 
         self.assertFalse(future.running())
         self.assertTrue(future.done())
@@ -224,7 +224,7 @@ class TestFuture(unittest.TestCase):
         # That might happen if the future get cancelled while the cluster is finishing the task's computation.
 
         with self.assertRaises(InvalidStateError):
-            future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.success)
+            future.set_result_ready(ObjectID.generate_object_id(client_id), TaskResultType.success)
 
         object_buffer.fetch_object.assert_not_called()
 
@@ -243,7 +243,7 @@ class TestFuture(unittest.TestCase):
 
         # Mock the client receiving the task result immediately after the cancellation request
         def on_connector_send(_message):
-            threading.Thread(target=lambda: future.set_result_ready(task_result_id, TaskState.success)).start()
+            threading.Thread(target=lambda: future.set_result_ready(task_result_id, TaskResultType.success)).start()
 
         _connector_agent.send.side_effect = on_connector_send
 

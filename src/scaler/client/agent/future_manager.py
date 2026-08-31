@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 from concurrent.futures import Future, InvalidStateError
 from typing import Dict, Optional
@@ -6,10 +7,15 @@ from typing import Dict, Optional
 from scaler.client.agent.mixins import FutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.serializer.mixins import Serializer
-from scaler.protocol.capnp import TaskCancelConfirm, TaskCancelConfirmType, TaskResult, TaskResultType, TaskState
+from scaler.protocol.capnp import TaskCancelConfirm, TaskCancelConfirmType, TaskResult, TaskResultType
 from scaler.utility.exceptions import WorkerDiedError
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
+
+if sys.version_info >= (3, 11):
+    from typing import assert_never
+else:
+    from typing_extensions import assert_never
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +87,11 @@ class ClientFutureManager(FutureManager):
                     WorkerDiedError(f"worker died when processing task: {task_id.hex()}"), profile_result
                 )
 
-            case TaskResultType.success:
-                future.set_result_ready(self.__get_result_object_id(result), TaskState.success, profile_result)
-
-            case TaskResultType.failed:
-                future.set_result_ready(self.__get_result_object_id(result), TaskState.failed, profile_result)
+            case TaskResultType.success | TaskResultType.failed:
+                future.set_result_ready(self.__get_result_object_id(result), result_type, profile_result)
 
             case _:
-                raise TypeError(f"{result.taskId.hex()}: Unknown task status: {result.resultType}")
+                assert_never(result_type)
 
     def on_task_cancel_confirm(self, cancel_confirm: TaskCancelConfirm):
         cancel_confirm_type = TaskCancelConfirmType(cancel_confirm.cancelConfirmType.value)
@@ -100,19 +103,20 @@ class ClientFutureManager(FutureManager):
             future = self._task_id_to_future.pop(task_id)
             assert cancel_confirm.taskId == future.task_id
 
-            if cancel_confirm_type == TaskCancelConfirmType.canceled:
-                future.set_canceled()
+            match cancel_confirm_type:
+                case TaskCancelConfirmType.canceled:
+                    future.set_canceled()
 
-            elif cancel_confirm_type == TaskCancelConfirmType.cancelNotFound:
-                logger.error(f"{task_id!r}: task to cancel not found")
-                future.set_canceled()
+                case TaskCancelConfirmType.cancelNotFound:
+                    logger.error(f"{task_id!r}: task to cancel not found")
+                    future.set_canceled()
 
-            elif cancel_confirm_type == TaskCancelConfirmType.cancelFailed:
-                logger.error(f"{task_id!r}: task cancel failed")
-                self._task_id_to_future[task_id] = future
+                case TaskCancelConfirmType.cancelFailed:
+                    logger.error(f"{task_id!r}: task cancel failed")
+                    self._task_id_to_future[task_id] = future
 
-            else:
-                raise TypeError(f"{task_id!r}: unknown task cancel confirm type: {cancel_confirm.cancelConfirmType}")
+                case _:
+                    assert_never(cancel_confirm_type)
 
     @staticmethod
     def __get_result_object_id(result: TaskResult) -> Optional[ObjectID]:
