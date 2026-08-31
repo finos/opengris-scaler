@@ -254,7 +254,7 @@ class TestBalance(unittest.TestCase):
 
             time.sleep(2)  # let worker_a register both tasks before it's killed
 
-            # Kill worker_a's whole tree: its socket closes, but with no graceful DisconnectRequest and
+            # Kill worker_a's whole tree: its socket closes, but with no graceful WorkerDisconnectNotification and
             # the timeout far off the scheduler still lists it, so the balancer will send a cancel to it.
             _signal_process_tree(combo._worker_manager_process, signal.SIGKILL)  # type: ignore[attr-defined]
 

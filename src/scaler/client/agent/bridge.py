@@ -18,7 +18,6 @@ satisfy, and implements both the native (``IPCAgentBridge``) and browser
 
 from __future__ import annotations
 
-import abc
 import asyncio
 import concurrent.futures
 import struct
@@ -26,55 +25,27 @@ import sys
 import threading
 import time
 import uuid
-from typing import Any, Awaitable, Callable, Iterable, Iterator, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Iterable, Iterator, Optional, TypeVar
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
+from scaler.client.agent.mixins import ClientAgentBridge
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig, SocketType
-from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend, SyncConnector
+from scaler.io.mixins import (
+    AsyncConnector,
+    AsyncObjectStorageConnector,
+    ConnectorRemoteType,
+    NetworkBackend,
+    SyncConnector,
+)
 from scaler.io.utility import serialize as _capnp_serialize
 from scaler.protocol.capnp import BaseMessage, ClientHeartbeat, Resource
+from scaler.utility.exceptions import ClientQuitException
 from scaler.utility.identifiers import ClientID
 
-
-class ClientAgentBridge(abc.ABC):
-    """Bridges a synchronous ``Client`` to an asynchronous ``ClientAgent``.
-
-    Implementations encapsulate the lifecycle of the agent (start/stop/wait)
-    and expose a ``SyncConnector``-compatible handle that delivers messages
-    from the ``Client`` to the agent's receive handler.
-    """
-
-    @abc.abstractmethod
-    def start(self) -> None:
-        """Start the agent. Must be called exactly once, before any other method."""
-
-    @abc.abstractmethod
-    def get_object_storage_address(self) -> AddressConfig:
-        """Block until the object storage address is known and return it.
-
-        Called once after ``start()`` to resolve the address the client will
-        use for direct object-storage reads/writes.
-        """
-
-    @property
-    @abc.abstractmethod
-    def connector(self) -> SyncConnector:
-        """Return the ``SyncConnector`` the ``Client`` uses to talk to the agent.
-
-        Only valid after ``start()`` and ``get_object_storage_address()`` have
-        returned.
-        """
-
-    @abc.abstractmethod
-    def is_alive(self) -> bool:
-        """Return True if the agent is still running."""
-
-    @abc.abstractmethod
-    def join(self) -> None:
-        """Wait for the agent to fully stop. Safe to call multiple times."""
+T = TypeVar("T")
 
 
 class IPCAgentBridge(ClientAgentBridge):
@@ -131,15 +102,10 @@ class IPCAgentBridge(ClientAgentBridge):
     def start(self) -> None:
         self._agent.start()
 
-    def get_object_storage_address(self) -> AddressConfig:
-        return self._agent.get_object_storage_address()
-
     @property
     def connector(self) -> SyncConnector:
         if self._connector is None:
-            # Lazily create the sync connector so we don't pay the cost until the
-            # agent has reported that the object-storage address is ready (which
-            # matches the ordering in the pre-refactor Client.__initialize__).
+            # Lazily created so we don't pay the cost until the client actually asks for it.
             self._connector = self._backend.create_sync_connector(
                 identity=self._identity,
                 connector_remote_type=ConnectorRemoteType.Connector,
@@ -152,6 +118,18 @@ class IPCAgentBridge(ClientAgentBridge):
 
     def join(self) -> None:
         self._agent.join()
+
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> concurrent.futures.Future[T]:
+        try:
+            return self._agent.run_in_agent(coroutine)
+        except RuntimeError as exc:
+            # The agent terminated (e.g. lost contact with the scheduler) and closed its event loop. Closing the
+            # coroutine avoids a "coroutine was never awaited" warning.
+            coroutine.close()
+            raise ClientQuitException("client agent is not running anymore.") from exc
+
+    async def object_storage_connector(self) -> AsyncObjectStorageConnector:
+        return await self._agent.get_object_storage_connector()
 
 
 # ---------------------------------------------------------------------------
@@ -193,9 +171,9 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
 # A previous attempt drove the heartbeat from ``sys.setprofile``. That works
 # for pure-Python heavy code (e.g. cloudpickle has many call/return events),
 # but breaks down when the wasm stack is JSPI-suspended inside a single
-# ``run_sync`` call (e.g. the Client's initial scheduler handshake waiting
-# on ``get_object_storage_address``): the user's Python stack has no frames
-# executing while suspended, so the profile callback never fires.
+# ``run_sync`` call (e.g. the Client's initial scheduler handshake):
+# the user's Python stack has no frames executing while suspended, so the
+# profile callback never fires.
 #
 # This implementation uses a JavaScript ``setInterval`` instead. The timer
 # fires from the browser's event loop, which runs even while wasm is
@@ -515,7 +493,7 @@ _original_wait: Optional[Callable[..., concurrent.futures._base.DoneAndNotDoneFu
 _original_as_completed: Optional[Callable[..., Iterator[concurrent.futures.Future]]] = None
 
 
-def _jspi_wait(
+def jspi_wait(
     fs: Iterable[concurrent.futures.Future],
     timeout: Optional[float] = None,
     return_when: str = concurrent.futures.ALL_COMPLETED,
@@ -554,7 +532,7 @@ def _jspi_wait(
     return concurrent.futures._base.DoneAndNotDoneFutures(done, not_done)
 
 
-def _jspi_as_completed(
+def jspi_as_completed(
     fs: Iterable[concurrent.futures.Future], timeout: Optional[float] = None
 ) -> Iterator[concurrent.futures.Future]:
     fs = list(fs)
@@ -566,7 +544,7 @@ def _jspi_as_completed(
             yield f
 
     while pending:
-        result = _jspi_wait(pending, timeout=timeout, return_when=concurrent.futures.FIRST_COMPLETED)
+        result = jspi_wait(pending, timeout=timeout, return_when=concurrent.futures.FIRST_COMPLETED)
         if not result.done:
             raise concurrent.futures.TimeoutError(f"{len(pending)} (of {len(fs)}) futures unfinished")
         for f in result.done:
@@ -605,7 +583,7 @@ def _install_concurrent_futures_jspi_patch() -> None:
         return
     _original_wait = concurrent.futures.wait
     _original_as_completed = concurrent.futures.as_completed
-    _rebind_in_loaded_modules(_original_wait, _original_as_completed, _jspi_wait, _jspi_as_completed)
+    _rebind_in_loaded_modules(_original_wait, _original_as_completed, jspi_wait, jspi_as_completed)
     _concurrent_futures_patched = True
 
 
@@ -614,7 +592,7 @@ def _uninstall_concurrent_futures_jspi_patch() -> None:
     if not _concurrent_futures_patched:
         return
     if _original_wait is not None and _original_as_completed is not None:
-        _rebind_in_loaded_modules(_jspi_wait, _jspi_as_completed, _original_wait, _original_as_completed)
+        _rebind_in_loaded_modules(jspi_wait, jspi_as_completed, _original_wait, _original_as_completed)
     _original_wait = None
     _original_as_completed = None
     _concurrent_futures_patched = False
@@ -741,6 +719,48 @@ class _InProcessSyncConnector(SyncConnector):
             pass
 
 
+class _InProcessFuture(concurrent.futures.Future[T]):
+    """A future for a coroutine that runs on the browser's single event loop.
+
+    The client and the agent share that event loop, so blocking on a regular future would prevent the agent from ever
+    completing it. ``result()`` instead suspends the WebAssembly stack with ``run_sync()``, which lets the event loop
+    keep driving the agent.
+    """
+
+    def __init__(self, coroutine: Coroutine[Any, Any, T]) -> None:
+        super().__init__()
+
+        self._task = asyncio.ensure_future(coroutine)
+        self._task.add_done_callback(self.__on_task_done)
+
+    def result(self, timeout: Optional[float] = None) -> T:
+        self.__wait(timeout)
+        return super().result(timeout=0)
+
+    def exception(self, timeout: Optional[float] = None) -> Optional[BaseException]:
+        self.__wait(timeout)
+        return super().exception(timeout=0)
+
+    def __wait(self, timeout: Optional[float]) -> None:
+        if self.done():
+            return
+
+        # `asyncio.wait()` never propagates the task's exception nor cancels it on timeout, so the outcome is always
+        # reported by the base class' methods below.
+        _run_sync(asyncio.wait([self._task], timeout=timeout))
+
+    def __on_task_done(self, task: "asyncio.Future") -> None:
+        if task.cancelled():
+            super().cancel()
+            return
+
+        exception = task.exception()
+        if exception is not None:
+            super().set_exception(exception)
+        else:
+            super().set_result(task.result())
+
+
 class InProcessAgentBridge(ClientAgentBridge):
     """Browser / Pyodide bridge. Runs the ``ClientAgent`` coroutine on the
     current asyncio loop instead of on a background thread, and exchanges
@@ -823,29 +843,6 @@ class InProcessAgentBridge(ClientAgentBridge):
             _install_time_sleep_jspi_patch()
             _setup_browser_websocket_heartbeat(self._agent)
 
-    def get_object_storage_address(self) -> AddressConfig:
-        # ClientAgent resolves ``_object_storage_address`` early during its
-        # bring-up (immediately after receiving the scheduler's first message).
-        # Block the JSPI stack until that future is resolved; the asyncio loop
-        # continues to drive the agent coroutine in the background.
-        if self._agent._object_storage_address_override is not None:  # noqa: SLF001
-            return self._agent._object_storage_address_override  # noqa: SLF001
-
-        async def _wait() -> AddressConfig:
-            fut = self._agent._object_storage_address  # noqa: SLF001
-            # ``fut`` is a ``concurrent.futures.Future``. ``asyncio.wrap_future``
-            # adapts it to an awaitable on the current loop without any
-            # polling -- the agent task signals completion in the same loop, so
-            # awaiting the wrapped future yields back to asyncio exactly once
-            # and resumes when the future is set. A previous version used
-            # ``while not fut.done(): await asyncio.sleep(0.01)``, which under
-            # ``pyodide.ffi.run_sync`` (JSPI) created a long chain of nested
-            # ``setTimeout`` callbacks and could trigger Pyodide WebLoop
-            # crashes ("memory access out of bounds" / "null function").
-            return await asyncio.wrap_future(fut)
-
-        return _run_sync(_wait())
-
     @property
     def connector(self) -> SyncConnector:
         return self._sync_connector
@@ -854,6 +851,19 @@ class InProcessAgentBridge(ClientAgentBridge):
         if self._task is None:
             return False
         return self._running and not self._task.done()
+
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> concurrent.futures.Future[T]:
+        if not self.is_alive():
+            # Closing the coroutine avoids a "coroutine was never awaited" warning.
+            coroutine.close()
+            raise ClientQuitException("client agent is not running anymore.")
+
+        # The agent runs on this very event loop, so the coroutine is scheduled directly instead of going through
+        # `asyncio.run_coroutine_threadsafe()`, which would deadlock.
+        return _InProcessFuture(coroutine)
+
+    async def object_storage_connector(self) -> AsyncObjectStorageConnector:
+        return await self._agent.get_object_storage_connector()
 
     def join(self) -> None:
         if self._task is None:

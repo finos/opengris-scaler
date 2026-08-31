@@ -85,6 +85,11 @@ DEFAULT_WORKER_DEATH_TIMEOUT = 5 * 60
 # event will be used.
 DEFAULT_HARD_PROCESSOR_SUSPEND = False
 
+# how long worker teardown waits for the exit notification to be sent. The notification only saves the
+# scheduler from waiting out the heartbeat timeout, so it is never worth blocking our own exit on: a
+# connection that is wedged rather than closed would otherwise hang teardown indefinitely.
+WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS = 5
+
 # =======================
 # LOGGING SPECIFIC OPTIONS
 
