@@ -65,6 +65,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
 
         binder = _DeadableBinder()
         monitor = _NullMonitor()
+        connector_storage = MagicMock()
         client_controller = MagicMock()
         client_controller.on_task_finish.return_value = None
         object_controller = MagicMock()
@@ -76,6 +77,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
         task_controller.register(
             binder,  # type: ignore[arg-type]
             monitor,  # type: ignore[arg-type]
+            connector_storage,
             client_controller,
             object_controller,
             worker_controller,
