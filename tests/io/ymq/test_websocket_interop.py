@@ -7,7 +7,7 @@ import websockets.asyncio.server
 
 from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, IOContext
 
-_MAGIC = b"YMQ\x01"
+_MAGIC = b"YMQ\x02"
 
 
 def _encode_message(payload: bytes) -> bytes:
