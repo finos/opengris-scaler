@@ -274,11 +274,12 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
             # the abort answers every remaining node with the failing result, a cancel confirm would race it
             return
 
-        # A node only becomes ready once its dependencies are done, and a running node is only done when its
-        # cancel confirm comes back, so the sweep below has to run on every entry: the confirms that the first
-        # pass triggers are what make the rest of the graph ready. The fan-out does not repeat, both because a
-        # second cancel to the same worker is pointless and because the task router locks per task, and a task
-        # already in the outer fan-out would be waiting on its own lock.
+        # Two guards keep the task router's per-task lock acquisition acyclic, and they close different
+        # windows. __mark_node_done and __mark_node_canceled drop a task from running_task_ids before they
+        # fan out here, so a task is never a member of its own fan-out. The status guard below stops a
+        # re-entrant call fanning out a second time, which is the path where the caller is already in the
+        # outer fan-out. The sweep further down still runs on every entry, because the confirms the first
+        # pass triggers are what make the rest of the graph ready.
         first_pass = graph_info.status != _GraphState.Canceling
         graph_info.status = _GraphState.Canceling
 
@@ -328,6 +329,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
 
         graph_info.sorter.done(task_cancel_confirm.taskId)
 
+        # must stay before the caller fans out to __cancel_whole_graph, see the comment there
         if task_cancel_confirm.taskId in graph_info.running_task_ids:
             graph_info.running_task_ids.remove(task_cancel_confirm.taskId)
 
@@ -399,6 +401,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         self.__clean_intermediate_result(graph_task_id, result.taskId)
         graph_info.sorter.done(result.taskId)
 
+        # must stay before the caller fans out to __cancel_whole_graph, see the comment there
         if result.taskId in graph_info.running_task_ids:
             graph_info.running_task_ids.remove(result.taskId)
 

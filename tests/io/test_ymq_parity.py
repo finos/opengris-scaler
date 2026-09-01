@@ -43,7 +43,7 @@ class WireProtocolParityTest(unittest.TestCase):
 
     def test_magic_string_matches_cpp(self) -> None:
         text = _CPP_CONFIG.read_text(encoding="utf-8")
-        # Match: std::array<uint8_t, N> magicString {'Y', 'M', 'Q', 1};
+        # Match: std::array<uint8_t, N> magicString {'Y', 'M', 'Q', 2};
         match = re.search(r"magicString\s*\{([^}]*)\}", text)
         self.assertIsNotNone(match, "Could not find magicString in configuration.h")
         parts = [p.strip() for p in match.group(1).split(",") if p.strip()]

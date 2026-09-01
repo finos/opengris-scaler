@@ -31,20 +31,6 @@ class TaskCancelConfirmType(IntEnum):
     cancelFailed = 1
     cancelNotFound = 2
 
-class TaskTransition(IntEnum):
-    hasCapacity = 0
-    taskResultSuccess = 1
-    taskResultFailed = 2
-    taskResultWorkerDied = 3
-    taskCancel = 4
-    taskCancelConfirmCanceled = 5
-    taskCancelConfirmFailed = 6
-    taskCancelConfirmNotFound = 7
-    balanceTaskCancel = 8
-    workerDisconnect = 9
-    schedulerHasTask = 10
-    schedulerHasNoTask = 11
-
 class TaskState(IntEnum):
     inactive = 0
     running = 1
@@ -55,8 +41,6 @@ class TaskState(IntEnum):
     failedWorkerDied = 6
     canceled = 7
     canceledNotFound = 8
-    balanceCanceled = 9
-    workerDisconnecting = 10
 
 class WorkerState(IntEnum):
     connected = 0
@@ -259,11 +243,7 @@ class ObjectInstruction(BaseMessage):
         delete = 1
         clear = 2
 
-class DisconnectRequest(BaseMessage):
-    worker: WorkerID
-
-class DisconnectResponse(BaseMessage):
-    worker: WorkerID
+class WorkerDisconnectNotification(BaseMessage): ...
 
 class ClientDisconnect(BaseMessage):
     disconnectType: "ClientDisconnect.DisconnectType"
@@ -335,8 +315,6 @@ class Message(CapnpUnionStruct):
     clientHeartbeatEcho: ClientHeartbeatEcho
     workerHeartbeat: WorkerHeartbeat
     workerHeartbeatEcho: WorkerHeartbeatEcho
-    disconnectRequest: DisconnectRequest
-    disconnectResponse: DisconnectResponse
     stateClient: StateClient
     stateObject: StateObject
     stateBalanceAdvice: StateBalanceAdvice
@@ -352,6 +330,7 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeat: WorkerManagerHeartbeat
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
+    workerDisconnectNotification: WorkerDisconnectNotification
 
 class ObjectRequestHeader(CapnpStruct):
     MESSAGE_LENGTH: ClassVar[int]

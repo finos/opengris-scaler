@@ -21,7 +21,9 @@ public:
     ~PyBufferBytes() noexcept override
     {
         if (_view) {
-            scaler::utility::pymod::AcquireGIL _;
+            scaler::utility::pymod::AcquireGIL gil;
+            if (!gil.acquired())
+                return;  // interpreter is shutting down, do not re-enter Python
             PyBuffer_Release(_view.get());
         }
     }

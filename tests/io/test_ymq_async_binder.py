@@ -15,8 +15,7 @@ from scaler.config.types.address import AddressConfig
 from scaler.io.utility import deserialize
 from scaler.io.ymq import ConnectorSocket, IOContext, SocketStopRequestedError
 from scaler.io.ymq_async_binder import YMQAsyncBinder
-from scaler.protocol.capnp import BaseMessage, DisconnectRequest
-from scaler.utility.identifiers import WorkerID
+from scaler.protocol.capnp import BaseMessage, ClientDisconnect
 
 
 class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
@@ -37,8 +36,9 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         self._received.append((address, message))
 
     @staticmethod
-    def _make_message() -> DisconnectRequest:
-        return DisconnectRequest(worker=WorkerID.generate_worker_id("nobody"))
+    def _make_message() -> ClientDisconnect:
+        # Any message with a payload will do; this one just has to survive the round trip.
+        return ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.disconnect)
 
     async def test_detached_send_does_not_wait_for_the_peer(self) -> None:
         """A detached send returns without waiting for a peer that never connects."""
@@ -79,8 +79,8 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         ymq_msg = await asyncio.wait_for(connector.recv_message(), timeout=5.0)
         received = deserialize(ymq_msg.payload.data)
 
-        assert isinstance(received, DisconnectRequest)
-        self.assertEqual(received.worker, message.worker)
+        assert isinstance(received, ClientDisconnect)
+        self.assertEqual(received.disconnectType, message.disconnectType)
 
 
 if __name__ == "__main__":

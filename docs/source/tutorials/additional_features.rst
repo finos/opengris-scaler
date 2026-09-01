@@ -22,9 +22,8 @@ Which will show an interface similar to the standard Linux `top` command:
          rss 130.1m |      running      0 |     ObjectResponse     233 |      ObjectRequest     215
                     |      success 53,704 |           TaskEcho  53,780 |               Task  53,764
                     |       failed     14 |               Task  54,660 |         TaskResult  53,794
-                    |     canceled     48 |         TaskResult  53,766 |  DisconnectRequest      21
-                    |    not_found     14 |      ObjectRequest     366 |         TaskCancel      60
-                                          | DisconnectResponse      21 |    BalanceResponse      15
+                    |     canceled     48 |         TaskResult  53,766 |         TaskCancel      60
+                    |    not_found     14 |      ObjectRequest     366 |    BalanceResponse      15
                                           |         TaskCancel      62 |          GraphTask       6
                                           |     BalanceRequest      15 |
                                           |    GraphTaskResult       6 |
