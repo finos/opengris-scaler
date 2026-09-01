@@ -2,7 +2,7 @@ import asyncio
 import dataclasses
 import logging
 from asyncio import Queue
-from typing import List, Optional, Set
+from typing import Optional
 
 from scaler.config.defaults import STORAGE_TOTALS_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher, ObjectStorageTotals
@@ -96,7 +96,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         self._object_tracker.add_object(creation)
         self._object_tracker.add_blocks_for_one_object(creation.get_object_key(), {creation.object_creator})
 
-    def on_del_objects(self, client_id: ClientID, object_ids: Set[ObjectID]):
+    def on_del_objects(self, client_id: ClientID, object_ids: set[ObjectID]):
         for object_id in object_ids:
             self._object_tracker.remove_one_block_for_objects({object_id}, client_id)
 
@@ -126,7 +126,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
     def object_count(self) -> int:
         return self._object_tracker.object_count()
 
-    def get_largest_objects(self, limit: int) -> List[ObjectDetail]:
+    def get_largest_objects(self, limit: int) -> list[ObjectDetail]:
         """The `limit` biggest tracked objects, biggest first, which is what a full store is made of."""
         return [
             ObjectDetail(

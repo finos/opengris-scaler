@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
@@ -28,7 +28,7 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         self._connected_event = asyncio.Event()
 
         self._next_request_id = 0
-        self._pending_get_requests: Dict[ObjectID, asyncio.Future] = {}
+        self._pending_get_requests: dict[ObjectID, asyncio.Future] = {}
         self._pending_info_request: Optional[asyncio.Future] = None
 
         self._lock = asyncio.Lock()
@@ -186,7 +186,7 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         assert self._socket is not None
         await self._socket.send_message(Bytes(payload))
 
-    async def __receive_response(self) -> Optional[Tuple[ObjectResponseHeader, bytes]]:
+    async def __receive_response(self) -> Optional[tuple[ObjectResponseHeader, bytes]]:
         if self._socket is None:
             return None
 

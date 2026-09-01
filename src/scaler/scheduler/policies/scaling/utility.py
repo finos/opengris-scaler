@@ -1,11 +1,11 @@
-from typing import Dict, Iterable, List, Tuple, TypeVar
+from typing import Iterable, TypeVar
 
 from scaler.protocol.capnp import TaskCapability, WorkerManagerCommand
 
 StateT = TypeVar("StateT")
 
 
-def forget_departed_managers(state_by_manager: Dict[bytes, StateT], live_manager_ids: Iterable[bytes]) -> None:
+def forget_departed_managers(state_by_manager: dict[bytes, StateT], live_manager_ids: Iterable[bytes]) -> None:
     """Drops per-manager state for managers the scheduler no longer knows about.
 
     A policy is only ever told about a manager that is heartbeating, so anything it remembers per manager id
@@ -18,7 +18,7 @@ def forget_departed_managers(state_by_manager: Dict[bytes, StateT], live_manager
         del state_by_manager[departed_id]
 
 
-def build_set_desired_command(desired_per_capset: List[Tuple[Dict[str, int], int]]) -> WorkerManagerCommand:
+def build_set_desired_command(desired_per_capset: list[tuple[dict[str, int], int]]) -> WorkerManagerCommand:
     """Build a declarative setDesiredTaskConcurrency command.
 
     Each entry in desired_per_capset maps a capability set (as Dict[str, int]) to a

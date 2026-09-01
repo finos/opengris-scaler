@@ -58,7 +58,7 @@ class CapacityCoordinator:
         self._stop: asyncio.Event = asyncio.Event()
 
     async def set_desired_unit_count(self, count: int) -> None:
-        """Set the desired number of units and signal the reconcile task.
+        """set the desired number of units and signal the reconcile task.
 
         Every call signals, even with an unchanged count: the reconcile replaces units that
         exited on their own and retries a scale-down deferred by the cooldown.

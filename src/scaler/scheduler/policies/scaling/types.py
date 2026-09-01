@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Dict, Optional
+from typing import Optional
 
 
 @dataclasses.dataclass(frozen=True)
@@ -10,7 +10,7 @@ class WorkerManagerSnapshot:
     max_task_concurrency: int
     worker_count: int
     last_seen_at: float  # time.time() epoch seconds of the last heartbeat
-    capabilities: Dict[str, int] = dataclasses.field(default_factory=dict)
+    capabilities: dict[str, int] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass(frozen=True)

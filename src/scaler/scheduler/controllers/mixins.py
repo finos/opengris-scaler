@@ -1,6 +1,6 @@
 import abc
 import dataclasses
-from typing import Any, List, Optional, Set
+from typing import Any, Optional
 
 from scaler.protocol.capnp import (
     ClientDisconnect,
@@ -58,7 +58,7 @@ class ObjectController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_del_objects(self, client_id: ClientID, object_ids: Set[ObjectID]):
+    def on_del_objects(self, client_id: ClientID, object_ids: set[ObjectID]):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -70,7 +70,7 @@ class ObjectController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_largest_objects(self, limit: int) -> List[ObjectDetail]:
+    def get_largest_objects(self, limit: int) -> list[ObjectDetail]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -88,7 +88,7 @@ class ObjectController(Reporter):
 
 class ClientController(Reporter):
     @abc.abstractmethod
-    def get_client_task_ids(self, client_id: ClientID) -> Set[TaskID]:
+    def get_client_task_ids(self, client_id: ClientID) -> set[TaskID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -227,11 +227,11 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_worker_ids(self) -> Set[WorkerID]:
+    def get_worker_ids(self) -> set[WorkerID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_workers_by_manager_id(self, manager_id: bytes) -> List[WorkerID]:
+    def get_workers_by_manager_id(self, manager_id: bytes) -> list[WorkerID]:
         """get all worker ids belonging to a specific worker manager"""
         raise NotImplementedError()
 

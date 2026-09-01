@@ -8,7 +8,7 @@ import atexit
 import concurrent.futures
 import inspect
 import sys
-from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Generic, Iterator, Optional, TypeVar, Union, cast
 from unittest.mock import Mock, patch
 
 import psutil
@@ -100,7 +100,7 @@ def scaler_init(
     n_workers: Optional[int] = psutil.cpu_count(),
     object_storage_address: Optional[str] = None,
     monitor_address: Optional[str] = None,
-    per_worker_capabilities: Optional[Dict[str, int]] = None,
+    per_worker_capabilities: Optional[dict[str, int]] = None,
     worker_io_threads: int = DEFAULT_IO_THREADS,
     scheduler_io_threads: int = DEFAULT_IO_THREADS,
     max_number_of_tasks_waiting: int = DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
@@ -119,7 +119,7 @@ def scaler_init(
     protected: bool = True,
     scaler_policy: PolicyConfig = PolicyConfig(policy_content="allocate=even_load; scaling=static"),
     event_loop: str = "builtin",
-    logging_paths: Tuple[str, ...] = DEFAULT_LOGGING_PATHS,
+    logging_paths: tuple[str, ...] = DEFAULT_LOGGING_PATHS,
     logging_level: str = DEFAULT_LOGGING_LEVEL,
     logging_config_file: Optional[str] = None,
     # client-specific options
@@ -348,7 +348,7 @@ class RayRemote(Generic[P, T]):
 
         self._num_returns = num_returns
 
-    def remote(self, *args: P.args, **kwargs: P.kwargs) -> Union[RayObjectReference, List[RayObjectReference]]:
+    def remote(self, *args: P.args, **kwargs: P.kwargs) -> Union[RayObjectReference, list[RayObjectReference]]:
         """
         Executes the wrapped function remotely.
 
@@ -378,7 +378,7 @@ class RayRemote(Generic[P, T]):
         return RayRemote(self._fn, *args, **kwargs)
 
 
-def get(ref: Union[RayObjectReference[T], List[RayObjectReference[Any]]]) -> Union[T, List[Any]]:
+def get(ref: Union[RayObjectReference[T], list[RayObjectReference[Any]]]) -> Union[T, list[Any]]:
     """
     Retrieves the result from one or more RayObjectReferences.
 
@@ -390,7 +390,7 @@ def get(ref: Union[RayObjectReference[T], List[RayObjectReference[Any]]]) -> Uni
     Returns:
         The result of the reference or a list of results.
     """
-    if isinstance(ref, List):
+    if isinstance(ref, list):
         return [get(x) for x in ref]
     if isinstance(ref, RayObjectReference):
         return ref.get()
@@ -464,7 +464,7 @@ patch("ray.cancel", new=cancel).start()
 
 
 class _RayUtil:
-    def as_completed(self, refs: List[RayObjectReference[T]]) -> Iterator[RayObjectReference[T]]:
+    def as_completed(self, refs: list[RayObjectReference[T]]) -> Iterator[RayObjectReference[T]]:
         """
         Returns an iterator that yields object references as they are completed.
         Mimics `ray.util.as_completed()`.
@@ -474,7 +474,7 @@ class _RayUtil:
             yield future_to_ref[cast(ScalerFuture, future)]
 
     # python3.8 cannot handle giving real type hints to `fn`
-    def map_unordered(self, fn: RayRemote, values: List[V]) -> Iterator[T]:
+    def map_unordered(self, fn: RayRemote, values: list[V]) -> Iterator[T]:
         """
         Applies a remote function to each value in a list and yields the results
         as they become available. Mimics `ray.util.map_unordered()`.
@@ -496,8 +496,8 @@ patch("ray.util", new=_RayUtil()).start()
 
 
 def wait(
-    refs: List[RayObjectReference[T]], *, num_returns: Optional[int] = 1, timeout: Optional[float] = None
-) -> Tuple[List[RayObjectReference[T]], List[RayObjectReference[T]]]:
+    refs: list[RayObjectReference[T]], *, num_returns: Optional[int] = 1, timeout: Optional[float] = None
+) -> tuple[list[RayObjectReference[T]], list[RayObjectReference[T]]]:
     """
     Waits for a number of object references to be ready. Mimics `ray.wait()`.
 

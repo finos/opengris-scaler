@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
@@ -18,7 +18,7 @@ class DeclarativeWorkerProvisioner(ABC):
 
     @abstractmethod
     async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
+        self, requests: list[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
     ) -> None: ...
 
     @abstractmethod

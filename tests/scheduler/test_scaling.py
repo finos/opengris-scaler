@@ -4,7 +4,7 @@ import signal
 import sys
 import time
 import unittest
-from typing import Dict, Optional
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler import Client
@@ -459,7 +459,7 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, dra
 
 
 def _create_worker_manager_heartbeat(
-    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat(
         maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
