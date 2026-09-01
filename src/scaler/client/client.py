@@ -15,7 +15,11 @@ from scaler.client.object_reference import ObjectReference
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.common.security import SecurityConfig
-from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
+from scaler.config.defaults import (
+    DEFAULT_CLIENT_DISCONNECT_CANCEL_TIMEOUT_SECONDS,
+    DEFAULT_CLIENT_TIMEOUT_SECONDS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+)
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import NetworkBackend, SyncConnector
 from scaler.io.network_backends import get_network_backend_from_env
@@ -514,8 +518,15 @@ class Client:
 
         logger.info(f"ScalerClient: disconnect from {self._scheduler_address!r}")
 
-        self._future_manager.cancel_all_futures()
+        try:
+            self._future_manager.cancel_all_futures(DEFAULT_CLIENT_DISCONNECT_CANCEL_TIMEOUT_SECONDS)
+        finally:
+            # tell the scheduler even if cancelling failed, or it holds this client's tasks until its own timeout
+            self.__send_disconnect()
 
+        self.__destroy()
+
+    def __send_disconnect(self):
         try:
             self._connector_agent.send(ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.disconnect))
         except YMQException:
@@ -524,8 +535,6 @@ class Client:
             # internal binder. The send then fails with ConnectorSocketClosedByRemoteEnd. The
             # agent has already torn itself down, so just fall through to __destroy().
             pass
-
-        self.__destroy()
 
     def __receive_shutdown_response(self):
         message: Optional[ClientShutdownResponse] = None
@@ -556,7 +565,8 @@ class Client:
 
         logger.info(f"ScalerClient: request shutdown for {self._scheduler_address!r}")
 
-        self._future_manager.cancel_all_futures()
+        # same bound as disconnect(): this client is leaving, so an unanswered cancel must not hold it here
+        self._future_manager.cancel_all_futures(DEFAULT_CLIENT_DISCONNECT_CANCEL_TIMEOUT_SECONDS)
 
         self._connector_agent.send(ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown))
         try:
