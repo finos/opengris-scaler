@@ -118,5 +118,81 @@ class TestGraphControllerCleanUp(unittest.TestCase):
         self.assertEqual(controller._graph_task_id_to_graph, {})
 
 
+class TestGraphControllerCancelWithUnreadyTarget(unittest.TestCase):
+    """A cancel must also answer the nodes that only become ready because of the cancel.
+
+    __cancel_whole_graph confirms the inactive nodes that are ready when it runs. A node waiting on a
+    running one is not ready then, and only becomes ready when that running node's cancel confirm comes
+    back -- which re-enters __cancel_whole_graph. When that re-entry was refused outright, such a node was
+    never confirmed, the graph never reached its end state, and the client's future was never answered:
+    Client.disconnect() then blocked forever waiting for the confirm.
+    """
+
+    def test_cancel_answers_a_node_waiting_on_a_running_one(self):
+        client_id = ClientID(b"client")
+        graph_task_id = TaskID(b"graph")
+        running_task_id = TaskID(b"running-subtask")
+        waiting_task_id = TaskID(b"waiting-subtask")
+
+        binder = _async_mock()
+        task_controller = _async_mock()
+        controller = VanillaGraphTaskController(config_controller=MagicMock())
+        controller.register(
+            binder=binder,
+            binder_monitor=_async_mock(),
+            connector_storage=_async_mock(),
+            client_controller=MagicMock(),
+            task_controller=task_controller,
+            object_controller=MagicMock(),
+        )
+
+        graph_task = GraphTask(
+            taskId=graph_task_id,
+            source=client_id,
+            targets=[waiting_task_id],
+            graph=[
+                Task(
+                    taskId=running_task_id,
+                    source=client_id,
+                    metadata=b"",
+                    funcObjectId=ObjectID.generate_object_id(client_id),
+                    functionArgs=[],
+                    capabilities={},
+                ),
+                Task(
+                    taskId=waiting_task_id,
+                    source=client_id,
+                    metadata=b"",
+                    funcObjectId=ObjectID.generate_object_id(client_id),
+                    functionArgs=[Task.Argument(type=Task.Argument.ArgumentType.task, data=running_task_id)],
+                    capabilities={},
+                ),
+            ],
+        )
+
+        _run(controller.on_graph_task(client_id, graph_task))
+        _run(controller.routine())
+
+        # only the first node can run, the second one is waiting on it
+        task_controller.on_task_new.assert_awaited_once()
+
+        _run(controller.on_graph_task_cancel(TaskCancel(taskId=graph_task_id, flags=TaskCancel.TaskCancelFlags())))
+
+        # the worker answers the cancel of the running node, which is what makes the waiting node ready
+        _run(
+            controller.on_graph_sub_task_cancel_confirm(
+                TaskCancelConfirm(taskId=running_task_id, cancelConfirmType=TaskCancelConfirmType.canceled)
+            )
+        )
+
+        confirmed_task_ids = [
+            call.args[1].taskId for call in binder.send.await_args_list if isinstance(call.args[1], TaskCancelConfirm)
+        ]
+        self.assertIn(waiting_task_id, confirmed_task_ids, "the waiting node was never answered")
+        self.assertIn(graph_task_id, confirmed_task_ids, "the graph itself was never answered")
+        self.assertEqual(controller._graph_task_id_to_graph, {})
+        self.assertEqual(controller._task_id_to_graph_task_id, {})
+
+
 if __name__ == "__main__":
     unittest.main()
