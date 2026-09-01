@@ -5,14 +5,13 @@ from typing import Dict, List, Optional, Set, Tuple
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import (
     ClientDisconnect,
-    DisconnectRequest,
-    DisconnectResponse,
     ObjectStorageAddress,
     ProcessorStatus,
     Resource,
     StateWorker,
     Task,
     TaskCancel,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
     WorkerManagerStatus,
@@ -102,9 +101,10 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         for worker in self._policy_controller.get_worker_ids():
             await self.__shutdown_worker(worker)
 
-    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest) -> None:
-        await self.__disconnect_worker(request.worker, reason="graceful request")
-        await self._binder.send(worker_id, DisconnectResponse(worker=request.worker), detached=True)
+    async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification) -> None:
+        # The notification always refers to its sender, whose identity comes from the binder and
+        # cannot be spoofed by the payload.
+        await self.__disconnect_worker(worker_id, reason="graceful notification")
 
     async def routine(self) -> None:
         await self.__clean_workers()

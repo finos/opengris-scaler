@@ -1,92 +1,53 @@
-from typing import Dict, Optional
+import asyncio
+from typing import List, Tuple
 
-from scaler.protocol.capnp import TaskState, TaskTransition
+from scaler.protocol.capnp import TaskState
+
+TERMINAL_TASK_STATES = (
+    TaskState.success,
+    TaskState.failed,
+    TaskState.failedWorkerDied,
+    TaskState.canceled,
+    TaskState.canceledNotFound,
+)
 
 
 class TaskStateMachine:
-    # see https://github.com/finos/opengris-scaler/issues/56
-    TRANSITION_MAP: Dict[TaskState, Dict[TaskTransition, TaskState]] = {
-        TaskState.inactive: {
-            TaskTransition.hasCapacity: TaskState.running,
-            TaskTransition.taskCancel: TaskState.canceled,
-        },
-        TaskState.canceling: {
-            TaskTransition.taskCancelConfirmCanceled: TaskState.canceled,
-            TaskTransition.workerDisconnect: TaskState.canceled,
-            TaskTransition.taskCancelConfirmFailed: TaskState.running,
-            TaskTransition.taskCancelConfirmNotFound: TaskState.canceledNotFound,
-        },
-        TaskState.running: {
-            TaskTransition.taskResultSuccess: TaskState.success,
-            TaskTransition.taskResultFailed: TaskState.failed,
-            TaskTransition.taskResultWorkerDied: TaskState.failedWorkerDied,
-            TaskTransition.taskCancel: TaskState.canceling,
-            TaskTransition.balanceTaskCancel: TaskState.balanceCanceling,
-            TaskTransition.workerDisconnect: TaskState.workerDisconnecting,
-        },
-        TaskState.balanceCanceling: {
-            TaskTransition.taskResultSuccess: TaskState.success,
-            TaskTransition.taskResultFailed: TaskState.failed,
-            TaskTransition.taskResultWorkerDied: TaskState.failedWorkerDied,
-            TaskTransition.taskCancel: TaskState.canceling,
-            TaskTransition.taskCancelConfirmCanceled: TaskState.inactive,
-            TaskTransition.taskCancelConfirmFailed: TaskState.running,
-            TaskTransition.workerDisconnect: TaskState.workerDisconnecting,
-        },
-        TaskState.workerDisconnecting: {
-            TaskTransition.schedulerHasTask: TaskState.inactive,
-            TaskTransition.schedulerHasNoTask: TaskState.failedWorkerDied,
-        },
-    }
+    """Records the state of one task.
 
-    def __init__(self, debug):
+    The machine holds no transition table. Legality lives in the action that handles an event: an action answers every
+    source state and returns the state that the task lands in, or ``None`` when the event is not permitted. See
+    ``VanillaTaskController.__route``.
+    """
+
+    def __init__(self, debug: bool):
         self._debug = debug
-        self._paths = list()
+        self._paths: List[Tuple[TaskState, str]] = list()
 
-        self._previous_state: Optional[TaskState] = None
-        self._state = TaskState.inactive
+        self._state: TaskState = TaskState.inactive
 
-    def __repr__(self):
-        return f"TaskStateMachine(previous_state={self._previous_state}, state={self._state})"
+        # serializes the transitions of this task. the router holds it for the whole transition, so that a second event
+        # cannot read a source state that the first has already decided to leave. it lives here rather than in a table
+        # owned by the manager so that it is created and destroyed with the machine and cannot leak
+        self._lock = asyncio.Lock()
 
-    def get_path(self):
+    def __repr__(self) -> str:
+        return f"TaskStateMachine(state={self._state.name})"
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        return self._lock
+
+    def get_path(self) -> str:
         return (
-            " ".join(f"[{state.name}] -{transition.name}->" for state, transition in self._paths)
-            + f" [{self._state.name}]"
+            " ".join(f"[{state.name}] -{event_name}->" for state, event_name in self._paths) + f" [{self._state.name}]"
         )
-
-    def previous_state(self) -> Optional[TaskState]:
-        return self._previous_state
 
     def current_state(self) -> TaskState:
         return self._state
 
-    def is_running(self) -> bool:
-        return self._state == TaskState.running
-
-    def is_canceling(self) -> bool:
-        return self._state == TaskState.canceling
-
-    def is_finished(self) -> bool:
-        return self._state in {TaskState.success, TaskState.failed, TaskState.failedWorkerDied}
-
-    def is_canceled(self) -> bool:
-        return self._state in {TaskState.canceled, TaskState.canceledNotFound}
-
-    def is_done(self) -> bool:
-        return self.is_finished() or self.is_canceled()
-
-    def on_transition(self, transition: TaskTransition) -> bool:
-        if self._state not in TaskStateMachine.TRANSITION_MAP:
-            return False
-
-        options = TaskStateMachine.TRANSITION_MAP[self._state]
-        if transition not in options:
-            return False
-
+    def commit(self, event_name: str, target: TaskState) -> None:
         if self._debug:
-            self._paths.append((self._state, transition))
+            self._paths.append((self._state, event_name))
 
-        self._previous_state = self._state
-        self._state = options[transition]
-        return True
+        self._state = target
