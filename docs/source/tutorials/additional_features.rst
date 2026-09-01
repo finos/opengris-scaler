@@ -69,9 +69,6 @@ Scaler Web GUI
 Scaler also provides a browser-based monitoring dashboard through ``scaler_gui``.
 It subscribes to the scheduler monitor stream and serves a real-time web UI over HTTP.
 
-.. note::
-   The GUI requires optional dependencies. Install with ``pip install opengris-scaler[gui]``.
-
 Start the GUI by pointing it at the scheduler monitor address:
 
 .. code:: bash
@@ -83,10 +80,19 @@ Open ``http://127.0.0.1:50001`` in your browser.
 What the Web GUI shows:
 
 * **Live**: scheduler metrics, worker manager summary, and worker-level metrics (CPU/PSS/free/sent/queued/lag/ITL).
-* **Task Log**: recent task lifecycle updates (running/success/failure/canceled), duration, peak memory, and capabilities.
+* **Task List**: one row per task, with its client, worker, duration, peak memory and capabilities.
+* **Task Log**: one row per state change in the order it happened, so a task that is rebalanced or retried leaves its whole trail.
 * **Worker Task Stream**: a timeline by worker with capability colors and status overlays (failed and canceled patterns).
-* **Memory Usage**: rolling cluster memory chart derived from task profiling metadata.
+* **Memory Usage**: rolling cluster memory chart sampled from what the fleet is holding.
 * **Worker Processors**: manager-grouped view of processor-level CPU/PSS and state flags (initialized, has task, suspended).
+* **Machines**: one row per host, with its workers, CPU, memory and host-wide network counters.
+* **Clients**: one row per connected client, with its host, tasks in flight, finished and failed counts, CPU, memory and latency. Finished counts every task that reached a terminal state, cancelled ones included.
+* **Objects**: the biggest objects the scheduler tracks, with their size, the client that created them, and the tasks holding them.
+
+The Live tab also carries an Object Storage card: how many objects the storage server holds, how many
+distinct payloads are behind them, the bytes they occupy, and how many requests are waiting for an object
+that does not exist yet. A waiting count that does not fall is a fetch nobody can answer, because a client
+blocks in ``get_object`` until the object is created.
 
 .. note::
    Worker memory is reported as PSS (proportional set size) on Linux, so the shared copy-on-write pages a
@@ -95,6 +101,6 @@ What the Web GUI shows:
 
 Interactive behavior:
 
-* Uses WebSocket updates with auto-reconnect if the browser temporarily disconnects.
+* Pushes updates over a server-sent event stream, which the browser reconnects on its own.
 * Sends a full current snapshot on connect, then incremental updates in short batches.
 * Supports runtime settings for stream window length (5/10/30 minutes) and memory chart scale (linear/log).

@@ -1,7 +1,7 @@
-import asyncio
 import dataclasses
 import datetime
 import hashlib
+import itertools
 import json
 import logging
 import queue
@@ -11,17 +11,15 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.mixins import SyncSubscriber
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
+    ObjectManagerStatus,
     StateBalanceAdvice,
+    StateObject,
     StateScheduler,
     StateTask,
     StateWorker,
@@ -53,6 +51,14 @@ SLIDING_WINDOW_OPTIONS = {
 
 DEFAULT_STREAM_WINDOW_MINUTES = 5
 
+# How much of a task or object ID the monitor shows. Enough to pick one out of a page, short enough that
+# a row of them still reads.
+TASK_ID_DISPLAY_LENGTH = 12
+
+# Payloads one browser may fall behind by before its stream is dropped. It reconnects and is sent a
+# full state, which is cheaper than growing a queue nobody is reading.
+BROWSER_QUEUE_MAX_PAYLOADS = 100
+
 # Rows per page. Server-side only: the browser is told which page it got and how many exist, never
 # the size, so it never has to agree with these.
 WORKERS_PAGE_SIZE = 50
@@ -64,14 +70,16 @@ WORKER_SORT_NUMERIC_FIELDS = frozenset(
     {"agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended"}
 )
 # Columns whose display value is preformatted; sort them by the raw number behind it instead.
-WORKER_SORT_RAW_FIELDS = {"lag": "lag_us", "last_seen": "last_s"}
+WORKER_SORT_RAW_FIELDS = {"lag": "lag_us", "last_seen": "last_s", "task_age": "task_age_s"}
 WORKER_SORT_FIELDS = frozenset(
-    WORKER_SORT_NUMERIC_FIELDS | set(WORKER_SORT_RAW_FIELDS) | {"name", "manager_id", "itl", "capabilities"}
+    WORKER_SORT_NUMERIC_FIELDS
+    | set(WORKER_SORT_RAW_FIELDS)
+    | {"name", "manager_id", "itl", "capabilities", "host", "task"}
 )
 
 
 @dataclasses.dataclass
-class ClientView:
+class BrowserView:
     """What one browser is looking at. Held per socket, so viewers never move each other's view."""
 
     workers_page: int = 0
@@ -109,6 +117,44 @@ class ClientView:
         return {"stream_window": self.stream_window_minutes, "memory_scale": self.memory_scale}
 
 
+class BrowserStream:
+    """One browser's event stream: what it is looking at, and the payloads waiting to be written to it.
+
+    The batcher only ever appends here, so a browser that reads slowly falls behind on its own queue
+    rather than delaying the others. Past the bound it is closed, which the browser answers by
+    reconnecting and asking for a full state again.
+
+    `view` is written by the connection thread when the browser pages or sorts, and read by the batcher
+    when it builds that browser's payload. Each field is set in one assignment, so the worst a race
+    costs is one payload built from a half-applied view, which the next tick corrects.
+    """
+
+    def __init__(self, browser_id: int) -> None:
+        self.browser_id = browser_id
+        self.view = BrowserView()
+        self._payloads: queue.Queue[str] = queue.Queue(maxsize=BROWSER_QUEUE_MAX_PAYLOADS)
+        self._closed = threading.Event()
+
+    def offer(self, payload: str) -> None:
+        try:
+            self._payloads.put_nowait(payload)
+        except queue.Full:
+            self.close()
+
+    def take(self, timeout: float) -> Optional[str]:
+        """The next payload, or None when none arrived within `timeout`."""
+        try:
+            return self._payloads.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def is_closed(self) -> bool:
+        return self._closed.is_set()
+
+    def close(self) -> None:
+        self._closed.set()
+
+
 class _RenderCache:
     """Memoizes the whole-fleet work (sort, grouping, stream render) for one tick, so N browsers
     sharing a sort column cost one sort rather than N."""
@@ -119,7 +165,7 @@ class _RenderCache:
         self._stream: Dict[int, Dict[str, Any]] = {}
         self._memory: Dict[Tuple[float, str], Dict[str, Any]] = {}
 
-    def sorted_workers(self, app: "WebUIApp", view: ClientView) -> List[Dict[str, Any]]:
+    def sorted_workers(self, app: "WebUIApp", view: BrowserView) -> List[Dict[str, Any]]:
         key = (view.workers_sort, view.workers_sort_ascending)
         if key not in self._sorted_workers:
             self._sorted_workers[key] = app._sorted_workers(*key)
@@ -144,6 +190,25 @@ class _RenderCache:
         return self._memory[key]
 
 
+def _oldest_task_age(processor_statuses) -> int:
+    """Age of the longest-running task on a worker, 0 when it is idle.
+
+    The oldest is the interesting one: a worker wedged on a single task shows an age that keeps climbing.
+    """
+    ages = [status.taskAgeSeconds for status in processor_statuses if status.hasTask]
+    return max(ages) if ages else 0
+
+
+def _current_task_label(processor_statuses) -> str:
+    """Short id of the task a worker is running, or a count when it is running several."""
+    busy = [status for status in processor_statuses if status.hasTask]
+    if not busy:
+        return "\u2014"
+    if len(busy) == 1:
+        return bytes(busy[0].currentTaskId).hex()[:12]
+    return f"{len(busy)} tasks"
+
+
 def paginate(items: List[Any], page: int, size: int) -> Tuple[List[Any], int, int]:
     """Slice `items` into the requested page, clamped to what exists: (rows, page, total pages)."""
     total_pages = max(1, (len(items) + size - 1) // size)
@@ -155,6 +220,13 @@ def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
     if len(worker_name) <= cutoff:
         return worker_name
     return worker_name[:cutoff] + "+"
+
+
+def _format_client_name(client_name: str, cutoff: int = 24) -> str:
+    """A client id is "Client|name|uuid". The uuid identifies it, so keep the head and the uuid's start."""
+    if len(client_name) <= cutoff:
+        return client_name
+    return client_name[:cutoff] + "+"
 
 
 # Minimum angular distance (degrees) between any two assigned hues.
@@ -649,8 +721,31 @@ class MemoryChartState:
     def __init__(self) -> None:
         self._start_time = datetime.datetime.now()
         self._points: List[Tuple[float, int]] = []  # (timestamp, memory_bytes)
+        # What the fleet is actually using right now, sampled per scheduler update. The derived series
+        # above only ever moved when a task *finished*, so a cluster sitting on held memory read as idle.
+        self._live: List[Tuple[float, int, float]] = []  # (timestamp, rss_bytes, cpu_percent)
         self._memory_store_time = datetime.timedelta(minutes=30)
         self._lock = threading.Lock()
+
+    def record_fleet_sample(self, rss_bytes: int, cpu_percent: float) -> None:
+        now = datetime.datetime.now().timestamp()
+        cutoff = now - self._memory_store_time.total_seconds()
+        with self._lock:
+            self._live.append((now, rss_bytes, cpu_percent))
+            if self._live and self._live[0][0] < cutoff:
+                self._live = [point for point in self._live if point[0] >= cutoff]
+
+    def _live_series(self, now_ts: float, window_seconds: float) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        with self._lock:
+            samples = list(self._live)
+        memory, cpu = [], []
+        for ts, rss, cpu_percent in samples:
+            x = ts - now_ts
+            if x < -window_seconds:
+                continue
+            memory.append({"x": round(x, 2), "y": rss})
+            cpu.append({"x": round(x, 2), "y": round(cpu_percent, 1)})
+        return memory, cpu
 
     def handle_task_state(self, state_task: StateTask) -> None:
         if state_task.metadata == b"":
@@ -707,7 +802,23 @@ class MemoryChartState:
             val = int(max_mem * i / 4)
             y_ticks.append({"val": val, "label": format_bytes(val)})
 
-        return {"points": chart_points, "y_ticks": y_ticks, "scale": scale, "window": window_seconds}
+        live_memory, live_cpu = self._live_series(now_ts, window_seconds)
+        if live_memory:
+            # prefer what the fleet is actually holding over the figure derived from finished tasks
+            chart_points = live_memory
+            max_live = max(point["y"] for point in live_memory)
+            y_ticks = [
+                {"val": int(max(max_live, 1024**3) * i / 4), "label": format_bytes(int(max(max_live, 1024**3) * i / 4))}
+                for i in range(5)
+            ]
+
+        return {
+            "points": chart_points,
+            "y_ticks": y_ticks,
+            "scale": scale,
+            "window": window_seconds,
+            "cpu_points": live_cpu,
+        }
 
 
 class WebUIApp:
@@ -725,19 +836,31 @@ class WebUIApp:
         # Full fleet worker count from per-manager totals; each browser is sent one page of worker rows.
         self._total_workers: int = 0
         self._message_queue: queue.Queue[BaseMessage] = queue.Queue()
-        self._clients: Dict[WebSocket, ClientView] = {}
-        self._clients_lock = asyncio.Lock()
+        self._browsers: Dict[int, BrowserStream] = {}
+        self._browsers_lock = threading.Lock()
+        self._browser_ids = itertools.count(1)
 
         # server-side state
         self._scheduler_data: Dict[str, Any] = {}
         self._workers_data: Dict[str, Dict[str, Any]] = {}
         self._worker_capabilities: Dict[str, Dict[str, int]] = {}
         self._task_log: Deque[Dict[str, Any]] = deque(maxlen=self._task_log_max_size)
+        # Append-only history: one row per state change rather than one row per task, so a task that is
+        # rebalanced, cancelled and retried leaves a trail instead of overwriting itself.
+        self._task_events: Deque[Dict[str, Any]] = deque(maxlen=self._task_log_max_size)
+        self._task_event_seq: int = 0
         self._active_tasks: Dict[str, Dict[str, Any]] = {}  # task_id_hex -> entry (running tasks)
         self._task_id_to_function: Dict[str, str] = {}
         self._task_stream = TaskStreamState()
         self._memory_chart = MemoryChartState()
         self._worker_processors: Dict[str, Dict[str, Any]] = {}
+        # Scaler clients the scheduler currently sees, rebuilt every status frame, and the task
+        # outcomes this GUI has counted per client since it started.
+        self._clients_data: Dict[str, Dict[str, Any]] = {}
+        self._storage_data: Dict[str, Any] = {}
+        self._objects_data: List[Dict[str, Any]] = []
+        self._objects_total: int = 0
+        self._client_task_totals: Dict[str, Dict[str, int]] = {}
         self._worker_manager_map: Dict[str, str] = {}  # worker_name -> manager_id (persistent)
         self._worker_managers_data: Dict[str, Dict[str, Any]] = {}  # manager_id -> manager info
         self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
@@ -751,7 +874,8 @@ class WebUIApp:
 
         self._backend = get_network_backend_from_env()
         self._subscriber: Optional[SyncSubscriber] = None
-        self._batch_task: Optional[asyncio.Task] = None
+        self._batcher: Optional[threading.Thread] = None
+        self._stopped = threading.Event()
 
     def _on_monitor_message(self, message: BaseMessage) -> None:
         """Called from the subscriber thread. Just enqueue, don't process."""
@@ -771,21 +895,20 @@ class WebUIApp:
         self._subscriber.daemon = True
         self._subscriber.start()
 
-    async def start_batcher(self) -> None:
-        self._batch_task = asyncio.create_task(self._batch_loop())
+    def start_batcher(self) -> None:
+        self._batcher = threading.Thread(target=self._batch_loop, name="webui-batcher", daemon=True)
+        self._batcher.start()
 
-    async def stop_batcher(self) -> None:
-        if self._batch_task:
-            self._batch_task.cancel()
-            try:
-                await self._batch_task
-            except asyncio.CancelledError:
-                pass
+    def stop(self) -> None:
+        self._stopped.set()
+        if self._batcher is not None:
+            self._batcher.join(timeout=self._broadcast_interval_seconds + 1)
+        if self._subscriber is not None:
+            self._subscriber.destroy()
 
-    async def _batch_loop(self) -> None:
+    def _batch_loop(self) -> None:
         """Drain the message queue every broadcast interval and push to browsers."""
-        while True:
-            await asyncio.sleep(self._broadcast_interval_seconds)
+        while not self._stopped.wait(self._broadcast_interval_seconds):
             messages: List[BaseMessage] = []
             while True:
                 try:
@@ -795,6 +918,7 @@ class WebUIApp:
 
             # Process messages
             has_scheduler_update = False
+            has_object_update = False
             new_task_logs: List[Dict[str, Any]] = []
             worker_events: List[Dict[str, Any]] = []
 
@@ -809,10 +933,14 @@ class WebUIApp:
                             worker_events.append(event)
                     elif isinstance(msg, StateTask):
                         log_entry = self._process_task_state(msg)
+                        self._record_task_event(msg)
                         if log_entry:
                             new_task_logs.append(log_entry)
+                    elif isinstance(msg, StateObject):
+                        self._process_objects(msg)
+                        has_object_update = True
                     elif isinstance(msg, StateBalanceAdvice):
-                        pass  # unused
+                        self._record_balance_advice(msg)
                 except Exception:
                     _logger.exception("error processing scheduler message")
 
@@ -834,16 +962,23 @@ class WebUIApp:
             if new_task_logs:
                 shared["task_updates"] = new_task_logs
                 shared["task_log_total"] = self._task_log_total
+                shared["task_events"] = list(self._task_events)
 
             if has_scheduler_update:
                 shared["worker_managers"] = list(self._worker_managers_data.values())
+                shared["storage"] = self._storage_data
+                shared.update(self._clients_section())
+
+            if has_object_update:
+                shared.update(self._objects_section())
 
             # The paged parts differ per browser; the fleet-wide work behind them is shared via the cache.
             cache = _RenderCache()
-            await self._send_to_clients(
+            self._send_to_browsers(
                 lambda view: {
                     **shared,
                     **(self._workers_section(view, cache) if has_scheduler_update else {}),
+                    **(self._machines_section() if has_scheduler_update else {}),
                     **(self._processors_section(view, cache) if has_scheduler_update else {}),
                     "task_stream": self._stream_section(view, cache),
                     "memory_chart": cache.memory(
@@ -859,6 +994,9 @@ class WebUIApp:
             "rss_free": format_bytes(data.rssFree),
             "monitor_address": self._monitor_address,
         }
+        self._storage_data = self.__storage_section(data.objectManager)
+
+        self._process_clients(data)
 
         # Update the worker-to-manager mapping and count workers per manager and across the fleet, in a
         # single pass while each capnp workerIDs list is freshly accessed. Storing the lazy lists to len()
@@ -948,6 +1086,14 @@ class WebUIApp:
                 "mem_limit": mem_limit,
                 "mem_used": mem_used,
                 "mem_used_pct": mem_used_pct,
+                "host": worker_data.hostname or "\u2014",
+                "net_sent": worker_data.netSentBytes,
+                "net_recv": worker_data.netRecvBytes,
+                # the oldest running task on this worker: a worker that is stuck shows a task age that
+                # keeps climbing while its last-seen also grows
+                "task": _current_task_label(worker_data.processorStatuses),
+                "task_age": format_seconds(_oldest_task_age(worker_data.processorStatuses)),
+                "task_age_s": _oldest_task_age(worker_data.processorStatuses),
                 "free": worker_data.free,
                 "sent": worker_data.sent,
                 "queued": worker_data.queued,
@@ -984,6 +1130,8 @@ class WebUIApp:
                         "initialized": bool(ps.initialized),
                         "has_task": bool(ps.hasTask),
                         "suspended": bool(ps.suspended),
+                        "task": bytes(ps.currentTaskId).hex()[:12] if ps.hasTask else "\u2014",
+                        "task_age": format_seconds(ps.taskAgeSeconds) if ps.hasTask else "\u2014",
                     }
                 )
 
@@ -1000,6 +1148,15 @@ class WebUIApp:
         # Aggregate per-manager summary stats over every worker the backend received (the whole fleet by
         # default) -- so these sums are complete even though each browser is sent only a bounded subset for
         # display. worker_count keeps the full per-manager total computed above.
+        # One live sample of what the whole fleet is holding, for the memory and CPU charts.
+        fleet_rss = sum(
+            (worker.get("proc_rss", 0) + worker.get("agt_rss", 0)) for worker in self._workers_data.values()
+        )
+        fleet_cpu = sum(
+            (worker.get("proc_cpu", 0.0) + worker.get("agt_cpu", 0.0)) for worker in self._workers_data.values()
+        )
+        self._memory_chart.record_fleet_sample(int(fleet_rss * 1e6), fleet_cpu)
+
         for manager_id, mgr_data in self._worker_managers_data.items():
             mgr_proc_cpu = 0.0
             mgr_proc_rss = 0
@@ -1021,6 +1178,88 @@ class WebUIApp:
             mgr_data["total_sent"] = mgr_sent
             mgr_data["total_queued"] = mgr_queued
             mgr_data["total_suspended"] = mgr_suspended
+
+    @staticmethod
+    def __storage_section(status: ObjectManagerStatus) -> Dict[str, Any]:
+        """What the object storage server holds, and what is stuck waiting on it.
+
+        `pending` counts requests waiting for an object nobody has created yet. A client blocks in
+        `get_object` until that happens, so a number here that does not fall is a stalled fetch.
+        """
+        held = status.storageTotalBytes
+        unique = status.storageUniqueCount
+        return {
+            "tracked_objects": status.numberOfObjects,
+            "objects": status.storageObjectCount,
+            "unique_objects": unique,
+            "size": format_bytes(held),
+            "shared": status.storageObjectCount - unique,
+            "pending": status.storagePendingRequests,
+            "pending_objects": status.storagePendingObjects,
+            "oldest_pending": format_seconds(status.storageOldestPendingS) if status.storagePendingRequests else "0s",
+        }
+
+    def _process_objects(self, state: StateObject) -> None:
+        """The biggest objects the scheduler tracks, and the tasks holding each one."""
+        rows = []
+        for detail in state.objects:
+            task_ids = [bytes(task_id).hex()[:TASK_ID_DISPLAY_LENGTH] for task_id in detail.taskIds]
+            creator = bytes(detail.creator).decode(errors="replace")
+            rows.append(
+                {
+                    "object_id": bytes(detail.objectId).hex(),
+                    "name": detail.name.decode(errors="replace"),
+                    "type": detail.objectType.name,
+                    "size": format_bytes(detail.size),
+                    "size_bytes": detail.size,
+                    "client": _format_client_name(creator) if creator else "\u2014",
+                    "full_client": creator,
+                    "tasks": detail.taskCount,
+                    "task_ids": task_ids,
+                }
+            )
+        self._objects_data = rows
+        self._objects_total = state.totalObjects
+
+    def _objects_section(self) -> Dict[str, Any]:
+        """Every object row the scheduler sent, which is already the biggest few of `objects_total`."""
+        return {"objects": self._objects_data, "objects_total": self._objects_total}
+
+    def _process_clients(self, data: StateScheduler) -> None:
+        """One row per client the scheduler has heard from, with the totals this GUI has counted."""
+        seen: Set[str] = set()
+        clients: Dict[str, Dict[str, Any]] = {}
+        for client in data.clientManager.clients:
+            name = bytes(client.clientId).decode(errors="replace")
+            seen.add(name)
+            totals = self._client_task_totals.setdefault(name, {"finished": 0, "failed": 0})
+            clients[name] = {
+                "client": _format_client_name(name),
+                "full_client": name,
+                "host": client.hostname or "\u2014",
+                "tasks": client.numTask,
+                "finished": totals["finished"],
+                "failed": totals["failed"],
+                "cpu": format_percentage(client.resource.cpu),
+                "rss": format_bytes(client.resource.rss),
+                "latency": format_microseconds(client.latencyUS),
+                "connected": format_seconds(client.connectedS),
+                "last_seen": format_seconds(client.lastSeenS),
+            }
+
+        self._clients_data = clients
+        for name in set(self._client_task_totals) - seen:
+            self._client_task_totals.pop(name)
+
+    def _count_task_outcome(self, client_name: str, state: TaskState) -> None:
+        """Tally a finished task against the client that submitted it, for the Clients page."""
+        if not client_name:
+            return
+
+        totals = self._client_task_totals.setdefault(client_name, {"finished": 0, "failed": 0})
+        totals["finished"] += 1
+        if state in (TaskState.failed, TaskState.failedWorkerDied):
+            totals["failed"] += 1
 
     def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
         worker_id = state_worker.workerId.decode()
@@ -1066,12 +1305,19 @@ class WebUIApp:
         caps_str = _display_capabilities(set(capabilities_to_dict(state_task.capabilities).keys()))
         now = datetime.datetime.now()
 
+        full_client = state_task.client.decode(errors="replace") if state_task.client else ""
+        client_str = _format_client_name(full_client) if full_client else ""
+
         if any(state_task.state == s for s in COMPLETED_TASK_STATUSES):
-            # preserve worker/time from active entry if completion message lacks them
+            # preserve worker/client/time from active entry if completion message lacks them
             prev_entry = self._active_tasks.pop(task_id_hex, None)
             if not worker_str and prev_entry:
                 worker_str = prev_entry.get("worker", "")
                 full_worker = prev_entry.get("full_worker", "")
+            if not full_client and prev_entry:
+                full_client = prev_entry.get("full_client", "")
+                client_str = prev_entry.get("client", "")
+            self._count_task_outcome(full_client, state_task.state)
             submitted_time = prev_entry["time"] if prev_entry and "time" in prev_entry else now.timestamp()
             self._task_id_to_function.pop(task_id_hex, None)
 
@@ -1093,10 +1339,14 @@ class WebUIApp:
                 "function": func_name,
                 "worker": worker_str,
                 "full_worker": full_worker,
+                "client": client_str,
+                "full_client": full_client,
                 "time": submitted_time,
                 "duration": duration_str,
                 "peak_mem": peak_mem_str,
                 "status": state_task.state.name,
+                "objects": format_bytes(state_task.objectBytes) if state_task.objectBytes else "\u2014",
+                "object_bytes": state_task.objectBytes,
                 "capabilities": caps_str,
             }
             self._task_log.appendleft(entry)
@@ -1109,6 +1359,9 @@ class WebUIApp:
             if not worker_str and prev_entry:
                 worker_str = prev_entry.get("worker", "")
                 full_worker = prev_entry.get("full_worker", "")
+            if not full_client and prev_entry:
+                full_client = prev_entry.get("full_client", "")
+                client_str = prev_entry.get("client", "")
             # remove stale completed entry if task was re-submitted
             self._task_log = deque(
                 (e for e in self._task_log if e["task_id"] != task_id_hex), maxlen=self._task_log_max_size
@@ -1118,10 +1371,14 @@ class WebUIApp:
                 "function": func_name,
                 "worker": worker_str,
                 "full_worker": full_worker,
+                "client": client_str,
+                "full_client": full_client,
                 "time": submitted_time,
                 "duration": "",
                 "peak_mem": "",
                 "status": state_task.state.name,
+                "objects": format_bytes(state_task.objectBytes) if state_task.objectBytes else "\u2014",
+                "object_bytes": state_task.objectBytes,
                 "capabilities": caps_str,
             }
             self._active_tasks[task_id_hex] = entry
@@ -1162,7 +1419,116 @@ class WebUIApp:
 
         return sorted(workers, key=key, reverse=not ascending)
 
-    def _workers_section(self, view: ClientView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _record_task_event(self, state_task: StateTask) -> None:
+        """One immutable row per state change, so the sequence a task went through stays readable."""
+        worker = state_task.worker.decode() if state_task.worker else ""
+        client = state_task.client.decode(errors="replace") if state_task.client else ""
+        self._task_event_seq += 1
+        self._task_events.appendleft(
+            {
+                "seq": self._task_event_seq,
+                "time": datetime.datetime.now().strftime("%H:%M:%S"),
+                "task_id": state_task.taskId.hex(),
+                "function": state_task.functionName.decode(errors="replace") if state_task.functionName else "",
+                "event": state_task.state.name,
+                "worker": _format_worker_name(worker) if worker else "\u2014",
+                "client": _format_client_name(client) if client else "\u2014",
+                "detail": format_bytes(state_task.objectBytes) if state_task.objectBytes else "",
+            }
+        )
+
+    def _record_balance_advice(self, advice: StateBalanceAdvice) -> None:
+        """A rebalance moves tasks off a worker; without this the trail just shows them reappearing."""
+        worker = advice.workerId.decode() if advice.workerId else ""
+        for task_id in advice.taskIds:
+            self._task_event_seq += 1
+            self._task_events.appendleft(
+                {
+                    "seq": self._task_event_seq,
+                    "time": datetime.datetime.now().strftime("%H:%M:%S"),
+                    "task_id": bytes(task_id).hex(),
+                    "function": "",
+                    "event": "rebalance",
+                    "worker": _format_worker_name(worker) if worker else "\u2014",
+                    "client": "\u2014",
+                    "detail": "moved off this worker",
+                }
+            )
+
+    def _clients_section(self) -> Dict[str, Any]:
+        """Every connected client. There are far fewer clients than workers, so this page is not paged."""
+        rows = sorted(self._clients_data.values(), key=lambda row: row["full_client"])
+        return {"clients": rows, "clients_total": len(rows)}
+
+    def _machines_section(self) -> Dict[str, Any]:
+        """One row per physical machine, however many workers it hosts.
+
+        `netSentBytes`/`netRecvBytes` are host-wide, so every worker on a box reports the same pair;
+        they are read once per hostname rather than summed, which would multiply them by the worker
+        count. Everything else is genuinely per-worker and is added up.
+        """
+        machines: Dict[str, Dict[str, Any]] = {}
+        for worker in self._workers_data.values():
+            host = worker.get("host") or "\u2014"
+            entry = machines.setdefault(
+                host,
+                {
+                    "host": host,
+                    "workers": 0,
+                    "busy": 0,
+                    "proc_cpu": 0.0,
+                    "agt_cpu": 0.0,
+                    "proc_rss": 0,
+                    "agt_rss": 0,
+                    "rss_free": 0,
+                    "mem_limit": 0,
+                    "queued": 0,
+                    "sent": 0,
+                    "net_sent": 0,
+                    "net_recv": 0,
+                    "managers": set(),
+                },
+            )
+            entry["workers"] += 1
+            entry["busy"] += 1 if worker.get("task", "\u2014") != "\u2014" else 0
+            entry["proc_cpu"] += worker.get("proc_cpu", 0.0)
+            entry["agt_cpu"] += worker.get("agt_cpu", 0.0)
+            entry["proc_rss"] += worker.get("proc_rss", 0)
+            entry["agt_rss"] += worker.get("agt_rss", 0)
+            entry["queued"] += worker.get("queued", 0)
+            entry["sent"] += worker.get("sent", 0)
+            entry["managers"].add(worker.get("manager_id", "\u2014"))
+            # host-wide, so take one reading rather than accumulating
+            entry["rss_free"] = max(entry["rss_free"], worker.get("rss_free", 0))
+            entry["mem_limit"] = max(entry["mem_limit"], worker.get("mem_limit", 0))
+            entry["net_sent"] = max(entry["net_sent"], worker.get("net_sent", 0))
+            entry["net_recv"] = max(entry["net_recv"], worker.get("net_recv", 0))
+
+        rows = []
+        for entry in machines.values():
+            used = entry["proc_rss"] + entry["agt_rss"]
+            rows.append(
+                {
+                    "host": entry["host"],
+                    "workers": entry["workers"],
+                    "busy": entry["busy"],
+                    "idle": entry["workers"] - entry["busy"],
+                    "managers": ", ".join(sorted(m for m in entry["managers"] if m)),
+                    "cpu": round(entry["proc_cpu"] + entry["agt_cpu"], 1),
+                    "rss": used,
+                    "rss_free": entry["rss_free"],
+                    "mem_limit": entry["mem_limit"],
+                    "mem_used_pct": round(100 * used / (used + entry["rss_free"]), 1) if entry["rss_free"] else 0,
+                    "queued": entry["queued"],
+                    "sent": entry["sent"],
+                    "net_sent": format_bytes(entry["net_sent"]),
+                    "net_recv": format_bytes(entry["net_recv"]),
+                }
+            )
+        rows.sort(key=lambda row: row["host"])
+        return {"machines": rows, "machines_total": len(rows)}
+
+    def _workers_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
         workers = cache.sorted_workers(self, view)
         rows, page, total_pages = paginate(workers, view.workers_page, WORKERS_PAGE_SIZE)
         view.workers_page = page
@@ -1173,7 +1539,7 @@ class WebUIApp:
             "workers_pages": total_pages,
         }
 
-    def _processors_section(self, view: ClientView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _processors_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
         """One page of processor detail; the per-manager summaries still cover every worker."""
         groups = cache.processors(self)
         flat: List[Tuple[str, Dict[str, Any]]] = [
@@ -1194,7 +1560,7 @@ class WebUIApp:
             "processors_total": len(flat),
         }
 
-    def _stream_section(self, view: ClientView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _stream_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
         """One page of stream rows, with each bar's row index rebased to the page."""
         stream_data = dict(cache.stream(self, view.stream_window_minutes))
         rows = stream_data.get("rows", [])
@@ -1288,7 +1654,7 @@ class WebUIApp:
         elapsed = int((datetime.datetime.now() - self._last_scheduler_heartbeat_time).total_seconds())
         return {"last_seen": format_seconds(elapsed), "stale": elapsed > self._scheduler_stale_seconds}
 
-    def get_full_state(self, view: ClientView) -> Dict[str, Any]:
+    def get_full_state(self, view: BrowserView) -> Dict[str, Any]:
         """Get complete current state for one client, in that client's view."""
         # Flush any messages that arrived since the last batch-loop iteration so
         # the snapshot is as fresh as possible.
@@ -1310,7 +1676,12 @@ class WebUIApp:
         return {
             "scheduler": sched,
             **self._workers_section(view, cache),
+            **self._machines_section(),
+            **self._clients_section(),
+            "storage": self._storage_data,
+            **self._objects_section(),
             "task_log": initial_task_log,
+            "task_events": list(self._task_events),
             "task_log_max_size": self._task_log_max_size,
             "task_log_total": self._task_log_total,
             "task_stream": stream_data,
@@ -1320,104 +1691,51 @@ class WebUIApp:
             "settings": view.settings(),
         }
 
-    def view_update(self, view: ClientView) -> Dict[str, Any]:
+    def view_update(self, view: BrowserView) -> Dict[str, Any]:
         """The paged sections for one client, answered on its change instead of at the next tick."""
         cache = _RenderCache()
         stream_data = self._stream_section(view, cache)
         return {
             **self._workers_section(view, cache),
+            **self._machines_section(),
             **self._processors_section(view, cache),
             "task_stream": stream_data,
             "memory_chart": cache.memory(self, stream_data["window"], view.memory_scale),
             "settings": view.settings(),
         }
 
-    async def add_client(self, ws: WebSocket) -> ClientView:
-        view = ClientView()
-        async with self._clients_lock:
-            self._clients[ws] = view
-        return view
+    def add_browser(self) -> "BrowserStream":
+        """Register a browser's event stream. Its id is what its later view requests name."""
+        stream = BrowserStream(browser_id=next(self._browser_ids))
+        with self._browsers_lock:
+            self._browsers[stream.browser_id] = stream
+        return stream
 
-    async def remove_client(self, ws: WebSocket) -> None:
-        async with self._clients_lock:
-            self._clients.pop(ws, None)
+    def remove_browser(self, browser_id: int) -> None:
+        with self._browsers_lock:
+            self._browsers.pop(browser_id, None)
 
-    async def _send_to_clients(self, build_payload: Callable[[ClientView], Dict[str, Any]]) -> None:
-        """Serialize and send one payload per client: each browser is on its own page and sort order."""
-        async with self._clients_lock:
-            dead: List[WebSocket] = []
-            for ws, view in self._clients.items():
-                try:
-                    await ws.send_text(json.dumps(build_payload(view)))
-                except Exception:
-                    dead.append(ws)
-            for ws in dead:
-                self._clients.pop(ws, None)
+    def get_browser(self, browser_id: int) -> Optional["BrowserStream"]:
+        with self._browsers_lock:
+            return self._browsers.get(browser_id)
+
+    def _send_to_browsers(self, build_payload: Callable[[BrowserView], Dict[str, Any]]) -> None:
+        """Queue one payload per browser: each is on its own page and sort order.
+
+        The queue is what keeps a slow browser from holding up the batch: this never writes a socket.
+        """
+        with self._browsers_lock:
+            streams = list(self._browsers.values())
+        for stream in streams:
+            stream.offer(json.dumps(build_payload(stream.view)))
 
 
-def create_app(config: WebGUIConfig) -> FastAPI:
-    app_state = WebUIApp(config)
+def create_app(config: WebGUIConfig) -> WebUIApp:
+    """The GUI's state, subscribed to the scheduler and pushing to browsers."""
+    app = WebUIApp(config)
 
-    # Start ZMQ subscriber immediately so messages are collected even while uvicorn
-    # is still initialising.  The subscriber thread puts into a thread-safe queue;
-    # the asyncio batch_loop (started in the startup event) drains it later.
-    app_state.start_subscriber()
-
-    app = FastAPI(title="Scaler Web GUI")
-
-    @app.middleware("http")
-    async def no_cache_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
-        response = await call_next(request)
-        if request.url.path.startswith("/static"):
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        return response
-
-    @app.on_event("startup")
-    async def startup() -> None:
-        await app_state.start_batcher()
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        await app_state.stop_batcher()
-        if app_state._subscriber:
-            app_state._subscriber.destroy()
-
-    @app.get("/")
-    async def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
-
-    @app.websocket("/ws")
-    async def websocket_endpoint(ws: WebSocket) -> None:
-        await ws.accept()
-        view = await app_state.add_client(ws)
-        try:
-            # send full state on connect
-            full_state = app_state.get_full_state(view)
-            full_state["type"] = "full_state"
-            await ws.send_text(json.dumps(full_state))
-
-            # this browser's own view changes: paging, sorting, chart settings
-            while True:
-                data = await ws.receive_text()
-                try:
-                    msg = json.loads(data)
-                    message_type = msg.get("type")
-                    if message_type == "settings":
-                        view.apply_settings(msg.get("settings", {}))
-                    elif message_type == "view":
-                        view.apply_view(msg.get("view", {}))
-                    else:
-                        continue
-                    update = app_state.view_update(view)
-                    update["type"] = "view_update"
-                    await ws.send_text(json.dumps(update))
-                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-                    pass
-        except WebSocketDisconnect:
-            pass
-        finally:
-            await app_state.remove_client(ws)
-
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
+    # Subscribe before the HTTP server binds, so the monitor stream is collected from the first frame.
+    # The subscriber thread only enqueues, and the batcher thread drains.
+    app.start_subscriber()
+    app.start_batcher()
     return app

@@ -111,7 +111,10 @@ DEFAULT_LOGGING_PATHS = ("/dev/stdout",)
 DEFAULT_GUI_BROADCAST_INTERVAL_SECONDS = 0.5
 
 # maximum number of completed tasks the web GUI retains and shows in the task log
-DEFAULT_GUI_TASK_LOG_MAX_SIZE = 500
+# The GUI pages through this server-side, so the browser only ever holds one page: the cap bounds the
+# scheduler's memory, not what is browsable. 500 was low enough that a busy cluster lost history within
+# seconds.
+DEFAULT_GUI_TASK_LOG_MAX_SIZE = 50_000
 
 # =======================
 # SCALER NETWORK BACKEND SPECIFIC OPTIONS

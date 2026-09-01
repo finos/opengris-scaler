@@ -14,10 +14,13 @@
 
     <nav class="tab-bar" id="tab-bar">
         <button class="tab active" data-tab="live">Live</button>
+        <button class="tab" data-tab="tasklist">Task List</button>
         <button class="tab" data-tab="tasklog">Task Log</button>
         <button class="tab" data-tab="stream">Worker Task Stream</button>
         <button class="tab" data-tab="processors">Worker Processors</button>
-        <button class="tab" data-tab="settings">Settings</button>
+        <button class="tab" data-tab="machines">Machines</button>
+        <button class="tab" data-tab="clients">Clients</button>
+        <button class="tab" data-tab="objects">Objects</button>
     </nav>
 
     <!-- Tab: Live -->
@@ -44,6 +47,36 @@
                 <div class="metric">
                     <span class="metric-label">Last Seen:</span>
                     <span class="metric-value" id="sched-last-seen">—</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card scheduler-card">
+            <h3>Object Storage</h3>
+            <div class="scheduler-metrics">
+                <div class="metric">
+                    <span class="metric-label">Objects:</span>
+                    <span class="metric-value" id="oss-objects">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Unique:</span>
+                    <span class="metric-value" id="oss-unique">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Held:</span>
+                    <span class="metric-value" id="oss-size">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Shared:</span>
+                    <span class="metric-value" id="oss-shared">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Waiting:</span>
+                    <span class="metric-value" id="oss-pending">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Oldest Wait:</span>
+                    <span class="metric-value" id="oss-oldest">&mdash;</span>
                 </div>
             </div>
         </div>
@@ -83,6 +116,9 @@
                         <tr>
                             <th>Worker</th>
                             <th>Manager</th>
+                            <th>Host</th>
+                            <th>Task</th>
+                            <th>For</th>
                             <th>Agt CPU %</th>
                             <th>Agt PSS (MB)</th>
                             <th>Proc CPU %</th>
@@ -106,9 +142,9 @@
     </div>
 
     <!-- Tab: Task Log -->
-    <div class="tab-panel" id="panel-tasklog">
+    <div class="tab-panel" id="panel-tasklist">
         <div class="card">
-            <h3>Task Log <span class="badge" id="tasklog-count">0</span></h3>
+            <h3>Task List <span class="badge" id="tasklog-count">0</span></h3>
             <div class="pager pager-top" id="tasklog-pager-top"></div>
             <div class="table-wrap">
                 <table class="data-table" id="tasklog-table">
@@ -116,10 +152,12 @@
                         <tr>
                             <th>Task ID</th>
                             <th>Function</th>
+                            <th>Client</th>
                             <th>Worker</th>
                             <th>Time</th>
                             <th>Duration</th>
                             <th>Peak Mem</th>
+                            <th>Objects</th>
                             <th>Status</th>
                             <th>Capabilities</th>
                         </tr>
@@ -131,12 +169,53 @@
         </div>
     </div>
 
+
+    <!-- Tab: Task Log (linear history) -->
+    <div class="tab-panel" id="panel-tasklog">
+        <div class="card">
+            <div class="card-header-row">
+                <h3>Task Log <span class="muted" id="taskevents-count"></span></h3>
+                <div class="inline-controls">
+                    <span class="muted" id="taskevents-filter-label"></span>
+                    <button class="fit-page-btn" id="taskevents-clear" style="display:none">Show all</button>
+                </div>
+            </div>
+            <p class="muted">
+                Every state change in the order it happened, newest first. Rows are never rewritten, so a task
+                that is rebalanced or retried leaves its whole trail. Click a row to see only that task.
+            </p>
+            <div class="table-wrap">
+                <table class="data-table" id="taskevents-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Task</th>
+                            <th>Event</th>
+                            <th>Client</th>
+                            <th>Worker</th>
+                            <th>Function</th>
+                            <th>Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody id="taskevents-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- Tab: Worker Task Stream -->
     <div class="tab-panel" id="panel-stream">
         <div class="card" id="stream-card">
             <div class="card-header-row">
                 <h3>Worker Task Stream</h3>
-                <button class="fit-page-btn" id="fit-page-btn" title="Toggle fit-to-page layout">Fit Page</button>
+                <div class="inline-controls">
+                    <div class="toggle-group" id="window-toggle" title="Sliding window length">
+                        <button class="toggle-btn active" data-value="5">5 min</button>
+                        <button class="toggle-btn" data-value="10">10 min</button>
+                        <button class="toggle-btn" data-value="30">30 min</button>
+                    </div>
+                    <button class="fit-page-btn" id="fit-page-btn" title="Toggle fit-to-page layout">Fit Page</button>
+                </div>
             </div>
             <div class="legend" id="stream-legend"></div>
             <div class="pager pager-top" id="stream-pager-top"></div>
@@ -147,7 +226,17 @@
             <div class="pager" id="stream-pager"></div>
         </div>
         <div class="card" id="memory-card">
-            <h3>Memory Usage</h3>
+            <div class="card-header-row">
+                <h3>Memory Usage</h3>
+                <div class="toggle-group" id="scale-toggle" title="Memory usage scale">
+                    <button class="toggle-btn active" data-value="linear">Linear</button>
+                    <button class="toggle-btn" data-value="log">Log</button>
+                </div>
+            </div>
+            <p class="muted">
+                Sampled live from what the fleet is holding, not summed from finished tasks. CPU is the
+                same samples, as a percentage summed across cores.
+            </p>
             <div class="memory-container">
                 <canvas id="memory-canvas"></canvas>
             </div>
@@ -161,25 +250,104 @@
         <div class="pager" id="processors-pager"></div>
     </div>
 
-    <!-- Tab: Settings -->
-    <div class="tab-panel" id="panel-settings">
-        <div class="card settings-card">
-            <h3>Sliding Window Length</h3>
-            <div class="toggle-group" id="window-toggle">
-                <button class="toggle-btn active" data-value="5">5 min</button>
-                <button class="toggle-btn" data-value="10">10 min</button>
-                <button class="toggle-btn" data-value="30">30 min</button>
+
+    <!-- Tab: Machines -->
+    <div class="tab-panel" id="panel-machines">
+        <div class="card">
+            <div class="card-head">
+                <h2>Machines <span class="muted" id="machines-total"></span></h2>
+                <p class="muted">
+                    One row per host, however many workers it runs. Network counters are host-wide, so they
+                    are read once per machine rather than summed across its workers.
+                </p>
             </div>
-        </div>
-        <div class="card settings-card">
-            <h3>Memory Usage Scale</h3>
-            <div class="toggle-group" id="scale-toggle">
-                <button class="toggle-btn active" data-value="linear">Linear</button>
-                <button class="toggle-btn" data-value="log">Log</button>
+            <div class="table-wrap">
+                <table class="data-table" id="machines-table">
+                    <thead>
+                        <tr>
+                            <th>Host</th>
+                            <th>Workers</th>
+                            <th>Busy</th>
+                            <th>Idle</th>
+                            <th>Managers</th>
+                            <th>CPU %</th>
+                            <th>Used (MB)</th>
+                            <th>Free (MB)</th>
+                            <th>Mem %</th>
+                            <th>Queued</th>
+                            <th>Sent</th>
+                            <th>Net Out</th>
+                            <th>Net In</th>
+                        </tr>
+                    </thead>
+                    <tbody id="machines-body"></tbody>
+                </table>
             </div>
         </div>
     </div>
 
+    <!-- Tab: Clients -->
+    <div class="tab-panel" id="panel-clients">
+        <div class="card">
+            <div class="card-head">
+                <h2>Clients <span class="muted" id="clients-total"></span></h2>
+                <p class="muted">
+                    Every client the scheduler currently holds a heartbeat from. Finished counts every task
+                    that reached a terminal state, cancelled ones included, and Failed is the part of it
+                    that raised or lost its worker. Both are counted by this monitor since it started.
+                </p>
+            </div>
+            <div class="table-wrap">
+                <table class="data-table" id="clients-table">
+                    <thead>
+                        <tr>
+                            <th>Client</th>
+                            <th>Host</th>
+                            <th>Tasks</th>
+                            <th>Finished</th>
+                            <th>Failed</th>
+                            <th>CPU %</th>
+                            <th>RSS</th>
+                            <th>Latency</th>
+                            <th>Connected</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clients-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Objects -->
+    <div class="tab-panel" id="panel-objects">
+        <div class="card">
+            <div class="card-head">
+                <h2>Objects <span class="muted" id="objects-total"></span></h2>
+                <p class="muted">
+                    The biggest objects the scheduler tracks, and the live tasks that name each one as their
+                    function or as an argument. An object with no task is held by its client alone.
+                </p>
+            </div>
+            <div class="table-wrap">
+                <table class="data-table" id="objects-table">
+                    <thead>
+                        <tr>
+                            <th>Object</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Client</th>
+                            <th>Tasks</th>
+                        </tr>
+                    </thead>
+                    <tbody id="objects-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Settings -->
     <!-- Tooltip -->
     <div class="tooltip" id="tooltip"></div>
 

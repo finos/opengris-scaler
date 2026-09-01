@@ -669,3 +669,19 @@ body.fit-page #memory-card .memory-container {
     font-size: 12px;
     color: var(--text-muted);
 }
+
+/* Controls that used to live in the Settings tab now sit on the widget they affect. */
+.inline-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Rows in the linear task log filter to one task when clicked. */
+tr.clickable {
+    cursor: pointer;
+}
+
+tr.clickable:hover {
+    background: var(--row-hover, rgba(255, 255, 255, 0.06));
+}

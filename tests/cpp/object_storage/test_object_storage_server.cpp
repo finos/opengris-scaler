@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -673,20 +674,22 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
     std::optional<ReceivedPayload> responsePayload;
     auto client = getClient();
 
-    const uint64_t numOfFields   = 3;
+    const uint64_t numOfFields   = 6;
     const uint64_t payloadLength = numOfFields * sizeof(uint64_t);
 
-    auto deserialize = [](const scaler::ymq::Bytes& bytes) -> std::tuple<uint64_t, uint64_t, uint64_t> {
-        uint64_t numIDs {};
-        uint64_t numObjs {};
-        uint64_t numBytes {};
-        std::memcpy(&numIDs, bytes.data() + 0 * sizeof(uint64_t), sizeof(uint64_t));
-        std::memcpy(&numObjs, bytes.data() + 1 * sizeof(uint64_t), sizeof(uint64_t));
-        std::memcpy(&numBytes, bytes.data() + 2 * sizeof(uint64_t), sizeof(uint64_t));
-        return {numIDs, numObjs, numBytes};
+    auto deserialize = [](const scaler::ymq::Bytes& bytes) -> std::array<uint64_t, numOfFields> {
+        std::array<uint64_t, numOfFields> fields {};
+        for (size_t field = 0; field < numOfFields; ++field) {
+            std::memcpy(&fields[field], bytes.data() + field * sizeof(uint64_t), sizeof(uint64_t));
+        }
+        return fields;
     };
 
-    auto testInfoGetTotalRequest = [&](uint64_t expectedNumIDs, uint64_t expectedNumObjs, uint64_t expectedNumBytes) {
+    auto testInfoGetTotalRequest = [&](uint64_t expectedNumIDs,
+                                       uint64_t expectedNumObjs,
+                                       uint64_t expectedNumBytes,
+                                       uint64_t expectedNumPending    = 0,
+                                       uint64_t expectedNumPendingIDs = 0) {
         ObjectRequestHeader requestHeader {
             .objectID      = {0, 1, 2, 3},
             .payloadLength = 0,
@@ -703,10 +706,12 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
         EXPECT_TRUE(responsePayload.has_value());
         EXPECT_EQ((*responsePayload)->size(), payloadLength);
 
-        auto [numIDs, numObjs, numBytes] = deserialize(**responsePayload);
-        EXPECT_EQ(numIDs, expectedNumIDs);
-        EXPECT_EQ(numObjs, expectedNumObjs);
-        EXPECT_EQ(numBytes, expectedNumBytes);
+        auto fields = deserialize(**responsePayload);
+        EXPECT_EQ(fields[0], expectedNumIDs);
+        EXPECT_EQ(fields[1], expectedNumObjs);
+        EXPECT_EQ(fields[2], expectedNumBytes);
+        EXPECT_EQ(fields[3], expectedNumPending);
+        EXPECT_EQ(fields[4], expectedNumPendingIDs);
     };
 
     testInfoGetTotalRequest(0, 0, 0);
@@ -775,6 +780,41 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
 
     // The system shouldn't own any objects
     testInfoGetTotalRequest(0, 0, 0);
+
+    // A get for an object nobody has created waits, and the wait is what the last three fields report.
+    auto waitingClient = getClient("waiting-client");
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = {7, 7, 7, 7},
+            .payloadLength = 0,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::GET_OBJECT,
+        };
+
+        waitingClient->writeRequest(requestHeader, std::nullopt);
+    }
+
+    testInfoGetTotalRequest(0, 0, 0, 1, 1);
+
+    // Creating it answers the waiting client and empties the queue.
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = {7, 7, 7, 7},
+            .payloadLength = payloadContent.size(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, payloadSpan);
+        client->readResponse(responseHeader, responsePayload);
+    }
+
+    ObjectResponseHeader waitingHeader;
+    std::optional<ReceivedPayload> waitingPayload;
+    waitingClient->readResponse(waitingHeader, waitingPayload);
+    EXPECT_EQ(waitingHeader.responseType, ObjectResponseType::GET_O_K);
+
+    testInfoGetTotalRequest(1, 1, payloadContent.size());
 }
 
 // This test fixture is specifically for verifying server logging behavior.
