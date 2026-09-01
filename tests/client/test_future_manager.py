@@ -5,8 +5,9 @@ from unittest.mock import Mock
 
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
+from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
@@ -50,7 +51,7 @@ class TestClientFutureManager(unittest.TestCase):
     def __create_future_nobody_will_answer() -> Tuple[ClientID, ScalerFuture]:
         client_id = ClientID.generate_client_id()
         connector_agent = Mock(spec=SyncConnector)  # accepts the TaskCancel and never answers it
-        connector_storage = Mock(spec=SyncObjectStorageConnector)
+        object_buffer = Mock(spec=ObjectBuffer)
 
         task = Task(
             taskId=TaskID.generate_task_id(),
@@ -67,7 +68,7 @@ class TestClientFutureManager(unittest.TestCase):
             group_task_id=None,
             serializer=DefaultSerializer(),
             connector_agent=connector_agent,
-            connector_storage=connector_storage,
+            object_buffer=object_buffer,
         )
 
         return client_id, future
