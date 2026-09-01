@@ -145,6 +145,18 @@ struct StateClient {
 }
 
 struct StateObject {
+    objects @0 :List(ObjectDetail);
+    totalObjects @1 :UInt32;   # objects the scheduler tracks, of which `objects` is the largest few
+
+    struct ObjectDetail {
+        objectId @0 :Data;
+        name @1 :Data;
+        objectType @2 :CommonType.ObjectMetadata.ObjectContentType;
+        size @3 :UInt64;
+        creator @4 :Data;        # client that created it
+        taskIds @5 :List(Data);  # tasks that name it as their function or an argument, bounded
+        taskCount @6 :UInt32;    # how many there are, which `taskIds` is only the first few of
+    }
 }
 
 struct StateBalanceAdvice {

@@ -17,7 +17,9 @@ from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
+    ObjectManagerStatus,
     StateBalanceAdvice,
+    StateObject,
     StateScheduler,
     StateTask,
     StateWorker,
@@ -48,6 +50,10 @@ SLIDING_WINDOW_OPTIONS = {
 }
 
 DEFAULT_STREAM_WINDOW_MINUTES = 5
+
+# How much of a task or object ID the monitor shows. Enough to pick one out of a page, short enough that
+# a row of them still reads.
+TASK_ID_DISPLAY_LENGTH = 12
 
 # Payloads one browser may fall behind by before its stream is dropped. It reconnects and is sent a
 # full state, which is cheaper than growing a queue nobody is reading.
@@ -851,6 +857,9 @@ class WebUIApp:
         # Scaler clients the scheduler currently sees, rebuilt every status frame, and the task
         # outcomes this GUI has counted per client since it started.
         self._clients_data: Dict[str, Dict[str, Any]] = {}
+        self._storage_data: Dict[str, Any] = {}
+        self._objects_data: List[Dict[str, Any]] = []
+        self._objects_total: int = 0
         self._client_task_totals: Dict[str, Dict[str, int]] = {}
         self._worker_manager_map: Dict[str, str] = {}  # worker_name -> manager_id (persistent)
         self._worker_managers_data: Dict[str, Dict[str, Any]] = {}  # manager_id -> manager info
@@ -909,6 +918,7 @@ class WebUIApp:
 
             # Process messages
             has_scheduler_update = False
+            has_object_update = False
             new_task_logs: List[Dict[str, Any]] = []
             worker_events: List[Dict[str, Any]] = []
 
@@ -926,6 +936,9 @@ class WebUIApp:
                         self._record_task_event(msg)
                         if log_entry:
                             new_task_logs.append(log_entry)
+                    elif isinstance(msg, StateObject):
+                        self._process_objects(msg)
+                        has_object_update = True
                     elif isinstance(msg, StateBalanceAdvice):
                         self._record_balance_advice(msg)
                 except Exception:
@@ -953,7 +966,11 @@ class WebUIApp:
 
             if has_scheduler_update:
                 shared["worker_managers"] = list(self._worker_managers_data.values())
+                shared["storage"] = self._storage_data
                 shared.update(self._clients_section())
+
+            if has_object_update:
+                shared.update(self._objects_section())
 
             # The paged parts differ per browser; the fleet-wide work behind them is shared via the cache.
             cache = _RenderCache()
@@ -977,6 +994,7 @@ class WebUIApp:
             "rss_free": format_bytes(data.rssFree),
             "monitor_address": self._monitor_address,
         }
+        self._storage_data = self.__storage_section(data.objectManager)
 
         self._process_clients(data)
 
@@ -1160,6 +1178,52 @@ class WebUIApp:
             mgr_data["total_sent"] = mgr_sent
             mgr_data["total_queued"] = mgr_queued
             mgr_data["total_suspended"] = mgr_suspended
+
+    @staticmethod
+    def __storage_section(status: ObjectManagerStatus) -> Dict[str, Any]:
+        """What the object storage server holds, and what is stuck waiting on it.
+
+        `pending` counts requests waiting for an object nobody has created yet. A client blocks in
+        `get_object` until that happens, so a number here that does not fall is a stalled fetch.
+        """
+        held = status.storageTotalBytes
+        unique = status.storageUniqueCount
+        return {
+            "tracked_objects": status.numberOfObjects,
+            "objects": status.storageObjectCount,
+            "unique_objects": unique,
+            "size": format_bytes(held),
+            "shared": status.storageObjectCount - unique,
+            "pending": status.storagePendingRequests,
+            "pending_objects": status.storagePendingObjects,
+            "oldest_pending": format_seconds(status.storageOldestPendingS) if status.storagePendingRequests else "0s",
+        }
+
+    def _process_objects(self, state: StateObject) -> None:
+        """The biggest objects the scheduler tracks, and the tasks holding each one."""
+        rows = []
+        for detail in state.objects:
+            task_ids = [bytes(task_id).hex()[:TASK_ID_DISPLAY_LENGTH] for task_id in detail.taskIds]
+            creator = bytes(detail.creator).decode(errors="replace")
+            rows.append(
+                {
+                    "object_id": bytes(detail.objectId).hex(),
+                    "name": detail.name.decode(errors="replace"),
+                    "type": detail.objectType.name,
+                    "size": format_bytes(detail.size),
+                    "size_bytes": detail.size,
+                    "client": _format_client_name(creator) if creator else "\u2014",
+                    "full_client": creator,
+                    "tasks": detail.taskCount,
+                    "task_ids": task_ids,
+                }
+            )
+        self._objects_data = rows
+        self._objects_total = state.totalObjects
+
+    def _objects_section(self) -> Dict[str, Any]:
+        """Every object row the scheduler sent, which is already the biggest few of `objects_total`."""
+        return {"objects": self._objects_data, "objects_total": self._objects_total}
 
     def _process_clients(self, data: StateScheduler) -> None:
         """One row per client the scheduler has heard from, with the totals this GUI has counted."""
@@ -1614,6 +1678,8 @@ class WebUIApp:
             **self._workers_section(view, cache),
             **self._machines_section(),
             **self._clients_section(),
+            "storage": self._storage_data,
+            **self._objects_section(),
             "task_log": initial_task_log,
             "task_events": list(self._task_events),
             "task_log_max_size": self._task_log_max_size,

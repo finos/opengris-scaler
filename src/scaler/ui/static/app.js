@@ -65,6 +65,13 @@ var memoryCanvas = $("memory-canvas");
 var memoryCtx = memoryCanvas.getContext("2d");
 var processorsContainer = $("processors-container");
 var machinesBody = $("machines-body");
+var ossObjects = $("oss-objects");
+var ossUnique = $("oss-unique");
+var ossSize = $("oss-size");
+var ossShared = $("oss-shared");
+var ossPending = $("oss-pending");
+var ossOldest = $("oss-oldest");
+var lastStorageData = null;
 var taskEventsBody = $("taskevents-body");
 var taskEventsCount = $("taskevents-count");
 var taskEventsClear = $("taskevents-clear");
@@ -76,6 +83,10 @@ var lastMachinesData = [];
 var clientsBody = $("clients-body");
 var clientsTotal = $("clients-total");
 var lastClientsData = [];
+var objectsBody = $("objects-body");
+var objectsTotal = $("objects-total");
+var lastObjectsData = [];
+var lastObjectsTotal = 0;
 var tooltip = $("tooltip");
 
 // -- Tabs --
@@ -104,6 +115,7 @@ for (var i = 0; i < tabs.length; i++) {
 function renderActiveTab() {
     if (activeTab === "live") {
         if (lastSchedulerData) renderScheduler(lastSchedulerData);
+        if (lastStorageData) renderStorage(lastStorageData);
         renderWorkers();
         renderManagers();
     } else if (activeTab === "tasklist") {
@@ -116,6 +128,8 @@ function renderActiveTab() {
         renderMachines();
     } else if (activeTab === "clients") {
         renderClients();
+    } else if (activeTab === "objects") {
+        renderObjects();
     } else if (activeTab === "stream") {
         renderStreamStatic();
         streamNeedsRedraw = true;
@@ -276,6 +290,8 @@ function handleMessage(data) {
     }
     if (data.machines) updateMachines(data.machines);
     if (data.clients) updateClients(data.clients);
+    if (data.storage) updateStorage(data.storage);
+    if (data.objects) updateObjects(data.objects, data.objects_total);
     if (data.task_events) updateTaskEvents(data.task_events);
     if (data.worker_managers) {
         updateWorkerManagers(data.worker_managers);
@@ -320,6 +336,8 @@ function handleFullState(data) {
     if (data.workers) updateWorkers(data.workers);
     if (data.machines) updateMachines(data.machines);
     if (data.clients) updateClients(data.clients);
+    if (data.storage) updateStorage(data.storage);
+    if (data.objects) updateObjects(data.objects, data.objects_total);
     if (data.task_events) updateTaskEvents(data.task_events);
     if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (typeof data.task_log_max_size === "number" && data.task_log_max_size > 0) {
@@ -349,6 +367,25 @@ function applySettings(settings) {
             btns2[i].classList.toggle("active", btns2[i].getAttribute("data-value") === settings.memory_scale);
         }
     }
+}
+
+// -- Live Tab: Object Storage --
+function updateStorage(storage) {
+    lastStorageData = storage;
+    if (activeTab === "live") renderStorage(storage);
+}
+
+// A pending count that does not fall is a fetch nobody can answer: the client blocks in get_object until
+// the object is created, so the wait is unbounded until something else times out.
+function renderStorage(storage) {
+    ossObjects.textContent = storage.objects;
+    ossUnique.textContent = storage.unique_objects;
+    ossSize.textContent = storage.size;
+    ossShared.textContent = storage.shared;
+    ossPending.textContent = storage.pending + (storage.pending ? " (" + storage.pending_objects + " objects)" : "");
+    ossPending.classList.toggle("stale", storage.pending > 0);
+    ossOldest.textContent = storage.oldest_pending;
+    ossOldest.classList.toggle("stale", storage.pending > 0);
 }
 
 // -- Live Tab: Scheduler --
@@ -554,6 +591,38 @@ function renderClients() {
         clientsBody.appendChild(tr);
     }
     if (clientsTotal) clientsTotal.textContent = lastClientsData.length ? "(" + lastClientsData.length + ")" : "";
+}
+
+function updateObjects(objects, total) {
+    lastObjectsData = objects || [];
+    if (typeof total === "number") lastObjectsTotal = total;
+    if (activeTab === "objects") renderObjects();
+}
+
+var OBJECT_FIELDS = ["object_id", "name", "type", "size", "client", "tasks"];
+
+function renderObjects() {
+    objectsBody.innerHTML = "";
+    for (var i = 0; i < lastObjectsData.length; i++) {
+        var o = lastObjectsData[i];
+        var tr = document.createElement("tr");
+        for (var f = 0; f < OBJECT_FIELDS.length; f++) {
+            var field = OBJECT_FIELDS[f];
+            var td = document.createElement("td");
+            var value = o[field];
+            if (field === "object_id" && value) value = value.slice(0, 12);
+            if (field === "tasks") td.title = o.task_ids.join(" ");
+            if (field === "client") td.title = o.full_client || "";
+            td.textContent = (value === undefined || value === null || value === "") ? "\u2014" : value;
+            tr.appendChild(td);
+        }
+        objectsBody.appendChild(tr);
+    }
+    if (objectsTotal) {
+        objectsTotal.textContent = lastObjectsData.length < lastObjectsTotal
+            ? "(" + lastObjectsData.length + " of " + lastObjectsTotal + ")"
+            : "(" + lastObjectsTotal + ")";
+    }
 }
 
 function renderWorkers() {

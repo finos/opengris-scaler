@@ -78,6 +78,12 @@ class Resource(CapnpStruct):
 
 class ObjectManagerStatus(CapnpStruct):
     numberOfObjects: int
+    storageObjectCount: int
+    storageUniqueCount: int
+    storageTotalBytes: int
+    storagePendingRequests: int
+    storagePendingObjects: int
+    storageOldestPendingS: int
 
 class ClientManagerStatus(CapnpStruct):
     class ClientStatus(CapnpStruct):
@@ -271,7 +277,19 @@ class ClientShutdownResponse(BaseMessage):
     accepted: bool
 
 class StateClient(BaseMessage): ...
-class StateObject(BaseMessage): ...
+
+class StateObject(BaseMessage):
+    class ObjectDetail(CapnpStruct):
+        objectId: ObjectID
+        name: bytes
+        objectType: ObjectMetadata.ObjectContentType
+        size: int
+        creator: ClientID
+        taskIds: Any
+        taskCount: int
+
+    objects: Any
+    totalObjects: int
 
 class StateBalanceAdvice(BaseMessage):
     workerId: WorkerID

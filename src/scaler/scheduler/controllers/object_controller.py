@@ -1,17 +1,24 @@
+import asyncio
 import dataclasses
 import logging
 from asyncio import Queue
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 
-from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
+from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher, ObjectStorageTotals
 from scaler.protocol.capnp import ObjectInstruction, ObjectManagerStatus, ObjectMetadata
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
-from scaler.scheduler.controllers.mixins import ClientController, ObjectController, WorkerController
+from scaler.scheduler.controllers.mixins import ClientController, ObjectController, ObjectDetail, WorkerController
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
+from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID
 from scaler.utility.mixins import Looper, Reporter
 
 logger = logging.getLogger(__name__)
+
+# How long to wait for the storage server to answer what it holds. The request rides the same connector
+# as every object fetch. An unbounded wait would hold this routine open for as long as the server is
+# unreachable.
+STORAGE_TOTALS_TIMEOUT_SECONDS = 5.0
 
 
 @dataclasses.dataclass
@@ -44,6 +51,11 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
 
         self._client_manager: Optional[ClientController] = None
         self._worker_manager: Optional[WorkerController] = None
+
+        # The storage server's own view of what it holds, refreshed by the routine below. It answers one
+        # request per round trip, so the status frame reports the last answer rather than waiting for a new
+        # one.
+        self._storage_totals = ObjectStorageTotals()
 
     def register(
         self,
@@ -98,9 +110,37 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
     async def routine(self):
         await self.__routine_send_objects_deletions()
 
+    async def routine_storage_totals(self) -> None:
+        """Ask the storage server what it holds. Its own loop is the only place those numbers exist."""
+        try:
+            self._storage_totals = await asyncio.wait_for(
+                self._connector_storage.info_get_total(), timeout=STORAGE_TOTALS_TIMEOUT_SECONDS
+            )
+        except (ObjectStorageException, asyncio.TimeoutError):
+            # A storage server that is gone or slow must not stop the scheduler reporting everything else.
+            self._storage_totals = ObjectStorageTotals()
+
     def get_object_size(self, object_id: bytes) -> int:
         """Payload bytes for an object, 0 if it was created by a client that does not report sizes."""
         return self._object_sizes.get(bytes(object_id), 0)
+
+    def object_count(self) -> int:
+        return self._object_tracker.object_count()
+
+    def get_largest_objects(self, limit: int) -> List[ObjectDetail]:
+        """The `limit` biggest tracked objects, biggest first, which is what a full store is made of."""
+        details = [
+            ObjectDetail(
+                object_id=object_id,
+                name=creation.object_name,
+                content_type=creation.object_type,
+                size=self.get_object_size(object_id),
+                creator=creation.object_creator,
+            )
+            for object_id, creation in self._object_tracker.items()
+        ]
+        details.sort(key=lambda detail: detail.size, reverse=True)
+        return details[:limit]
 
     def has_object(self, object_id: ObjectID) -> bool:
         return self._object_tracker.has_object(object_id)
@@ -112,7 +152,15 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         return self._object_tracker.get_object(object_id).object_name
 
     def get_status(self) -> ObjectManagerStatus:
-        return ObjectManagerStatus(numberOfObjects=self._object_tracker.object_count())
+        return ObjectManagerStatus(
+            numberOfObjects=self._object_tracker.object_count(),
+            storageObjectCount=self._storage_totals.object_count,
+            storageUniqueCount=self._storage_totals.unique_object_count,
+            storageTotalBytes=self._storage_totals.total_bytes,
+            storagePendingRequests=self._storage_totals.pending_request_count,
+            storagePendingObjects=self._storage_totals.pending_object_count,
+            storageOldestPendingS=self._storage_totals.oldest_pending_seconds,
+        )
 
     async def __routine_send_objects_deletions(self):
         deleted_object_ids = [await self._queue_deleted_object_ids.get()]

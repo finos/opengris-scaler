@@ -20,6 +20,7 @@
         <button class="tab" data-tab="processors">Worker Processors</button>
         <button class="tab" data-tab="machines">Machines</button>
         <button class="tab" data-tab="clients">Clients</button>
+        <button class="tab" data-tab="objects">Objects</button>
     </nav>
 
     <!-- Tab: Live -->
@@ -46,6 +47,36 @@
                 <div class="metric">
                     <span class="metric-label">Last Seen:</span>
                     <span class="metric-value" id="sched-last-seen">—</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card scheduler-card">
+            <h3>Object Storage</h3>
+            <div class="scheduler-metrics">
+                <div class="metric">
+                    <span class="metric-label">Objects:</span>
+                    <span class="metric-value" id="oss-objects">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Unique:</span>
+                    <span class="metric-value" id="oss-unique">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Held:</span>
+                    <span class="metric-value" id="oss-size">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Shared:</span>
+                    <span class="metric-value" id="oss-shared">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Waiting:</span>
+                    <span class="metric-value" id="oss-pending">&mdash;</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Oldest Wait:</span>
+                    <span class="metric-value" id="oss-oldest">&mdash;</span>
                 </div>
             </div>
         </div>
@@ -283,6 +314,34 @@
                         </tr>
                     </thead>
                     <tbody id="clients-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Objects -->
+    <div class="tab-panel" id="panel-objects">
+        <div class="card">
+            <div class="card-head">
+                <h2>Objects <span class="muted" id="objects-total"></span></h2>
+                <p class="muted">
+                    The biggest objects the scheduler tracks, and the live tasks that name each one as their
+                    function or as an argument. An object with no task is held by its client alone.
+                </p>
+            </div>
+            <div class="table-wrap">
+                <table class="data-table" id="objects-table">
+                    <thead>
+                        <tr>
+                            <th>Object</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Client</th>
+                            <th>Tasks</th>
+                        </tr>
+                    </thead>
+                    <tbody id="objects-body"></tbody>
                 </table>
             </div>
         </div>

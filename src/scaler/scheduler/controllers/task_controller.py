@@ -3,7 +3,7 @@ import contextlib
 import logging
 import sys
 from collections import deque
-from typing import AsyncGenerator, Deque, Dict, List, Literal, Optional, Tuple
+from typing import AsyncGenerator, Deque, Dict, List, Literal, Optional, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
 from scaler.protocol.capnp import (
@@ -123,6 +123,17 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def routine(self):
         # TODO: we don't need loop task anymore, but I will leave this routine API here in case we need in the future
         pass
+
+    def get_task_ids_by_object(self, object_ids: Set[ObjectID]) -> Dict[ObjectID, List[TaskID]]:
+        """Which live tasks name each of these objects as their function or as an argument."""
+        task_ids_by_object: Dict[ObjectID, List[TaskID]] = {object_id: [] for object_id in object_ids}
+        for task_id, task in self._task_id_to_task.items():
+            if task.funcObjectId in task_ids_by_object:
+                task_ids_by_object[task.funcObjectId].append(task_id)
+            for argument in task.functionArgs:
+                if argument.type == Task.Argument.ArgumentType.objectID and argument.data in task_ids_by_object:
+                    task_ids_by_object[ObjectID(argument.data)].append(task_id)
+        return task_ids_by_object
 
     async def on_task_new(self, task: Task):
         task.capabilities = capabilities_to_dict(task.capabilities)

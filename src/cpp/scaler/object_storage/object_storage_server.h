@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <expected>
 #include <future>
@@ -54,6 +55,9 @@ private:
     struct PendingRequest {
         std::shared_ptr<Client> client;
         ObjectRequestHeader requestHeader;
+        // When the request started waiting. A client blocks in getObject until the object is created, so
+        // the age of the oldest of these is how long something has been stuck.
+        std::chrono::steady_clock::time_point waitingSince {std::chrono::steady_clock::now()};
     };
 
     using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
