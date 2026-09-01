@@ -1,5 +1,3 @@
-import functools
-import socket
 import time
 from typing import Dict, Optional, Tuple
 
@@ -12,17 +10,9 @@ from scaler.protocol.capnp import ProcessorStatus, Resource, WorkerHeartbeat, Wo
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.memory import get_memory_limit_and_available, get_process_memory
 from scaler.utility.mixins import Looper
+from scaler.utility.network_util import get_hostname
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, TaskManager, TimeoutManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
-
-
-@functools.lru_cache(maxsize=1)
-def _hostname() -> str:
-    """The machine this worker runs on. Cached: it cannot change, and the heartbeat is hot."""
-    try:
-        return socket.gethostname()
-    except OSError:
-        return ""
 
 
 def _host_network_counters() -> Tuple[int, int]:
@@ -132,7 +122,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 processors=[self.__get_processor_status_from_holder(processor) for processor in processors],
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
-                hostname=_hostname(),
+                hostname=get_hostname(),
                 netSentBytes=net_sent,
                 netRecvBytes=net_recv,
             ),

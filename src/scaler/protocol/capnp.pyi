@@ -96,11 +96,16 @@ class ObjectManagerStatus(CapnpStruct):
     numberOfObjects: int
 
 class ClientManagerStatus(CapnpStruct):
-    class Pair(CapnpStruct):
-        client: ClientID
+    class ClientStatus(CapnpStruct):
+        clientId: ClientID
         numTask: int
+        resource: Resource
+        latencyUS: int
+        lastSeenS: int
+        connectedS: int
+        hostname: str
 
-    clientToNumOfTask: Any
+    clients: Any
 
 class TaskManagerStatus(CapnpStruct):
     class Pair(CapnpStruct):
@@ -222,6 +227,7 @@ class GraphTask(BaseMessage):
 class ClientHeartbeat(BaseMessage):
     resource: Resource
     latencyUS: int
+    hostname: str
 
 class ClientHeartbeatEcho(BaseMessage):
     objectStorageAddress: ObjectStorageAddress
@@ -314,6 +320,7 @@ class StateTask(BaseMessage):
     capabilities: Any
     metadata: bytes
     objectBytes: int
+    client: ClientID
 
 class StateGraphTask(BaseMessage):
     graphTaskId: TaskID

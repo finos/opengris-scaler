@@ -13,11 +13,16 @@ struct ObjectManagerStatus {
 }
 
 struct ClientManagerStatus {
-    clientToNumOfTask @0 :List(Pair);
+    clients @0 :List(ClientStatus);
 
-    struct Pair {
-        client @0 :Data;
+    struct ClientStatus {
+        clientId @0 :Data;
         numTask @1 :UInt32;
+        resource @2 :Resource;   # the client process itself, from its own heartbeat
+        latencyUS @3 :UInt32;    # round trip the client last measured to the scheduler
+        lastSeenS @4 :UInt16;    # seconds since that heartbeat arrived
+        connectedS @5 :UInt32;   # seconds since the client's first heartbeat
+        hostname @6 :Text;       # machine the client runs on
     }
 }
 

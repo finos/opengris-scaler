@@ -10,7 +10,7 @@ from scaler.config.types.address import AddressConfig
 from scaler.ui.app import (
     PROCESSORS_PAGE_SIZE,
     WORKERS_PAGE_SIZE,
-    ClientView,
+    BrowserView,
     WebGUIConfig,
     WebUIApp,
     _RenderCache,
@@ -53,30 +53,30 @@ class TestPaginate(unittest.TestCase):
         self.assertEqual((rows, page, total_pages), ([], 0, 1))
 
 
-class TestClientView(unittest.TestCase):
+class TestBrowserView(unittest.TestCase):
     def test_unknown_sort_column_is_ignored(self) -> None:
-        view = ClientView()
+        view = BrowserView()
         view.apply_view({"workers_sort": "not_a_column"})
         self.assertIsNone(view.workers_sort)
 
     def test_known_sort_column_and_direction_are_kept(self) -> None:
-        view = ClientView()
+        view = BrowserView()
         view.apply_view({"workers_sort": "sent", "workers_sort_ascending": False})
         self.assertEqual(view.workers_sort, "sent")
         self.assertFalse(view.workers_sort_ascending)
 
     def test_negative_page_is_rejected(self) -> None:
-        view = ClientView()
+        view = BrowserView()
         view.apply_view({"workers_page": -3})
         self.assertEqual(view.workers_page, 0)
 
     def test_invalid_settings_are_ignored(self) -> None:
-        view = ClientView()
+        view = BrowserView()
         view.apply_settings({"stream_window": 7, "memory_scale": "sideways"})
         self.assertEqual(view.settings(), {"stream_window": 5, "memory_scale": "linear"})
 
     def test_valid_settings_are_applied(self) -> None:
-        view = ClientView()
+        view = BrowserView()
         view.apply_settings({"stream_window": 30, "memory_scale": "log"})
         self.assertEqual(view.settings(), {"stream_window": 30, "memory_scale": "log"})
 
@@ -84,7 +84,7 @@ class TestClientView(unittest.TestCase):
 class TestWorkersSection(unittest.TestCase):
     def test_browser_receives_one_page_but_the_whole_fleet_count(self) -> None:
         app = make_app(WORKERS_PAGE_SIZE * 2 + 3)
-        section = app._workers_section(ClientView(), _RenderCache())
+        section = app._workers_section(BrowserView(), _RenderCache())
 
         self.assertEqual(len(section["workers"]), WORKERS_PAGE_SIZE)
         self.assertEqual(section["workers_total"], WORKERS_PAGE_SIZE * 2 + 3)
@@ -93,7 +93,7 @@ class TestWorkersSection(unittest.TestCase):
 
     def test_out_of_range_page_is_clamped_and_reported_back(self) -> None:
         app = make_app(60)
-        view = ClientView(workers_page=99)
+        view = BrowserView(workers_page=99)
         section = app._workers_section(view, _RenderCache())
 
         self.assertEqual(section["workers_page"], 1)
@@ -102,7 +102,7 @@ class TestWorkersSection(unittest.TestCase):
 
     def test_sorting_runs_over_the_whole_fleet_not_the_page(self) -> None:
         app = make_app(120)
-        view = ClientView(workers_sort="sent", workers_sort_ascending=False)
+        view = BrowserView(workers_sort="sent", workers_sort_ascending=False)
         section = app._workers_section(view, _RenderCache())
 
         # highest "sent" in the fleet leads, even though it is not in the unsorted first page
@@ -110,7 +110,7 @@ class TestWorkersSection(unittest.TestCase):
 
     def test_preformatted_column_sorts_by_its_raw_value(self) -> None:
         app = make_app(12)
-        view = ClientView(workers_sort="lag", workers_sort_ascending=True)
+        view = BrowserView(workers_sort="lag", workers_sort_ascending=True)
         section = app._workers_section(view, _RenderCache())
 
         # lag renders as "1us".."12us"; sorting the display strings would put "10us" before "2us"
@@ -119,8 +119,8 @@ class TestWorkersSection(unittest.TestCase):
     def test_two_browsers_get_their_own_page_and_order(self) -> None:
         app = make_app(120)
         cache = _RenderCache()
-        first = app._workers_section(ClientView(workers_page=1), cache)
-        second = app._workers_section(ClientView(workers_sort="sent", workers_sort_ascending=False), cache)
+        first = app._workers_section(BrowserView(workers_page=1), cache)
+        second = app._workers_section(BrowserView(workers_sort="sent", workers_sort_ascending=False), cache)
 
         self.assertEqual(first["workers_page"], 1)
         self.assertEqual(second["workers_page"], 0)
@@ -143,7 +143,7 @@ class TestProcessorsSection(unittest.TestCase):
         }
         app._worker_managers_data = {"pod-1": {"manager_id": "pod-1"}}
 
-        section = app._processors_section(ClientView(), _RenderCache())
+        section = app._processors_section(BrowserView(), _RenderCache())
         group = section["processors"][0]
 
         self.assertEqual(len(group["workers"]), PROCESSORS_PAGE_SIZE)  # one page of detail

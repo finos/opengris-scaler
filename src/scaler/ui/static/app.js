@@ -73,6 +73,9 @@ var lastTaskEvents = [];
 var taskEventFilter = null;
 var machinesTotal = $("machines-total");
 var lastMachinesData = [];
+var clientsBody = $("clients-body");
+var clientsTotal = $("clients-total");
+var lastClientsData = [];
 var tooltip = $("tooltip");
 
 // -- Tabs --
@@ -111,6 +114,8 @@ function renderActiveTab() {
         renderProcessors();
     } else if (activeTab === "machines") {
         renderMachines();
+    } else if (activeTab === "clients") {
+        renderClients();
     } else if (activeTab === "stream") {
         renderStreamStatic();
         streamNeedsRedraw = true;
@@ -264,6 +269,7 @@ function handleMessage(data) {
         updateWorkers(data.workers);
     }
     if (data.machines) updateMachines(data.machines);
+    if (data.clients) updateClients(data.clients);
     if (data.task_events) updateTaskEvents(data.task_events);
     if (data.worker_managers) {
         updateWorkerManagers(data.worker_managers);
@@ -306,6 +312,7 @@ function handleFullState(data) {
     applyPageInfo(data);
     if (data.workers) updateWorkers(data.workers);
     if (data.machines) updateMachines(data.machines);
+    if (data.clients) updateClients(data.clients);
     if (data.task_events) updateTaskEvents(data.task_events);
     if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (typeof data.task_log_max_size === "number" && data.task_log_max_size > 0) {
@@ -443,7 +450,7 @@ function updateWorkers(workers) {
 var MACHINE_FIELDS = ["host", "workers", "busy", "idle", "managers", "cpu", "rss", "rss_free",
                       "mem_used_pct", "queued", "sent", "net_sent", "net_recv"];
 
-var TASK_EVENT_FIELDS = ["time", "task_id", "event", "worker", "function", "detail"];
+var TASK_EVENT_FIELDS = ["time", "task_id", "event", "client", "worker", "function", "detail"];
 
 var lastCpuPoints = [];
 
@@ -515,6 +522,31 @@ function renderMachines() {
         machinesBody.appendChild(tr);
     }
     if (machinesTotal) machinesTotal.textContent = lastMachinesData.length ? "(" + lastMachinesData.length + ")" : "";
+}
+
+var CLIENT_FIELDS = ["client", "host", "tasks", "finished", "failed", "cpu", "rss", "latency",
+                     "connected", "last_seen"];
+
+function updateClients(clients) {
+    lastClientsData = clients || [];
+    if (activeTab === "clients") renderClients();
+}
+
+function renderClients() {
+    clientsBody.innerHTML = "";
+    for (var i = 0; i < lastClientsData.length; i++) {
+        var c = lastClientsData[i];
+        var tr = document.createElement("tr");
+        for (var f = 0; f < CLIENT_FIELDS.length; f++) {
+            var td = document.createElement("td");
+            var value = c[CLIENT_FIELDS[f]];
+            td.textContent = (value === undefined || value === null) ? "\u2014" : value;
+            if (CLIENT_FIELDS[f] === "client") td.title = c.full_client || "";
+            tr.appendChild(td);
+        }
+        clientsBody.appendChild(tr);
+    }
+    if (clientsTotal) clientsTotal.textContent = lastClientsData.length ? "(" + lastClientsData.length + ")" : "";
 }
 
 function renderWorkers() {
@@ -734,6 +766,9 @@ function makeTaskLogRow(e) {
     tr.appendChild(tdId);
 
     tr.appendChild(makeCell(e.function));
+    var tdClient = makeCell(e.client || "\u2014");
+    tdClient.title = e.full_client || e.client || "";
+    tr.appendChild(tdClient);
     var tdWorker = makeCell(e.worker || "");
     tdWorker.title = e.full_worker || e.worker || "";
     tr.appendChild(tdWorker);

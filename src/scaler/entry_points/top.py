@@ -88,8 +88,10 @@ def show_status(status: BaseMessage, screen):
     client_table = __generate_keyword_data(
         "client_manager",
         {
-            pair.client.decode() if isinstance(pair.client, (bytes, bytearray)) else str(pair.client): pair.numTask
-            for pair in status.clientManager.clientToNumOfTask
+            client.clientId.decode() if isinstance(client.clientId, (bytes, bytearray)) else str(client.clientId): (
+                client.numTask
+            )
+            for client in status.clientManager.clients
         },
         key_col_length=18,
     )

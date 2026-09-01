@@ -19,6 +19,7 @@
         <button class="tab" data-tab="stream">Worker Task Stream</button>
         <button class="tab" data-tab="processors">Worker Processors</button>
         <button class="tab" data-tab="machines">Machines</button>
+        <button class="tab" data-tab="clients">Clients</button>
     </nav>
 
     <!-- Tab: Live -->
@@ -120,6 +121,7 @@
                         <tr>
                             <th>Task ID</th>
                             <th>Function</th>
+                            <th>Client</th>
                             <th>Worker</th>
                             <th>Time</th>
                             <th>Duration</th>
@@ -158,6 +160,7 @@
                             <th>Time</th>
                             <th>Task</th>
                             <th>Event</th>
+                            <th>Client</th>
                             <th>Worker</th>
                             <th>Function</th>
                             <th>Detail</th>
@@ -247,6 +250,39 @@
                         </tr>
                     </thead>
                     <tbody id="machines-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Clients -->
+    <div class="tab-panel" id="panel-clients">
+        <div class="card">
+            <div class="card-head">
+                <h2>Clients <span class="muted" id="clients-total"></span></h2>
+                <p class="muted">
+                    Every client the scheduler currently holds a heartbeat from. Finished counts every task
+                    that reached a terminal state, cancelled ones included, and Failed is the part of it
+                    that raised or lost its worker. Both are counted by this monitor since it started.
+                </p>
+            </div>
+            <div class="table-wrap">
+                <table class="data-table" id="clients-table">
+                    <thead>
+                        <tr>
+                            <th>Client</th>
+                            <th>Host</th>
+                            <th>Tasks</th>
+                            <th>Finished</th>
+                            <th>Failed</th>
+                            <th>CPU %</th>
+                            <th>RSS</th>
+                            <th>Latency</th>
+                            <th>Connected</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clients-body"></tbody>
                 </table>
             </div>
         </div>

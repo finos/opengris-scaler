@@ -84,10 +84,13 @@ Open ``http://127.0.0.1:50001`` in your browser.
 What the Web GUI shows:
 
 * **Live**: scheduler metrics, worker manager summary, and worker-level metrics (CPU/PSS/free/sent/queued/lag/ITL).
-* **Task Log**: recent task lifecycle updates (running/success/failure/canceled), duration, peak memory, and capabilities.
+* **Task List**: one row per task, with its client, worker, duration, peak memory and capabilities.
+* **Task Log**: one row per state change in the order it happened, so a task that is rebalanced or retried leaves its whole trail.
 * **Worker Task Stream**: a timeline by worker with capability colors and status overlays (failed and canceled patterns).
-* **Memory Usage**: rolling cluster memory chart derived from task profiling metadata.
+* **Memory Usage**: rolling cluster memory chart sampled from what the fleet is holding.
 * **Worker Processors**: manager-grouped view of processor-level CPU/PSS and state flags (initialized, has task, suspended).
+* **Machines**: one row per host, with its workers, CPU, memory and host-wide network counters.
+* **Clients**: one row per connected client, with its host, tasks in flight, finished and failed counts, CPU, memory and latency. Finished counts every task that reached a terminal state, cancelled ones included.
 
 .. note::
    Worker memory is reported as PSS (proportional set size) on Linux, so the shared copy-on-write pages a

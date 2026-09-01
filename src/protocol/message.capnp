@@ -67,6 +67,7 @@ struct GraphTask {
 struct ClientHeartbeat {
     resource @0 :Status.Resource;
     latencyUS @1 :UInt32;
+    hostname @2 :Text;   # machine the client runs on, so the UI can say where a task came from
 }
 
 struct ClientHeartbeatEcho {
@@ -180,6 +181,7 @@ struct StateTask {
     capabilities @4 :List(CommonType.TaskCapability);
     metadata @5 :Data;
     objectBytes @6 :UInt64;  # payload bytes this task's arguments move, so a heavy task is visible
+    client @7 :Data;         # client that submitted the task
 }
 
 struct StateGraphTask {
