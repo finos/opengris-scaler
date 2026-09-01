@@ -281,7 +281,7 @@ class TestFuture(unittest.TestCase):
         client_id, finished_future, _agent, _storage = self.__create_mocked_future(future_result=42)
         _client_id, pending_future, _pending_agent, _pending_storage = self.__create_mocked_future(future_result=None)
 
-        finished_future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.success)
+        finished_future.set_result_ready(ObjectID.generate_object_id(client_id), TaskResultType.success)
         self.assertTrue(finished_future.done())
 
         wait_timeout_seconds = 1.0
