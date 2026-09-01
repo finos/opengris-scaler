@@ -4,7 +4,7 @@ import os
 import signal
 import sys
 import time
-from typing import Optional, Tuple
+from typing import Optional
 
 import psutil
 
@@ -32,7 +32,7 @@ class ProcessorHolder:
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         hard_suspend: bool,
-        logging_paths: Tuple[str, ...],
+        logging_paths: tuple[str, ...],
         logging_level: str,
         security_config: Optional[SecurityConfig] = None,
     ):

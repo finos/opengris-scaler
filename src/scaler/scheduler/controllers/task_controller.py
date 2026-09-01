@@ -3,7 +3,7 @@ import contextlib
 import logging
 import sys
 from collections import deque
-from typing import AsyncGenerator, Deque, Dict, List, Literal, Optional, Set, Tuple
+from typing import AsyncGenerator, Literal, Optional
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
 from scaler.protocol.capnp import (
@@ -74,7 +74,7 @@ CancelConfirmNotFoundTargetStates = Literal[TaskState.canceledNotFound, TaskStat
 DisconnectTargetStates = Literal[TaskState.inactive, TaskState.running, TaskState.canceled]
 
 
-def task_object_ids(task: Task) -> Set[ObjectID]:
+def task_object_ids(task: Task) -> set[ObjectID]:
     """The objects a task names: its function and every argument that is one, each named once."""
     arguments = (
         ObjectID(argument.data)
@@ -109,12 +109,12 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
         self._graph_controller: Optional[GraphTaskController] = None
 
-        self._task_id_to_task: Dict[TaskID, Task] = dict()
+        self._task_id_to_task: dict[TaskID, Task] = dict()
         # Live tasks naming each object, counted as tasks arrive and leave: a status report reads it per object.
-        self._object_task_counts: Dict[ObjectID, int] = dict()
+        self._object_task_counts: dict[ObjectID, int] = dict()
         self._task_state_manager: TaskStateManager = TaskStateManager(debug=True)
 
-        self._unassigned: Deque[TaskID] = deque()
+        self._unassigned: deque[TaskID] = deque()
 
     def register(
         self,
@@ -764,7 +764,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
         await asyncio.gather(*futures)
 
-    def __acquire_workers(self) -> List[Tuple[TaskID, WorkerID]]:
+    def __acquire_workers(self) -> list[tuple[TaskID, WorkerID]]:
         """please note this function has to be atomic, means no async decorated in order to make unassigned queue to be
         synced, also this function should return as list not generator because of atomic
         """

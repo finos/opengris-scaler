@@ -6,7 +6,7 @@ router and recording the state that comes back.
 """
 
 import dataclasses
-from typing import List, Optional, Sequence, Tuple
+from typing import Optional, Sequence
 from unittest.mock import create_autospec
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
@@ -95,7 +95,7 @@ class Scenario:
     capacity_available: bool = True
 
 
-SCENARIOS: Tuple[Scenario, ...] = (
+SCENARIOS: tuple[Scenario, ...] = (
     Scenario("HasCapacity", HasCapacity(task_id=TASK_ID, worker_id=REPLACEMENT_WORKER_ID)),
     Scenario(
         "TaskCancelRequested", TaskCancelRequested(task_id=TASK_ID, client_id=CLIENT_ID, task_cancel=make_task_cancel())
@@ -246,19 +246,19 @@ class TaskControllerHarness:
     def get_state_machine(self) -> Optional[TaskStateMachine]:
         return self.controller._task_state_manager.get_state_machine(TASK_ID)
 
-    def messages_sent_to(self, peer: bytes) -> List[BaseMessage]:
+    def messages_sent_to(self, peer: bytes) -> list[BaseMessage]:
         return [call.args[1] for call in self.binder.send.await_args_list if call.args[0] == peer]
 
-    def cancel_confirms_sent_to(self, peer: bytes) -> List[TaskCancelConfirm]:
+    def cancel_confirms_sent_to(self, peer: bytes) -> list[TaskCancelConfirm]:
         return [message for message in self.messages_sent_to(peer) if isinstance(message, TaskCancelConfirm)]
 
-    def task_results_sent_to(self, peer: bytes) -> List[TaskResult]:
+    def task_results_sent_to(self, peer: bytes) -> list[TaskResult]:
         return [message for message in self.messages_sent_to(peer) if isinstance(message, TaskResult)]
 
-    def monitored_task_states(self) -> List[TaskState]:
+    def monitored_task_states(self) -> list[TaskState]:
         return [state for state, _ in self.monitored_transitions()]
 
-    def monitored_transitions(self) -> List[Tuple[TaskState, str]]:
+    def monitored_transitions(self) -> list[tuple[TaskState, str]]:
         """Each state the monitor was told the task is in, with the event it named for it."""
         return [
             (call.args[0].state, call.args[0].event)

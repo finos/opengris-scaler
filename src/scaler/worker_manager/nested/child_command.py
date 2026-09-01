@@ -1,5 +1,4 @@
 import os
-from typing import Dict
 
 
 def load_requirements_content(requirements_txt: str) -> str:
@@ -10,7 +9,7 @@ def load_requirements_content(requirements_txt: str) -> str:
     return requirements_txt
 
 
-def format_capabilities(capabilities: Dict[str, int]) -> str:
+def format_capabilities(capabilities: dict[str, int]) -> str:
     """
     Reverse of `parse_capabilities`: convert a capabilities dict into a
     comma-separated capability string (e.g. "linux,cpu=4").
