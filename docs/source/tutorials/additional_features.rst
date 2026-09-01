@@ -70,9 +70,6 @@ Scaler Web GUI
 Scaler also provides a browser-based monitoring dashboard through ``scaler_gui``.
 It subscribes to the scheduler monitor stream and serves a real-time web UI over HTTP.
 
-.. note::
-   The GUI requires optional dependencies. Install with ``pip install opengris-scaler[gui]``.
-
 Start the GUI by pointing it at the scheduler monitor address:
 
 .. code:: bash
@@ -99,6 +96,6 @@ What the Web GUI shows:
 
 Interactive behavior:
 
-* Uses WebSocket updates with auto-reconnect if the browser temporarily disconnects.
+* Pushes updates over a server-sent event stream, which the browser reconnects on its own.
 * Sends a full current snapshot on connect, then incremental updates in short batches.
 * Supports runtime settings for stream window length (5/10/30 minutes) and memory chart scale (linear/log).

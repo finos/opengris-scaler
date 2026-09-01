@@ -1,7 +1,7 @@
-import asyncio
 import dataclasses
 import datetime
 import hashlib
+import itertools
 import json
 import logging
 import queue
@@ -10,10 +10,6 @@ import threading
 from collections import deque
 from pathlib import Path
 from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
-
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.mixins import SyncSubscriber
@@ -52,6 +48,10 @@ SLIDING_WINDOW_OPTIONS = {
 }
 
 DEFAULT_STREAM_WINDOW_MINUTES = 5
+
+# Payloads one browser may fall behind by before its stream is dropped. It reconnects and is sent a
+# full state, which is cheaper than growing a queue nobody is reading.
+BROWSER_QUEUE_MAX_PAYLOADS = 100
 
 # Rows per page. Server-side only: the browser is told which page it got and how many exist, never
 # the size, so it never has to agree with these.
@@ -109,6 +109,44 @@ class BrowserView:
 
     def settings(self) -> Dict[str, Any]:
         return {"stream_window": self.stream_window_minutes, "memory_scale": self.memory_scale}
+
+
+class BrowserStream:
+    """One browser's event stream: what it is looking at, and the payloads waiting to be written to it.
+
+    The batcher only ever appends here, so a browser that reads slowly falls behind on its own queue
+    rather than delaying the others. Past the bound it is closed, which the browser answers by
+    reconnecting and asking for a full state again.
+
+    `view` is written by the connection thread when the browser pages or sorts, and read by the batcher
+    when it builds that browser's payload. Each field is set in one assignment, so the worst a race
+    costs is one payload built from a half-applied view, which the next tick corrects.
+    """
+
+    def __init__(self, browser_id: int) -> None:
+        self.browser_id = browser_id
+        self.view = BrowserView()
+        self._payloads: queue.Queue[str] = queue.Queue(maxsize=BROWSER_QUEUE_MAX_PAYLOADS)
+        self._closed = threading.Event()
+
+    def offer(self, payload: str) -> None:
+        try:
+            self._payloads.put_nowait(payload)
+        except queue.Full:
+            self.close()
+
+    def take(self, timeout: float) -> Optional[str]:
+        """The next payload, or None when none arrived within `timeout`."""
+        try:
+            return self._payloads.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def is_closed(self) -> bool:
+        return self._closed.is_set()
+
+    def close(self) -> None:
+        self._closed.set()
 
 
 class _RenderCache:
@@ -179,7 +217,7 @@ def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
 
 
 def _format_client_name(client_name: str, cutoff: int = 24) -> str:
-    """A client id is "Client|name|uuid"; the uuid identifies it, so keep the head and the uuid's start."""
+    """A client id is "Client|name|uuid". The uuid identifies it, so keep the head and the uuid's start."""
     if len(client_name) <= cutoff:
         return client_name
     return client_name[:cutoff] + "+"
@@ -792,8 +830,9 @@ class WebUIApp:
         # Full fleet worker count from per-manager totals; each browser is sent one page of worker rows.
         self._total_workers: int = 0
         self._message_queue: queue.Queue[BaseMessage] = queue.Queue()
-        self._browsers: Dict[WebSocket, BrowserView] = {}
-        self._browsers_lock = asyncio.Lock()
+        self._browsers: Dict[int, BrowserStream] = {}
+        self._browsers_lock = threading.Lock()
+        self._browser_ids = itertools.count(1)
 
         # server-side state
         self._scheduler_data: Dict[str, Any] = {}
@@ -826,7 +865,8 @@ class WebUIApp:
 
         self._backend = get_network_backend_from_env()
         self._subscriber: Optional[SyncSubscriber] = None
-        self._batch_task: Optional[asyncio.Task] = None
+        self._batcher: Optional[threading.Thread] = None
+        self._stopped = threading.Event()
 
     def _on_monitor_message(self, message: BaseMessage) -> None:
         """Called from the subscriber thread. Just enqueue, don't process."""
@@ -846,21 +886,20 @@ class WebUIApp:
         self._subscriber.daemon = True
         self._subscriber.start()
 
-    async def start_batcher(self) -> None:
-        self._batch_task = asyncio.create_task(self._batch_loop())
+    def start_batcher(self) -> None:
+        self._batcher = threading.Thread(target=self._batch_loop, name="webui-batcher", daemon=True)
+        self._batcher.start()
 
-    async def stop_batcher(self) -> None:
-        if self._batch_task:
-            self._batch_task.cancel()
-            try:
-                await self._batch_task
-            except asyncio.CancelledError:
-                pass
+    def stop(self) -> None:
+        self._stopped.set()
+        if self._batcher is not None:
+            self._batcher.join(timeout=self._broadcast_interval_seconds + 1)
+        if self._subscriber is not None:
+            self._subscriber.destroy()
 
-    async def _batch_loop(self) -> None:
+    def _batch_loop(self) -> None:
         """Drain the message queue every broadcast interval and push to browsers."""
-        while True:
-            await asyncio.sleep(self._broadcast_interval_seconds)
+        while not self._stopped.wait(self._broadcast_interval_seconds):
             messages: List[BaseMessage] = []
             while True:
                 try:
@@ -918,7 +957,7 @@ class WebUIApp:
 
             # The paged parts differ per browser; the fleet-wide work behind them is shared via the cache.
             cache = _RenderCache()
-            await self._send_to_browsers(
+            self._send_to_browsers(
                 lambda view: {
                     **shared,
                     **(self._workers_section(view, cache) if has_scheduler_update else {}),
@@ -1599,92 +1638,38 @@ class WebUIApp:
             "settings": view.settings(),
         }
 
-    async def add_browser(self, ws: WebSocket) -> BrowserView:
-        view = BrowserView()
-        async with self._browsers_lock:
-            self._browsers[ws] = view
-        return view
+    def add_browser(self) -> "BrowserStream":
+        """Register a browser's event stream. Its id is what its later view requests name."""
+        stream = BrowserStream(browser_id=next(self._browser_ids))
+        with self._browsers_lock:
+            self._browsers[stream.browser_id] = stream
+        return stream
 
-    async def remove_browser(self, ws: WebSocket) -> None:
-        async with self._browsers_lock:
-            self._browsers.pop(ws, None)
+    def remove_browser(self, browser_id: int) -> None:
+        with self._browsers_lock:
+            self._browsers.pop(browser_id, None)
 
-    async def _send_to_browsers(self, build_payload: Callable[[BrowserView], Dict[str, Any]]) -> None:
-        """Serialize and send one payload per browser: each is on its own page and sort order."""
-        async with self._browsers_lock:
-            dead: List[WebSocket] = []
-            for ws, view in self._browsers.items():
-                try:
-                    await ws.send_text(json.dumps(build_payload(view)))
-                except Exception:
-                    dead.append(ws)
-            for ws in dead:
-                self._browsers.pop(ws, None)
+    def get_browser(self, browser_id: int) -> Optional["BrowserStream"]:
+        with self._browsers_lock:
+            return self._browsers.get(browser_id)
+
+    def _send_to_browsers(self, build_payload: Callable[[BrowserView], Dict[str, Any]]) -> None:
+        """Queue one payload per browser: each is on its own page and sort order.
+
+        The queue is what keeps a slow browser from holding up the batch: this never writes a socket.
+        """
+        with self._browsers_lock:
+            streams = list(self._browsers.values())
+        for stream in streams:
+            stream.offer(json.dumps(build_payload(stream.view)))
 
 
-def create_app(config: WebGUIConfig) -> FastAPI:
-    app_state = WebUIApp(config)
+def create_app(config: WebGUIConfig) -> WebUIApp:
+    """The GUI's state, subscribed to the scheduler and pushing to browsers."""
+    app = WebUIApp(config)
 
-    # Start ZMQ subscriber immediately so messages are collected even while uvicorn
-    # is still initialising.  The subscriber thread puts into a thread-safe queue;
-    # the asyncio batch_loop (started in the startup event) drains it later.
-    app_state.start_subscriber()
-
-    app = FastAPI(title="Scaler Web GUI")
-
-    @app.middleware("http")
-    async def no_cache_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
-        response = await call_next(request)
-        if request.url.path.startswith("/static"):
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        return response
-
-    @app.on_event("startup")
-    async def startup() -> None:
-        await app_state.start_batcher()
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        await app_state.stop_batcher()
-        if app_state._subscriber:
-            app_state._subscriber.destroy()
-
-    @app.get("/")
-    async def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
-
-    @app.websocket("/ws")
-    async def websocket_endpoint(ws: WebSocket) -> None:
-        await ws.accept()
-        view = await app_state.add_browser(ws)
-        try:
-            # send full state on connect
-            full_state = app_state.get_full_state(view)
-            full_state["type"] = "full_state"
-            await ws.send_text(json.dumps(full_state))
-
-            # this browser's own view changes: paging, sorting, chart settings
-            while True:
-                data = await ws.receive_text()
-                try:
-                    msg = json.loads(data)
-                    message_type = msg.get("type")
-                    if message_type == "settings":
-                        view.apply_settings(msg.get("settings", {}))
-                    elif message_type == "view":
-                        view.apply_view(msg.get("view", {}))
-                    else:
-                        continue
-                    update = app_state.view_update(view)
-                    update["type"] = "view_update"
-                    await ws.send_text(json.dumps(update))
-                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-                    pass
-        except WebSocketDisconnect:
-            pass
-        finally:
-            await app_state.remove_browser(ws)
-
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
+    # Subscribe before the HTTP server binds, so the monitor stream is collected from the first frame.
+    # The subscriber thread only enqueues, and the batcher thread drains.
+    app.start_subscriber()
+    app.start_batcher()
     return app

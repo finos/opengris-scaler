@@ -2,8 +2,8 @@
 "use strict";
 
 // -- State --
-var ws = null;
-var reconnectDelay = 500;
+var events = null;
+var browserId = null;   // this browser's id on the server, given with its first full state
 var workerSortField = null;  // current sort column field name (the server does the sorting)
 var workerSortAsc = true;    // sort direction
 var lastWorkersData = [];    // this browser's page of worker rows, already sorted by the server
@@ -210,41 +210,47 @@ setupToggle("scale-toggle", function(val) {
 });
 
 function sendSettings(settings) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "settings", settings: settings }));
-    }
+    postView({ settings: settings });
 }
 
-// Tell the server what this browser is looking at; it answers immediately with just that view.
+// Tell the server what this browser is looking at. It answers with just that view.
 function sendView(view) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "view", view: view }));
-    }
+    postView({ view: view });
 }
 
-// -- WebSocket --
-function connect() {
-    var proto = location.protocol === "https:" ? "wss:" : "ws:";
-    ws = new WebSocket(proto + "//" + location.host + "/ws");
+// The stream is one-way, so a view change is a request of its own. browserId ties it to the stream:
+// without it the server has no way to tell which browser's page and sort order to move.
+function postView(body) {
+    if (browserId === null) return;
+    body.browser_id = browserId;
+    fetch("/view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    }).then(function(response) {
+        return response.ok ? response.json() : null;
+    }).then(function(data) {
+        if (data) handleMessage(data);
+    }).catch(function() {});
+}
 
-    ws.onopen = function() {
+// -- Server-sent events --
+// EventSource reconnects on its own, and the server answers a new stream with a full state, so a
+// dropped connection needs no backoff here.
+function connect() {
+    events = new EventSource("/events");
+
+    events.onopen = function() {
         connStatus.textContent = "Connected";
         connStatus.classList.add("connected");
-        reconnectDelay = 500;
     };
 
-    ws.onclose = function() {
+    events.onerror = function() {
         connStatus.textContent = "Disconnected";
         connStatus.classList.remove("connected");
-        setTimeout(connect, Math.min(reconnectDelay, 10000));
-        reconnectDelay *= 2;
     };
 
-    ws.onerror = function() {
-        ws.close();
-    };
-
-    ws.onmessage = function(evt) {
+    events.onmessage = function(evt) {
         var data;
         try {
             data = JSON.parse(evt.data);
@@ -308,6 +314,7 @@ function applyPageInfo(data) {
 }
 
 function handleFullState(data) {
+    if (typeof data.browser_id === "number") browserId = data.browser_id;
     if (data.scheduler) updateScheduler(data.scheduler);
     applyPageInfo(data);
     if (data.workers) updateWorkers(data.workers);
