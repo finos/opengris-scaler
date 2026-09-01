@@ -44,6 +44,10 @@ DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 # if didn't receive heartbeat for following seconds, then scheduler will treat worker manager as dead and disconnect it
 DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 
+# minimum number of seconds after a scale-down request before a worker manager will honor it,
+# to avoid flapping under intermittent load. 0 disables the cooldown.
+DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS = 30
+
 # number of seconds for load balance, if value is -1 means disable load balance
 DEFAULT_LOAD_BALANCE_SECONDS = 1
 
@@ -84,6 +88,11 @@ DEFAULT_WORKER_DEATH_TIMEOUT = 5 * 60
 # if true, suspended worker's processors will be actively suspended with a SIGTSTP signal, otherwise a synchronization
 # event will be used.
 DEFAULT_HARD_PROCESSOR_SUSPEND = False
+
+# how long worker teardown waits for the exit notification to be sent. The notification only saves the
+# scheduler from waiting out the heartbeat timeout, so it is never worth blocking our own exit on: a
+# connection that is wedged rather than closed would otherwise hang teardown indefinitely.
+WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS = 5
 
 # =======================
 # LOGGING SPECIFIC OPTIONS

@@ -4,9 +4,11 @@ These tests use stub connectors so they exercise the buffering / dedup logic
 without spinning up a scheduler or object-storage server.
 """
 
+import asyncio
 import gc
 import unittest
-from typing import List, Tuple
+from concurrent.futures import Future
+from typing import Any, Coroutine, List, Tuple, TypeVar
 
 import numpy as np
 
@@ -14,6 +16,8 @@ from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.protocol.capnp import BaseMessage
 from scaler.utility.identifiers import ClientID, ObjectID
+
+T = TypeVar("T")
 
 
 class _FakeAgentConnector:
@@ -27,13 +31,28 @@ class _FakeAgentConnector:
 
 
 class _FakeStorageConnector:
-    """Minimal SyncObjectStorageConnector stub that records set_object calls."""
+    """Minimal AsyncObjectStorageConnector stub that records set_object calls."""
 
     def __init__(self) -> None:
         self.calls: List[Tuple[ObjectID, int]] = []  # (object_id, payload_size)
 
-    def set_object(self, object_id: ObjectID, payload: bytes) -> None:
+    async def set_object(self, object_id: ObjectID, payload: bytes) -> None:
         self.calls.append((object_id, len(payload)))
+
+
+class _FakeAgentBridge:
+    """Minimal ClientAgentBridge stub that runs the object storage accesses synchronously."""
+
+    def __init__(self, connector_storage: _FakeStorageConnector) -> None:
+        self._connector_storage = connector_storage
+
+    def run_in_agent(self, coroutine: Coroutine[Any, Any, T]) -> Future[T]:
+        result: Future[T] = Future()
+        result.set_result(asyncio.run(coroutine))
+        return result
+
+    async def object_storage_connector(self) -> _FakeStorageConnector:
+        return self._connector_storage
 
 
 def _make_buffer() -> Tuple[ObjectBuffer, _FakeAgentConnector, _FakeStorageConnector]:
@@ -43,7 +62,7 @@ def _make_buffer() -> Tuple[ObjectBuffer, _FakeAgentConnector, _FakeStorageConne
         identity=ClientID.generate_client_id("test"),
         serializer=DefaultSerializer(),
         connector_agent=agent,  # type: ignore[arg-type]
-        connector_storage=storage,  # type: ignore[arg-type]
+        bridge=_FakeAgentBridge(storage),  # type: ignore[arg-type]
     )
     # The constructor uploads the serializer object eagerly; clear those so the
     # tests below only see the calls they themselves trigger.

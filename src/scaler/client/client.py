@@ -17,7 +17,7 @@ from scaler.client.serializer.mixins import Serializer
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.config.types.address import AddressConfig
-from scaler.io.mixins import NetworkBackend, SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import NetworkBackend, SyncConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
@@ -113,7 +113,6 @@ class Client:
         self._future_manager: Optional[ClientFutureManager] = None
         self._bridge: Optional[ClientAgentBridge] = None
         self._connector_agent: Optional[SyncConnector] = None
-        self._connector_storage: Optional[SyncObjectStorageConnector] = None
 
         self._serializer = serializer
 
@@ -145,26 +144,15 @@ class Client:
         )
         self._bridge.start()
 
-        logger.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
-
-        # Blocks until the agent receives the object storage address
-        self._object_storage_address = self._bridge.get_object_storage_address()
-
         self._connector_agent = self._bridge.connector
 
-        logger.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
-        self._connector_storage = self._backend.create_sync_object_storage_connector(
-            identity=self._identity, address=self._object_storage_address, security_config=self._security_config
-        )
-
-        self._object_buffer = ObjectBuffer(
-            self._identity, self._serializer, self._connector_agent, self._connector_storage
-        )
+        # The object storage server is accessed by the client agent, on its event loop.
+        self._object_buffer = ObjectBuffer(self._identity, self._serializer, self._connector_agent, self._bridge)
         self._future_factory = functools.partial(
             ScalerFuture,
             serializer=self._serializer,
             connector_agent=self._connector_agent,
-            connector_storage=self._connector_storage,
+            object_buffer=self._object_buffer,
         )
 
     @property
@@ -796,9 +784,6 @@ class Client:
 
         if self._connector_agent is not None:
             self._connector_agent.destroy()
-
-        if self._connector_storage is not None:
-            self._connector_storage.destroy()
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:

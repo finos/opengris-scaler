@@ -1,15 +1,21 @@
 import asyncio
 import concurrent.futures
 import sys
+import time
 from typing import Any, Callable, List, Optional
 
+from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.protocol.capnp import Task, TaskCancel, TaskState
+from scaler.io.mixins import SyncConnector
+from scaler.protocol.capnp import Task, TaskCancel, TaskResultType
 from scaler.utility.event_list import EventList
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
-from scaler.utility.serialization import deserialize_failure
+
+if sys.version_info >= (3, 11):
+    from typing import assert_never
+else:
+    from typing_extensions import assert_never
 
 
 class ScalerFuture(concurrent.futures.Future):
@@ -32,7 +38,7 @@ class ScalerFuture(concurrent.futures.Future):
         group_task_id: Optional[TaskID],
         serializer: Serializer,
         connector_agent: SyncConnector,
-        connector_storage: SyncObjectStorageConnector,
+        object_buffer: ObjectBuffer,
     ):
         super().__init__()
 
@@ -44,11 +50,15 @@ class ScalerFuture(concurrent.futures.Future):
         self._group_task_id: Optional[TaskID] = group_task_id
         self._serializer: Serializer = serializer
         self._connector_agent: SyncConnector = connector_agent
-        self._connector_storage: SyncObjectStorageConnector = connector_storage
+        self._object_buffer: ObjectBuffer = object_buffer
 
         self._result_object_id: Optional[ObjectID] = None
         self._result_received = False
-        self._task_state: Optional[TaskState] = None
+
+        # Set as soon as the result object's fetching starts, ensuring the object is never fetched more than once.
+        self._result_object_future: Optional[concurrent.futures.Future] = None
+
+        self._task_result_type: Optional[TaskResultType] = None
         self._cancel_requested: bool = False
 
         self._profiling_info: Optional[ProfileResult] = None
@@ -70,7 +80,10 @@ class ScalerFuture(concurrent.futures.Future):
             return self._profiling_info
 
     def set_result_ready(
-        self, object_id: Optional[ObjectID], task_state: TaskState, profile_result: Optional[ProfileResult] = None
+        self,
+        object_id: Optional[ObjectID],
+        task_result_type: TaskResultType,
+        profile_result: Optional[ProfileResult] = None,
     ) -> None:
         with self._condition:  # type: ignore[attr-defined]
             if self.done():
@@ -81,14 +94,14 @@ class ScalerFuture(concurrent.futures.Future):
 
             self._result_object_id = object_id
 
-            self._task_state = task_state
+            self._task_result_type = task_result_type
 
             if profile_result is not None:
                 self._profiling_info = profile_result
 
             # if it's not delayed future, or if there is any listener (waiter or callback), get the result immediately
             if not self._is_delayed or self._has_result_listeners():
-                self._get_result_object()
+                self._start_result_object_fetch()
 
             self._condition.notify_all()  # type: ignore[attr-defined]
 
@@ -178,21 +191,13 @@ class ScalerFuture(concurrent.futures.Future):
 
     def result(self, timeout: Optional[float] = None) -> Any:
         with self._condition:  # type: ignore[attr-defined]
-            self._wait_result_ready(timeout)
-
-            # if it's delayed future, get the result when future.result() gets called
-            if self._is_delayed:
-                self._get_result_object()
+            self._wait_result_object(timeout)
 
             return super().result()
 
     def exception(self, timeout: Optional[float] = None) -> Optional[BaseException]:
         with self._condition:  # type: ignore[attr-defined]
-            self._wait_result_ready(timeout)
-
-            # if it's delayed future, get the result when future.exception() gets called
-            if self._is_delayed:
-                self._get_result_object()
+            self._wait_result_object(timeout)
 
             return super().exception()
 
@@ -241,7 +246,7 @@ class ScalerFuture(concurrent.futures.Future):
     def add_done_callback(self, fn: Callable[["ScalerFuture"], Any]) -> None:
         with self._condition:
             if self.done():
-                self._get_result_object()
+                self._start_result_object_fetch()
             else:
                 self._done_callbacks.append(fn)  # type: ignore[attr-defined]
                 return
@@ -256,77 +261,131 @@ class ScalerFuture(concurrent.futures.Future):
         with self._condition:  # type: ignore[attr-defined]
             # if it's delayed future, get the result when waiter gets added
             if self._is_delayed and len(self._waiters) > 0:
-                self._get_result_object()
+                self._start_result_object_fetch()
 
     def _has_result_listeners(self) -> bool:
         return len(self._done_callbacks) > 0 or len(self._waiters) > 0  # type: ignore[attr-defined]
 
-    def _get_result_object(self):
+    def _start_result_object_fetch(self) -> None:
+        """
+        Starts the fetching of the future's result object, at most once.
+
+        As it never blocks, this can be called from the client agent's event loop.
+        """
+
         with self._condition:  # type: ignore[attr-defined]
             if self._result_object_id is None or self.cancelled() or self._result_received:
                 return
 
-            object_bytes = bytes(self._connector_storage.get_object(self._result_object_id))
+            if self._result_object_future is not None:
+                return  # the object is already being fetched
 
-            if self._is_simple_task():
-                # immediately delete non graph result objects
-                # TODO: graph task results could also be deleted if these are not required by another task of the graph.
-                self._connector_storage.delete_object(self._result_object_id)
+            assert self._task_result_type is not None
 
-            if self._task_state == TaskState.success:
-                self.set_result(self._serializer.deserialize(object_bytes))
-            elif self._task_state == TaskState.failed:
-                self.set_exception(deserialize_failure(object_bytes))
+            match self._task_result_type:
+                case TaskResultType.success:
+                    is_exception = False
+                case TaskResultType.failed | TaskResultType.failedWorkerDied:
+                    is_exception = True
+                case _:
+                    assert_never(self._task_result_type)
+
+            # TODO: graph task results could also be deleted if these are not required by another task of the graph.
+            delete_after_fetch = self._is_simple_task()
+
+            self._result_object_future = self._object_buffer.fetch_object(
+                self._result_object_id, is_exception=is_exception, delete_after_fetch=delete_after_fetch
+            )
+
+        self._result_object_future.add_done_callback(lambda _: self.__on_result_object_fetched(is_exception))
+
+    def __on_result_object_fetched(self, is_exception: bool) -> None:
+        assert self._result_object_future is not None and self._result_object_future.done()
+
+        try:
+            result_object = self._result_object_future.result()
+        except Exception as exception:
+            # The result object could not be fetched, e.g. the object storage server is unreachable.
+            result_object = exception
+            is_exception = True
+
+        try:
+            if is_exception:
+                self.set_exception(result_object)
             else:
-                raise ValueError(f"unexpected task status: {self._task_state}")
+                self.set_result(result_object)
+        except concurrent.futures.InvalidStateError:
+            # The future got canceled while its result object was being fetched, e.g. by `Client.disconnect()`.
+            pass
 
-    def _wait_result_ready(self, timeout: Optional[float] = None):
+    def _wait_result_object(self, timeout: Optional[float] = None) -> None:
+        """
+        Blocks until the future's result object is fetched, starting its fetching if it did not start yet.
+
+        While waiting, this releases the future's condition lock, letting the fetching's callback set the future's
+        result.
+
+        Raises a `TimeoutError` if it blocks more than `timeout` seconds.
+        """
+
+        assert self._condition._is_owned()  # type: ignore[attr-defined]
+
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        self._wait_result_ready(timeout)
+
+        # if it's a delayed future, the result object gets fetched when result() or exception() gets called
+        if self._is_delayed:
+            self._start_result_object_fetch()
+
+        if self._result_object_id is None:
+            return  # umbrella graph tasks do not have a result object
+
+        while not self._result_received and not self.cancelled():
+            if deadline is None:
+                remaining_seconds = None
+            else:
+                remaining_seconds = deadline - time.monotonic()
+                if remaining_seconds <= 0:
+                    raise concurrent.futures.TimeoutError
+
+            if sys.platform == "emscripten":
+                # The client agent runs on this very thread under Pyodide, so `Condition.wait()` would block the only
+                # thread that can complete the fetch. Suspend on the fetch's future instead, releasing the condition so
+                # that the fetch's callback can set this future's result.
+                #
+                # The fetch always started by now: the future is done, has a result object, and did not receive it yet.
+                assert self._result_object_future is not None
+                self.__jspi_wait_future_settled(self._result_object_future, remaining_seconds)
+                continue
+
+            self._condition.wait(remaining_seconds)  # type: ignore[attr-defined]
+
+    def _wait_result_ready(self, timeout: Optional[float] = None) -> None:
         """
         Blocks until the future is done (either successfully, or on failure/cancellation).
 
         Raises a `TimeoutError` if it blocks more than `timeout` seconds.
         """
+
+        assert self._condition._is_owned()  # type: ignore[attr-defined]
+
         if self.done():
             return
 
         if sys.platform == "emscripten":
-            # On Pyodide the agent task runs on the same single-threaded
-            # asyncio loop as this caller. ``threading.Condition.wait`` blocks
-            # the only thread, so the agent never gets a chance to run and
-            # signal completion -> deadlock. Instead, suspend the wasm stack
-            # via JSPI while the asyncio loop continues to drive the agent.
-            from pyodide.ffi import run_sync  # type: ignore[import-not-found]
+            # The client agent runs on this very thread under Pyodide, so `Condition.wait()` would block the only
+            # thread that can mark this future as done. Suspend on this future instead, releasing the condition so that
+            # the agent can acquire it in `set_result_ready()`.
+            self.__jspi_wait_future_settled(self, timeout)
 
-            async def _await_done() -> None:
-                fut: asyncio.Future = asyncio.wrap_future(self)
-                if timeout is None:
-                    await fut
-                else:
-                    await asyncio.wait_for(fut, timeout)
+            if not self.done():
+                raise concurrent.futures.TimeoutError
 
-            # ``self._condition`` is held by the caller; release it while we
-            # suspend so the agent (running on the same loop) can acquire it
-            # in ``set_result_ready`` to mark the future done.
-            self._condition.release()  # type: ignore[attr-defined]
-            try:
-                try:
-                    run_sync(_await_done())
-                except asyncio.TimeoutError as exc:
-                    raise concurrent.futures.TimeoutError() from exc
-                except (asyncio.CancelledError, concurrent.futures.CancelledError):
-                    # ``asyncio.wrap_future`` raises ``CancelledError`` once
-                    # the underlying ``ScalerFuture`` transitions to
-                    # cancelled. The native ``Condition.wait`` path also
-                    # returns silently in that case (it is just woken up by
-                    # ``notify_all``), so callers like ``cancel()`` only
-                    # care that the future has settled.
-                    pass
-            finally:
-                self._condition.acquire()  # type: ignore[attr-defined]
             return
 
         if not self._condition.wait(timeout):
-            raise concurrent.futures.TimeoutError()
+            raise concurrent.futures.TimeoutError
 
     def _is_simple_task(self):
         return self._group_task_id is None and self._task_id is not None
@@ -339,3 +398,29 @@ class ScalerFuture(concurrent.futures.Future):
             return "GraphUmbrellaTask"
         else:
             return "GraphSubTask"
+
+    def __jspi_wait_future_settled(self, future: concurrent.futures.Future, timeout: Optional[float]) -> None:
+        """
+        Suspends the WebAssembly stack until `future` settles, or until `timeout` seconds elapsed.
+
+        On Pyodide, the client agent runs on this thread's asyncio event loop, so `threading.Condition.wait()` would
+        block the only thread able to settle `future`. `jspi_wait()` suspends the WebAssembly stack instead, letting
+        the event loop keep driving the agent.
+
+        Like `Condition.wait()`, this neither raises on timeout nor propagates `future`'s outcome (including its
+        cancellation): callers re-check their own predicate and deadline. It also never cancels `future`, as that
+        would abort what the future stands for, e.g. an in-flight object download.
+        """
+
+        assert self._condition._is_owned()  # type: ignore[attr-defined]
+
+        from scaler.client.agent.bridge import jspi_wait
+
+        # The condition is held by the caller; release it while suspended so that the agent (running on the same event
+        # loop) can acquire it. `_release_save()` drops the whole recursion count of the underlying re-entrant lock, as
+        # `Condition.wait()` does.
+        saved_state = self._condition._release_save()  # type: ignore[attr-defined]
+        try:
+            jspi_wait([future], timeout=timeout)
+        finally:
+            self._condition._acquire_restore(saved_state)  # type: ignore[attr-defined]
