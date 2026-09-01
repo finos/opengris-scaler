@@ -2,7 +2,7 @@ import asyncio
 import concurrent.futures
 import sys
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable, List, Optional
 
 from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.mixins import Serializer
@@ -63,6 +63,11 @@ class ScalerFuture(concurrent.futures.Future):
 
         self._profiling_info: Optional[ProfileResult] = None
 
+        # The waiters that were installed while this future was still pending. A waiter installed after the
+        # future reached FINISHED has already counted it as done, so notifying it decrements a count it never
+        # incremented, and concurrent.futures.wait() then returns while other tasks are still running.
+        self._waiters_to_notify: Optional[List[Any]] = None
+
     @property
     def task_id(self) -> TaskID:
         return self._task_id
@@ -85,6 +90,7 @@ class ScalerFuture(concurrent.futures.Future):
                 raise concurrent.futures.InvalidStateError(f"invalid future state: {self._state}")
 
             self._state = "FINISHED"
+            self._waiters_to_notify = list(self._waiters)
 
             self._result_object_id = object_id
 
@@ -161,14 +167,16 @@ class ScalerFuture(concurrent.futures.Future):
             self._state = "FINISHED"
             self._result_received = True
 
+            waiters = self._waiters if self._waiters_to_notify is None else self._waiters_to_notify
+
             if exception is not None:
                 assert result is None
                 self._exception = exception
-                for waiter in self._waiters:
+                for waiter in waiters:
                     waiter.add_exception(self)
             else:
                 self._result = result
-                for waiter in self._waiters:
+                for waiter in waiters:
                     waiter.add_result(self)
 
             self._condition.notify_all()  # type: ignore[attr-defined]

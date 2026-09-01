@@ -2,7 +2,7 @@ import math
 import threading
 import time
 import unittest
-from concurrent.futures import CancelledError, Future, InvalidStateError, TimeoutError, as_completed
+from concurrent.futures import CancelledError, Future, InvalidStateError, TimeoutError, as_completed, wait
 from threading import Event
 from typing import Tuple
 from unittest.mock import Mock
@@ -268,6 +268,34 @@ class TestFuture(unittest.TestCase):
 
         finished = next(it)
         self.assertTrue(finished.cancelled())
+
+    def test_mocked_wait_does_not_return_before_every_future_is_done(self):
+        """wait() must not count a future that finished before its waiter was installed.
+
+        A delayed future that finishes while nobody is listening only moves to FINISHED; it fetches its
+        result object when a waiter or callback arrives. wait() scans the batch first, so it has already
+        counted that future as done -- notifying its waiter on the later fetch decrements a count that was
+        never incremented for it, and wait() then returns while other futures are still running.
+        """
+
+        client_id, finished_future, _agent, _storage = self.__create_mocked_future(future_result=42)
+        _client_id, pending_future, _pending_agent, _pending_storage = self.__create_mocked_future(future_result=None)
+
+        finished_future.set_result_ready(ObjectID.generate_object_id(client_id), TaskResultType.success)
+        self.assertTrue(finished_future.done())
+
+        wait_timeout_seconds = 1.0
+        start = time.time()
+        done, not_done = wait([finished_future, pending_future], timeout=wait_timeout_seconds)
+        elapsed = time.time() - start
+
+        self.assertGreaterEqual(
+            elapsed,
+            wait_timeout_seconds * 0.9,
+            "wait() returned before its timeout while one of its futures was still running",
+        )
+        self.assertEqual(done, {finished_future})
+        self.assertEqual(not_done, {pending_future})
 
     @staticmethod
     def __create_mocked_future(future_result, is_delayed: bool = True) -> Tuple[ClientID, ScalerFuture, Mock, Mock]:
