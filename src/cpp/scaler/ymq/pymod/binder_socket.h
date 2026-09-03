@@ -28,6 +28,7 @@ namespace pymod {
 
 using scaler::utility::pymod::AcquireGIL;
 using scaler::utility::pymod::OwnedPyObject;
+using scaler::utility::pymod::ReleaseGIL;
 
 struct PyBinderSocket {
     PyObject_HEAD;
@@ -80,10 +81,10 @@ static PyObject* PyBinderSocket_shutdown(
         std::promise<void> onShutdown;
         self->socket->shutdown([&onShutdown]() { onShutdown.set_value(); });
 
-        // release the GIL until the socket is actually closed
-        Py_BEGIN_ALLOW_THREADS;
+        // the resets below join the event loop threads, which cannot finish a Python callback without the GIL
+        ReleaseGIL releaseGIL;
+
         onShutdown.get_future().wait();
-        Py_END_ALLOW_THREADS;
 
         // Explicitly call destructors for placement-new'd members
         self->socket.reset();
