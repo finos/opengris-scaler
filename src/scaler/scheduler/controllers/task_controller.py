@@ -63,11 +63,11 @@ LOCK_ACQUIRE_TIMEOUT_SECONDS = 10
 DispatchTargetStates = Literal[TaskState.inactive, TaskState.running]
 HasCapacityTargetStates = Literal[TaskState.running]
 TaskCancelTargetStates = Literal[TaskState.canceled, TaskState.canceling, TaskState.canceledNotFound]
-BalanceCancelTargetStates = Literal[TaskState.balanceCanceling]
+BalanceCancelTargetStates = Literal[TaskState.balanceCanceling, TaskState.inactive, TaskState.running]
 TaskResultTargetStates = Literal[TaskState.success, TaskState.failed, TaskState.failedWorkerDied]
 CancelConfirmCanceledTargetStates = Literal[TaskState.canceled, TaskState.inactive, TaskState.running]
 CancelConfirmFailedTargetStates = Literal[TaskState.running]
-CancelConfirmNotFoundTargetStates = Literal[TaskState.canceledNotFound]
+CancelConfirmNotFoundTargetStates = Literal[TaskState.canceledNotFound, TaskState.inactive, TaskState.running]
 DisconnectTargetStates = Literal[TaskState.inactive, TaskState.running, TaskState.canceled]
 
 
@@ -431,12 +431,13 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         match source:
             case TaskState.running:
                 task_cancel = TaskCancel(taskId=event.task_id, flags=TaskCancel.TaskCancelFlags(force=False))
-                # FIXME: when no worker holds the task, the balance cannot complete and the task is stranded here with
-                # no cancel in flight and no exit path. this preserves the behavior of the transition table, which
-                # rejected the cancelNotFound that this case used to raise. the recovery is a behavior change, either
-                # terminate the task towards the client or reschedule it, so it needs its own review
-                await self.__send_task_cancel_to_worker(task_cancel, TaskState.balanceCanceling)
-                return TaskState.balanceCanceling
+                if await self.__send_task_cancel_to_worker(task_cancel, TaskState.balanceCanceling):
+                    return TaskState.balanceCanceling
+
+                # no worker holds the task, so no cancel is in flight and no confirm can ever arrive. the balance
+                # move is moot, so place the task again instead of waiting in balanceCanceling forever. there is no
+                # on_task_done here, the send failed because the worker controller already has no mapping to release
+                return await self.__acquire_and_dispatch(event.task_id)
             case (
                 TaskState.inactive
                 | TaskState.canceling
@@ -531,11 +532,11 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 await self.__send_task_cancel_confirm_to_client(event.task_cancel_confirm, TaskState.canceledNotFound)
                 return TaskState.canceledNotFound
             case TaskState.balanceCanceling:
-                # FIXME: strands the task, it has no worker, no cancel in flight and no exit path. this preserves the
-                # behavior of the transition table, which never accepted this transition from balanceCanceling. the
-                # recovery is a behavior change, either terminate the task towards the client or reschedule it, so it
-                # needs its own review
-                return None
+                # the worker does not hold the task, but the scheduler still maps it there. nobody asked the client
+                # for this cancel, so the task must not be terminated: release the stale mapping and place it again,
+                # which is what a balance cancel confirmed as canceled already does
+                await self._worker_controller.on_task_done(event.task_id)
+                return await self.__acquire_and_dispatch(event.task_id)
             case (
                 TaskState.inactive
                 | TaskState.running

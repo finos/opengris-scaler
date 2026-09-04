@@ -3,59 +3,67 @@
 # Regenerate with SCALER_UPDATE_TASK_STATE_SNAPSHOT=1 python -m unittest tests.scheduler.controllers.test_task_controller
 #
 # Only live states are sources: a terminal state removes the machine, so no event can reach one.
-inactive          HasCapacity                            -> running
-inactive          TaskCancelRequested                    -> canceled
-inactive          TaskCancelRequested (worker gone)      -> canceled
-inactive          BalanceCancelRequested                 -> (rejected)
-inactive          BalanceCancelRequested (worker gone)   -> (rejected)
-inactive          TaskResultReceived (success)           -> (rejected)
-inactive          TaskResultReceived (failed)            -> (rejected)
-inactive          TaskResultReceived (worker died)       -> (rejected)
-inactive          CancelConfirmCanceled                  -> (rejected)
-inactive          CancelConfirmCanceled (no capacity)    -> (rejected)
-inactive          CancelConfirmFailed                    -> (rejected)
-inactive          CancelConfirmNotFound                  -> (rejected)
-inactive          WorkerDisconnected                     -> (rejected)
-inactive          WorkerDisconnected (no capacity)       -> (rejected)
-running           HasCapacity                            -> (rejected)
-running           TaskCancelRequested                    -> canceling
-running           TaskCancelRequested (worker gone)      -> canceledNotFound
-running           BalanceCancelRequested                 -> balanceCanceling
-running           BalanceCancelRequested (worker gone)   -> balanceCanceling
-running           TaskResultReceived (success)           -> success
-running           TaskResultReceived (failed)            -> failed
-running           TaskResultReceived (worker died)       -> failedWorkerDied
-running           CancelConfirmCanceled                  -> (rejected)
-running           CancelConfirmCanceled (no capacity)    -> (rejected)
-running           CancelConfirmFailed                    -> (rejected)
-running           CancelConfirmNotFound                  -> (rejected)
-running           WorkerDisconnected                     -> running
-running           WorkerDisconnected (no capacity)       -> inactive
-canceling         HasCapacity                            -> (rejected)
-canceling         TaskCancelRequested                    -> (rejected)
-canceling         TaskCancelRequested (worker gone)      -> (rejected)
-canceling         BalanceCancelRequested                 -> (rejected)
-canceling         BalanceCancelRequested (worker gone)   -> (rejected)
-canceling         TaskResultReceived (success)           -> (rejected)
-canceling         TaskResultReceived (failed)            -> (rejected)
-canceling         TaskResultReceived (worker died)       -> (rejected)
-canceling         CancelConfirmCanceled                  -> canceled
-canceling         CancelConfirmCanceled (no capacity)    -> canceled
-canceling         CancelConfirmFailed                    -> running
-canceling         CancelConfirmNotFound                  -> canceledNotFound
-canceling         WorkerDisconnected                     -> canceled
-canceling         WorkerDisconnected (no capacity)       -> canceled
-balanceCanceling  HasCapacity                            -> (rejected)
-balanceCanceling  TaskCancelRequested                    -> canceling
-balanceCanceling  TaskCancelRequested (worker gone)      -> canceling
-balanceCanceling  BalanceCancelRequested                 -> (rejected)
-balanceCanceling  BalanceCancelRequested (worker gone)   -> (rejected)
-balanceCanceling  TaskResultReceived (success)           -> success
-balanceCanceling  TaskResultReceived (failed)            -> failed
-balanceCanceling  TaskResultReceived (worker died)       -> failedWorkerDied
-balanceCanceling  CancelConfirmCanceled                  -> running
-balanceCanceling  CancelConfirmCanceled (no capacity)    -> inactive
-balanceCanceling  CancelConfirmFailed                    -> running
-balanceCanceling  CancelConfirmNotFound                  -> (rejected)
-balanceCanceling  WorkerDisconnected                     -> running
-balanceCanceling  WorkerDisconnected (no capacity)       -> inactive
+inactive          HasCapacity                                        -> running
+inactive          TaskCancelRequested                                -> canceled
+inactive          TaskCancelRequested (worker gone)                  -> canceled
+inactive          BalanceCancelRequested                             -> (rejected)
+inactive          BalanceCancelRequested (worker gone)               -> (rejected)
+inactive          BalanceCancelRequested (worker gone, no capacity)  -> (rejected)
+inactive          TaskResultReceived (success)                       -> (rejected)
+inactive          TaskResultReceived (failed)                        -> (rejected)
+inactive          TaskResultReceived (worker died)                   -> (rejected)
+inactive          CancelConfirmCanceled                              -> (rejected)
+inactive          CancelConfirmCanceled (no capacity)                -> (rejected)
+inactive          CancelConfirmFailed                                -> (rejected)
+inactive          CancelConfirmNotFound                              -> (rejected)
+inactive          CancelConfirmNotFound (no capacity)                -> (rejected)
+inactive          WorkerDisconnected                                 -> (rejected)
+inactive          WorkerDisconnected (no capacity)                   -> (rejected)
+running           HasCapacity                                        -> (rejected)
+running           TaskCancelRequested                                -> canceling
+running           TaskCancelRequested (worker gone)                  -> canceledNotFound
+running           BalanceCancelRequested                             -> balanceCanceling
+running           BalanceCancelRequested (worker gone)               -> running
+running           BalanceCancelRequested (worker gone, no capacity)  -> inactive
+running           TaskResultReceived (success)                       -> success
+running           TaskResultReceived (failed)                        -> failed
+running           TaskResultReceived (worker died)                   -> failedWorkerDied
+running           CancelConfirmCanceled                              -> (rejected)
+running           CancelConfirmCanceled (no capacity)                -> (rejected)
+running           CancelConfirmFailed                                -> (rejected)
+running           CancelConfirmNotFound                              -> (rejected)
+running           CancelConfirmNotFound (no capacity)                -> (rejected)
+running           WorkerDisconnected                                 -> running
+running           WorkerDisconnected (no capacity)                   -> inactive
+canceling         HasCapacity                                        -> (rejected)
+canceling         TaskCancelRequested                                -> (rejected)
+canceling         TaskCancelRequested (worker gone)                  -> (rejected)
+canceling         BalanceCancelRequested                             -> (rejected)
+canceling         BalanceCancelRequested (worker gone)               -> (rejected)
+canceling         BalanceCancelRequested (worker gone, no capacity)  -> (rejected)
+canceling         TaskResultReceived (success)                       -> (rejected)
+canceling         TaskResultReceived (failed)                        -> (rejected)
+canceling         TaskResultReceived (worker died)                   -> (rejected)
+canceling         CancelConfirmCanceled                              -> canceled
+canceling         CancelConfirmCanceled (no capacity)                -> canceled
+canceling         CancelConfirmFailed                                -> running
+canceling         CancelConfirmNotFound                              -> canceledNotFound
+canceling         CancelConfirmNotFound (no capacity)                -> canceledNotFound
+canceling         WorkerDisconnected                                 -> canceled
+canceling         WorkerDisconnected (no capacity)                   -> canceled
+balanceCanceling  HasCapacity                                        -> (rejected)
+balanceCanceling  TaskCancelRequested                                -> canceling
+balanceCanceling  TaskCancelRequested (worker gone)                  -> canceling
+balanceCanceling  BalanceCancelRequested                             -> (rejected)
+balanceCanceling  BalanceCancelRequested (worker gone)               -> (rejected)
+balanceCanceling  BalanceCancelRequested (worker gone, no capacity)  -> (rejected)
+balanceCanceling  TaskResultReceived (success)                       -> success
+balanceCanceling  TaskResultReceived (failed)                        -> failed
+balanceCanceling  TaskResultReceived (worker died)                   -> failedWorkerDied
+balanceCanceling  CancelConfirmCanceled                              -> running
+balanceCanceling  CancelConfirmCanceled (no capacity)                -> inactive
+balanceCanceling  CancelConfirmFailed                                -> running
+balanceCanceling  CancelConfirmNotFound                              -> running
+balanceCanceling  CancelConfirmNotFound (no capacity)                -> inactive
+balanceCanceling  WorkerDisconnected                                 -> running
+balanceCanceling  WorkerDisconnected (no capacity)                   -> inactive

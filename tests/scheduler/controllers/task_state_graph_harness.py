@@ -104,6 +104,12 @@ SCENARIOS: Tuple[Scenario, ...] = (
     Scenario("BalanceCancelRequested", BalanceCancelRequested(task_id=TASK_ID)),
     Scenario("BalanceCancelRequested (worker gone)", BalanceCancelRequested(task_id=TASK_ID), worker_holds_task=False),
     Scenario(
+        "BalanceCancelRequested (worker gone, no capacity)",
+        BalanceCancelRequested(task_id=TASK_ID),
+        worker_holds_task=False,
+        capacity_available=False,
+    ),
+    Scenario(
         "TaskResultReceived (success)",
         TaskResultReceived(task_id=TASK_ID, task_result=make_task_result(TaskResultType.success)),
     ),
@@ -139,6 +145,13 @@ SCENARIOS: Tuple[Scenario, ...] = (
         CancelConfirmNotFound(
             task_id=TASK_ID, task_cancel_confirm=make_task_cancel_confirm(TaskCancelConfirmType.cancelNotFound)
         ),
+    ),
+    Scenario(
+        "CancelConfirmNotFound (no capacity)",
+        CancelConfirmNotFound(
+            task_id=TASK_ID, task_cancel_confirm=make_task_cancel_confirm(TaskCancelConfirmType.cancelNotFound)
+        ),
+        capacity_available=False,
     ),
     Scenario("WorkerDisconnected", WorkerDisconnected(task_id=TASK_ID, worker_id=WORKER_ID)),
     Scenario(
