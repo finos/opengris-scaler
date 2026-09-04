@@ -28,6 +28,7 @@ from scaler.scheduler.controllers.mixins import (
     WorkerController,
 )
 from scaler.scheduler.task.task_event import (
+    WORKER_REPORTED_TASK_EVENTS,
     BalanceCancelRequested,
     CancelConfirmCanceled,
     CancelConfirmFailed,
@@ -37,6 +38,7 @@ from scaler.scheduler.task.task_event import (
     TaskEvent,
     TaskResultReceived,
     WorkerDisconnected,
+    WorkerReportedTaskEvent,
 )
 from scaler.scheduler.task.task_state_machine import TERMINAL_TASK_STATES, TaskStateMachine
 from scaler.scheduler.task.task_state_manager import TaskStateManager
@@ -171,25 +173,31 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def on_task_balance_cancel(self, task_id: TaskID):
         await self.__route(BalanceCancelRequested(task_id=task_id))
 
-    async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
+    async def on_task_cancel_confirm(self, worker_id: WorkerID, task_cancel_confirm: TaskCancelConfirm):
         task_id = task_cancel_confirm.taskId
         cancel_confirm_type = TaskCancelConfirmType(task_cancel_confirm.cancelConfirmType.value)
 
         event: TaskEvent
         match cancel_confirm_type:
             case TaskCancelConfirmType.canceled:
-                event = CancelConfirmCanceled(task_id=task_id, task_cancel_confirm=task_cancel_confirm)
+                event = CancelConfirmCanceled(
+                    task_id=task_id, worker_id=worker_id, task_cancel_confirm=task_cancel_confirm
+                )
             case TaskCancelConfirmType.cancelFailed:
-                event = CancelConfirmFailed(task_id=task_id, task_cancel_confirm=task_cancel_confirm)
+                event = CancelConfirmFailed(
+                    task_id=task_id, worker_id=worker_id, task_cancel_confirm=task_cancel_confirm
+                )
             case TaskCancelConfirmType.cancelNotFound:
-                event = CancelConfirmNotFound(task_id=task_id, task_cancel_confirm=task_cancel_confirm)
+                event = CancelConfirmNotFound(
+                    task_id=task_id, worker_id=worker_id, task_cancel_confirm=task_cancel_confirm
+                )
             case _:
-                raise ValueError(f"unknown TaskCancelConfirmType: {task_cancel_confirm.cancelConfirmType}")
+                assert_never(cancel_confirm_type)
 
         await self.__route(event)
 
-    async def on_task_result(self, task_result: TaskResult):
-        await self.__route(TaskResultReceived(task_id=task_result.taskId, task_result=task_result))
+    async def on_task_result(self, worker_id: WorkerID, task_result: TaskResult):
+        await self.__route(TaskResultReceived(task_id=task_result.taskId, worker_id=worker_id, task_result=task_result))
 
     async def on_worker_connect(self, worker_id: WorkerID):
         await self.__retry_unassignable()
@@ -259,6 +267,10 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
             source = state_machine.current_state()  # read inside the lock, never before it
 
+            if isinstance(event, WORKER_REPORTED_TASK_EVENTS):
+                if not self.__is_from_the_worker_that_holds_the_task(event):
+                    return
+
             target: Optional[TaskState]
             try:
                 match event:
@@ -299,6 +311,27 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             if target in TERMINAL_TASK_STATES:
                 self._task_state_manager.remove_state_machine(event.task_id)
                 self._task_id_to_task.pop(event.task_id, None)
+
+    def __is_from_the_worker_that_holds_the_task(self, event: WorkerReportedTaskEvent) -> bool:
+        """Answer whether an event a worker reported came from the worker the task is currently assigned to.
+
+        A worker the scheduler declared dead is not necessarily dead: it can keep running the task and report on it
+        long after the task was rerouted. Acting on such a report tells the client an outcome for a task that is
+        still running elsewhere, and releases the capacity of the worker that now holds it.
+
+        This reads the assignment inside the machine's lock, which is the only place it can change.
+        """
+
+        holder = self._worker_controller.get_worker_by_task_id(event.task_id)
+        if holder == event.worker_id:
+            return True
+
+        holder_description = repr(holder) if holder.is_valid() else "no worker"
+        logger.warning(
+            f"{event.task_id!r}: dropping {type(event).__name__} from {event.worker_id!r}, the task is held by "
+            f"{holder_description}"
+        )
+        return False
 
     async def __fail_task_to_client(self, event: TaskEvent, source: TaskState) -> None:
         """Fail a task whose state machine action raised.
