@@ -49,7 +49,6 @@ bool SchemaRegistry::init()
 
     REG_STRUCT(kModCommon, TaskResultType);
     REG_STRUCT(kModCommon, TaskCancelConfirmType);
-    REG_STRUCT(kModCommon, TaskTransition);
     REG_STRUCT(kModCommon, TaskState);
     REG_STRUCT(kModCommon, WorkerState);
     REG_STRUCT(kModCommon, TaskCapability);
@@ -80,8 +79,6 @@ bool SchemaRegistry::init()
     REG_STRUCT(kModMessage, WorkerManagerHeartbeatEcho);
     REG_STRUCT(kModMessage, WorkerManagerCommand);
     REG_STRUCT(kModMessage, ObjectInstruction);
-    REG_STRUCT(kModMessage, DisconnectRequest);
-    REG_STRUCT(kModMessage, DisconnectResponse);
     REG_STRUCT(kModMessage, ClientDisconnect);
     REG_STRUCT(kModMessage, ClientShutdownResponse);
     REG_STRUCT(kModMessage, StateClient);
@@ -94,6 +91,7 @@ bool SchemaRegistry::init()
     REG_STRUCT(kModMessage, ProcessorInitialized);
     REG_STRUCT(kModMessage, InformationRequest);
     REG_STRUCT(kModMessage, InformationResponse);
+    REG_STRUCT(kModMessage, WorkerDisconnectNotification);
     REG_STRUCT(kModMessage, Message);
 
     REG_STRUCT(kModObjectStorage, ObjectRequestHeader);

@@ -14,7 +14,7 @@ from scaler.utility.identifiers import TaskID
 class TestTypes(unittest.TestCase):
     def test_exception(self):
         # type checkers misidentify this as "unnecessary" due to the type hints file
-        self.assertTrue(issubclass(YMQException, Exception))  # type: ignore
+        self.assertTrue(issubclass(YMQException, Exception))
 
         self.assertTrue(issubclass(SysCallError, YMQException))
 
@@ -50,7 +50,7 @@ class TestTypes(unittest.TestCase):
                 self.assertEqual(restored.message, "oh no")
 
     def test_error_code(self):
-        self.assertTrue(issubclass(ErrorCode, IntEnum))  # type: ignore
+        self.assertTrue(issubclass(ErrorCode, IntEnum))
         self.assertEqual(
             ErrorCode.InvalidAddressFormat.explanation(),
             'Invalid address format, example input "tcp://127.0.0.1:2345" or "ipc:///tmp/domain_socket_name.sock"',

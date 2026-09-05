@@ -18,6 +18,7 @@ import scaler.worker.worker as worker_module
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, SysCallError
+from scaler.protocol.capnp import WorkerDisconnectNotification
 from scaler.worker.worker import Worker
 
 
@@ -31,6 +32,7 @@ class _StubCollaborator:
     def __init__(self, routine_behavior: Callable[[], Awaitable[None]] = _hang) -> None:
         self._routine_behavior = routine_behavior
         self.destroyed = False
+        self.sent_messages: list = []
 
     async def routine(self) -> None:
         await self._routine_behavior()
@@ -40,6 +42,9 @@ class _StubCollaborator:
 
     async def bind(self, *args: object, **kwargs: object) -> None:
         return None
+
+    async def send(self, message: object, *args: object, **kwargs: object) -> None:
+        self.sent_messages.append(message)
 
     async def initialize(self, *args: object, **kwargs: object) -> None:
         await _hang()
@@ -73,7 +78,7 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
             worker_manager_id=b"wm",
         )
 
-        worker._backend = None  # not a ZMQ backend -> no graceful-shutdown handshake on teardown
+        worker._backend = None  # only used as a collaborator factory, which __initialize skips below
         worker._address_internal = AddressConfig.from_string("tcp://127.0.0.1:2346")  # tcp -> no ipc unlink
 
         # __initialize would overwrite the stubs below with real backend collaborators; skip it and
@@ -208,6 +213,37 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(exit_code, 1, "the original nonzero exit code should be preserved")
         quit_logged = [c for c in mock_logger.info.call_args_list if "quit" in str(c)]
         self.assertTrue(quit_logged, "the 'quit' log line was lost when teardown failed")
+
+    async def test_worker_disconnect_notification_sent_during_teardown(self) -> None:
+        # A worker that stops tells the scheduler on the way out, so its tasks are re-dispatched
+        # immediately instead of waiting for the heartbeat timeout to expire. The notification is
+        # one-way: the scheduler never replies, so teardown does not wait for an acknowledgement.
+        # Teardown runs on every exit path and for every backend, so this needs no backend set up.
+        error = SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "binder socket shut down mid-send")
+        worker = self._build_worker(error)
+        worker._loop = asyncio.get_running_loop()
+
+        await worker._Worker__teardown()  # name-mangled private method
+
+        sent = worker._connector_external.sent_messages
+        self.assertEqual(len(sent), 1, "WorkerDisconnectNotification was not sent during teardown")
+        self.assertIsInstance(sent[0], WorkerDisconnectNotification)
+
+    async def test_teardown_completes_when_the_notification_send_hangs(self) -> None:
+        # The notification only saves the scheduler from waiting out the heartbeat timeout, so a
+        # connection that is wedged rather than closed must not keep the worker alive forever.
+        error = SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "binder socket shut down mid-send")
+        worker = self._build_worker(error)
+        worker._loop = asyncio.get_running_loop()
+        worker._connector_external.send = lambda *_args, **_kwargs: _hang()
+
+        with mock.patch.object(worker_module, "WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS", 0.05):
+            with mock.patch.object(worker_module, "logger") as mock_logger:
+                await asyncio.wait_for(worker._Worker__teardown(), timeout=5)
+
+        self.assertTrue(worker._binder_internal.destroyed, "teardown stopped at the hung notification")
+        timed_out = [c for c in mock_logger.warning.call_args_list if "quitting anyway" in str(c)]
+        self.assertTrue(timed_out, "a notification that never sent was not reported")
 
 
 if __name__ == "__main__":

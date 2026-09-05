@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import dataclasses
 import hashlib
 import pickle
@@ -6,10 +8,12 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 import cloudpickle
 
+from scaler.client.agent.mixins import ClientAgentBridge
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import ObjectInstruction, ObjectMetadata
 from scaler.utility.identifiers import ClientID, ObjectID
+from scaler.utility.serialization import deserialize_failure
 
 
 @dataclasses.dataclass
@@ -22,17 +26,13 @@ class ObjectCache:
 
 class ObjectBuffer:
     def __init__(
-        self,
-        identity: ClientID,
-        serializer: Serializer,
-        connector_agent: SyncConnector,
-        connector_storage: SyncObjectStorageConnector,
+        self, identity: ClientID, serializer: Serializer, connector_agent: SyncConnector, bridge: ClientAgentBridge
     ):
         self._identity = identity
         self._serializer = serializer
 
         self._connector_agent = connector_agent
-        self._connector_storage = connector_storage
+        self._bridge = bridge
 
         self._valid_object_ids: Set[ObjectID] = set()
         self._pending_objects: List[ObjectCache] = list()
@@ -77,6 +77,11 @@ class ObjectBuffer:
 
     def commit_send_objects(self):
         if not self._pending_objects:
+            # Nothing to upload does not mean nothing was buffered: an object whose payload was already uploaded
+            # reuses that object ID, so it gets recorded in `_cycle_dedup_cache` without being added to
+            # `_pending_objects`. That cache is keyed by `id()`, which Python can reuse once an object is freed, so it
+            # must be cleared at the end of every cycle.
+            self._cycle_dedup_cache.clear()
             return
 
         object_instructions_to_send = [
@@ -95,14 +100,38 @@ class ObjectBuffer:
             )
         )
 
-        for obj_cache in self._pending_objects:
-            self._connector_storage.set_object(obj_cache.object_id, obj_cache.object_payload)
+        # Do the actual uploads within the agent's asyncio loop.
+        #
+        # All of the uploads are started before waiting for any of them, so that these pipeline instead of being
+        # uploaded one round-trip at a time.
+
+        pending_uploads = [
+            self._bridge.run_in_agent(self.__set_object(obj_cache.object_id, obj_cache.object_payload))
+            for obj_cache in self._pending_objects
+        ]
+
+        for pending_upload in pending_uploads:
+            _ = pending_upload.result()
 
         self._pending_objects.clear()
 
         # Drop only the per-cycle cache; the persistent caches survive so a payload reused
         # across separate submit() calls uploads once.
         self._cycle_dedup_cache.clear()
+
+    def fetch_object(
+        self, object_id: ObjectID, is_exception: bool, delete_after_fetch: bool
+    ) -> concurrent.futures.Future:
+        """
+        Starts fetching and deserializing an object from the object storage server.
+
+        If `is_exception` is True, the object is deserialized using the exception deserializer. Otherwise, the object is
+        deserialized using the user-defined deserializer.
+        """
+
+        # Do the actual object download within the agent's asyncio loop
+
+        return self._bridge.run_in_agent(self.__get_object(object_id, is_exception, delete_after_fetch))
 
     def clear(self):
         """
@@ -133,6 +162,24 @@ class ObjectBuffer:
 
     def is_valid_object_id(self, object_id: ObjectID) -> bool:
         return object_id in self._valid_object_ids
+
+    async def __set_object(self, object_id: ObjectID, payload: bytes) -> None:
+        connector_storage = await self._bridge.object_storage_connector()
+        await connector_storage.set_object(object_id, payload)
+
+    async def __get_object(self, object_id: ObjectID, is_exception: bool, delete_after_fetch: bool) -> Any:
+        connector_storage = await self._bridge.object_storage_connector()
+
+        payload = await connector_storage.get_object(object_id)
+
+        if delete_after_fetch:
+            await connector_storage.delete_object(object_id)
+
+        deserializer: Callable[[bytes], Any] = deserialize_failure if is_exception else self._serializer.deserialize
+
+        # Deserializing a large object takes a significant amount of time, so it does not run on the agent's event
+        # loop.
+        return await asyncio.get_running_loop().run_in_executor(None, deserializer, payload)
 
     def __construct_serializer(self) -> ObjectCache:
         serializer_payload = cloudpickle.dumps(self._serializer, protocol=pickle.HIGHEST_PROTOCOL)

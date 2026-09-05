@@ -37,7 +37,6 @@ class TestClientTLS(unittest.TestCase):
     def tearDown(self) -> None:
         self.combo.shutdown()
 
-    @unittest.skip("OSS fail with EPROTO when started as a Combo")
     def test_submit(self):
         self.assertTrue(self.address.startswith("tls://"))
 

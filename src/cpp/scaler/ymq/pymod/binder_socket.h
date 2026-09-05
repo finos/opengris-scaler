@@ -132,7 +132,9 @@ static PyObject* PyBinderSocket_bind_to(PyBinderSocket* self, PyObject* args, Py
             std::string {address, static_cast<size_t>(addressLen)},
             [callback_ = OwnedPyObject<>::fromBorrowed(callback),
              state](std::expected<Address, scaler::ymq::Error> result) {
-                AcquireGIL _;
+                AcquireGIL gil;
+                if (!gil.acquired())
+                    return;  // interpreter is shutting down, do not re-enter Python
 
                 // Redefine the callback to ensure it is destroyed before the GIL is released.
                 OwnedPyObject callback = std::move(callback_);
@@ -189,7 +191,9 @@ static PyObject* PyBinderSocket_send_message(PyBinderSocket* self, PyObject* arg
             std::move(messagePayload->bytes),
             [callback_ = OwnedPyObject<>::fromBorrowed(callback), state](
                 std::expected<void, scaler::ymq::Error> result, std::unique_ptr<scaler::ymq::Bytes> payload) {
-                AcquireGIL _;
+                AcquireGIL gil;
+                if (!gil.acquired())
+                    return;  // interpreter is shutting down, do not re-enter Python
 
                 // Move payload and callback into this scope so both are destroyed before the GIL is released.
                 auto payloadOwner      = std::move(payload);
@@ -262,7 +266,9 @@ static PyObject* PyBinderSocket_recv_message(PyBinderSocket* self, PyObject* arg
     try {
         self->socket->recvMessage([callback_ = OwnedPyObject<>::fromBorrowed(callback),
                                    state](std::expected<scaler::ymq::Message, scaler::ymq::Error> result) {
-            AcquireGIL _;
+            AcquireGIL gil;
+            if (!gil.acquired())
+                return;  // interpreter is shutting down, do not re-enter Python
 
             // Redefine the callback to ensure it is destroyed before the GIL is released.
             OwnedPyObject callback = std::move(callback_);

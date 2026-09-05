@@ -209,6 +209,51 @@ static int YMQ_createType(
     return 0;
 }
 
+// Registered with atexit at import time, so it runs after any atexit handler user code registers later (atexit
+// is LIFO) but still before CPython starts killing non-Python threads that ask for the GIL. See gil.h for why
+// not returning from here is what protects them.
+static PyObject* YMQ_onInterpreterShutdown(PyObject* Py_UNUSED(self), PyObject* Py_UNUSED(args))
+{
+    scaler::utility::pymod::markInterpreterShuttingDown();
+
+    bool drained = false;
+
+    // The threads being waited on need the GIL to get out of the window, so it cannot be held here.
+    Py_BEGIN_ALLOW_THREADS;
+    drained = scaler::utility::pymod::awaitGILWindowEmpty(scaler::utility::pymod::GIL_DRAIN_TIMEOUT);
+    Py_END_ALLOW_THREADS;
+
+    if (!drained) {
+        // Report the degraded exit rather than passing over it in silence. PyErr_WarnEx can itself raise
+        // under -W error, hence the clear.
+        PyErr_WarnEx(
+            PyExc_RuntimeWarning, "ymq: timed out waiting for io threads to release the GIL at interpreter exit", 1);
+        PyErr_Clear();
+    }
+
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef YMQ_onInterpreterShutdownDef = {
+    "_on_interpreter_shutdown", YMQ_onInterpreterShutdown, METH_NOARGS, nullptr};
+
+static int YMQ_registerShutdownHook()
+{
+    OwnedPyObject atexitModule = PyImport_ImportModule("atexit");
+    if (!atexitModule)
+        return -1;
+
+    OwnedPyObject hook = PyCFunction_NewEx(&YMQ_onInterpreterShutdownDef, nullptr, nullptr);
+    if (!hook)
+        return -1;
+
+    OwnedPyObject result = PyObject_CallMethod(atexitModule.get(), "register", "O", hook.get());
+    if (!result)
+        return -1;
+
+    return 0;
+}
+
 static int YMQ_exec(PyObject* pyModule)
 {
     auto state = (YMQState*)PyModule_GetState(pyModule);
@@ -256,6 +301,14 @@ static int YMQ_exec(PyObject* pyModule)
     if (PyModule_AddIntConstant(pyModule, "DEFAULT_INIT_RETRY_DELAY", defaultClientInitRetryDelay.count()) < 0)
         return -1;
 
+    OwnedPyObject pyMagicString =
+        PyBytes_FromStringAndSize(reinterpret_cast<const char*>(magicString.data()), magicString.size());
+    if (!pyMagicString)
+        return -1;
+
+    if (PyModule_AddObjectRef(pyModule, "MAGIC_STRING", pyMagicString.get()) < 0)
+        return -1;
+
     PyObject* exceptionBases = PyTuple_Pack(1, PyExc_Exception);
     if (!exceptionBases)
         return -1;
@@ -268,6 +321,9 @@ static int YMQ_exec(PyObject* pyModule)
     Py_DECREF(exceptionBases);
 
     if (YMQ_createExceptions(pyModule, state) < 0)
+        return -1;
+
+    if (YMQ_registerShutdownHook() < 0)
         return -1;
 
     return 0;

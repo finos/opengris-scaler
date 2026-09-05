@@ -139,7 +139,14 @@ private:
 
         // Makes sure we hold the GIL. It might happen that this OwnedPyObject gets destructed outside of a Python
         // thread. Otherwise, if the GIL is already acquired, this is almost a NO-OP.
-        AcquireGIL _;
+        AcquireGIL gil;
+
+        if (!gil.acquired()) {
+            // The interpreter is shutting down and will free every object it owns anyway. Dropping the pointer
+            // without touching its refcount is the only safe option from a non-Python thread at this point.
+            _ptr = nullptr;
+            return;
+        }
 
         Py_CLEAR(_ptr);
     }

@@ -7,7 +7,7 @@ import uuid
 from typing import Callable, Dict, List, Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
-from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
+from scaler.config.defaults import PROFILING_INTERVAL_SECONDS, WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io import ymq
 from scaler.io.mixins import (
@@ -17,18 +17,17 @@ from scaler.io.mixins import (
     ConnectorRemoteType,
     NetworkBackend,
 )
-from scaler.io.network_backends import YMQNetworkBackend, ZMQNetworkBackend, get_network_backend_from_env
+from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import (
     BaseMessage,
     ClientDisconnect,
-    DisconnectRequest,
-    DisconnectResponse,
     ObjectInstruction,
     ProcessorInitialized,
     Task,
     TaskCancel,
     TaskLog,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
@@ -43,6 +42,11 @@ from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
 logger = logging.getLogger(__name__)
+
+# YMQ errors that mean the scheduler connection is already gone.
+_EXPECTED_TEARDOWN_ERROR_CODES = frozenset(
+    {ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd, ymq.ErrorCode.SocketStopRequested}
+)
 
 
 class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
@@ -273,11 +277,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             logger.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
 
-        if isinstance(message, DisconnectResponse):
-            logger.error("Worker initiated DisconnectRequest got replied")
-            self._task.cancel()
-            return
-
         raise TypeError(f"Unknown {message=}")
 
     async def __on_receive_internal(self, processor_id_bytes: bytes, message: BaseMessage):
@@ -325,8 +324,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     async def __teardown(self) -> None:
         # Guarded with `is not None` throughout: this runs even when __initialize failed partway
         # through, so some of these may never have been created.
-        if isinstance(self._backend, ZMQNetworkBackend):
-            await self.__graceful_shutdown()
+        await self.__notify_scheduler_of_exit()
 
         destroyables: List[Tuple[str, Callable[[], None]]] = []
         if self._connector_external is not None:
@@ -359,22 +357,29 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             raise RuntimeError(f"failed to destroy {', '.join(failed_to_destroy)}")
 
     def __register_signal(self):
-        if isinstance(self._backend, ZMQNetworkBackend):
-            install_async_shutdown_handler(self._loop, self.__destroy)
-        elif isinstance(self._backend, YMQNetworkBackend):
-            install_async_shutdown_handler(self._loop, self.__schedule_graceful_shutdown)
+        install_async_shutdown_handler(self._loop, self.__destroy)
 
-    def __schedule_graceful_shutdown(self) -> None:
-        asyncio.ensure_future(self.__graceful_shutdown())
-
-    async def __graceful_shutdown(self):
+    async def __notify_scheduler_of_exit(self) -> None:
+        """Tell the scheduler this worker is leaving, so it re-dispatches our tasks instead of
+        waiting out the heartbeat timeout. Runs on every exit path, not just on a signal.
+        """
         if self._connector_external is None:
             return
 
         try:
-            await self._connector_external.send(DisconnectRequest(worker=self.identity), detached=False)
-        except ymq.YMQException:
-            pass
+            await asyncio.wait_for(
+                self._connector_external.send(WorkerDisconnectNotification(), detached=False),
+                WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS,
+            )
+        except ymq.YMQException as e:
+            if e.code not in _EXPECTED_TEARDOWN_ERROR_CODES:
+                raise
+            logger.info(f"{self.identity!r}: could not notify the scheduler of exit: {e}")
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"{self.identity!r}: could not notify the scheduler of exit within "
+                f"{WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS}s, quitting anyway"
+            )
 
     def __destroy(self):
         self._task.cancel()

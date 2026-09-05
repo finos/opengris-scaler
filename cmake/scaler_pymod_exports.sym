@@ -1,0 +1,2 @@
+# Mach-O counterpart of scaler_pymod_exports.map. See ScalerPythonModule.cmake.
+_PyInit_*
