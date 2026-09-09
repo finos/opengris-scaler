@@ -181,16 +181,18 @@ jobs:
 
       - name: Install KinD
         run: |
-          curl -Lo /usr/local/bin/kind \
+          mkdir -p "${RUNNER_TEMP}/bin"
+          curl -Lo "${RUNNER_TEMP}/bin/kind" \
             https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64
-          chmod +x /usr/local/bin/kind
-          kind version
+          chmod +x "${RUNNER_TEMP}/bin/kind"
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+          "${RUNNER_TEMP}/bin/kind" version
 
       - name: Install kubectl
         run: |
-          curl -Lo /usr/local/bin/kubectl \
+          curl -Lo "${RUNNER_TEMP}/bin/kubectl" \
             "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x /usr/local/bin/kubectl
+          chmod +x "${RUNNER_TEMP}/bin/kubectl"
           kubectl version --client
 
       - name: Build worker container image
