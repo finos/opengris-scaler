@@ -1,4 +1,4 @@
-# AGENTS.md: rules for humans and agents changing OpenGRIS Scaler
+# AGENTS.md: rules for working on OpenGRIS Scaler
 
 - These rules bind as written, neither looser nor stricter: where they decide, act.
 - What Scaler is and how to use it: `README.md` and `docs/`.
@@ -53,9 +53,7 @@ python -m unittest discover -v tests -t .
 - Run a command for its result, never because a document lists it.
 - A build or test sequence shared by workflows is one composite action under `.github/actions/`.
 
-## Principles
-
-After the Zen of Python (`python -c 'import this'`), for the C++ as much as the Python.
+## Design Principles
 
 - **Simple is better than complex.** The least code that solves the problem, in a shape a beginner can follow.
 - **Explicit is better than implicit.** Defaults as visible values, behaviour keyed off state the reader can see.
@@ -74,7 +72,6 @@ After the Zen of Python (`python -c 'import this'`), for the C++ as much as the 
 - **Flat is better than nested.** Guard clauses over nested conditionals, flat documents over deep hierarchies.
 - **Readability counts.** Short functions, and modules a reviewer reads top to bottom in one sitting.
 - **Practicality beats purity.** Simplicity over DRY: a little duplication beats a single-use abstraction.
-- **Namespaces are one honking great idea.** Directories, files, modules, namespaces, and tests match each other by name.
 - **Fix the root cause.** A workaround, blind retry, or guard that hides the defect is not a fix.
 - **Right-shaped data.** Fix the shape before the code: constant conversion between shapes, or a field that can be half-set, means the shape is wrong.
 - **Least surprise.** A command, class, or flag does the expected thing, and learning one teaches its siblings.
