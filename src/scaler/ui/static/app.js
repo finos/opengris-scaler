@@ -110,7 +110,35 @@ for (var i = 0; i < tabs.length; i++) {
     })(tabs[i]));
 }
 
+// A table rebuilt between a press and its release swallows the click, so clickable tables hold still after a press.
+var CLICK_HOLD_MS = 600;
+var pressedAt = 0;
+var heldRender = null;
+
+function holdStill() {
+    pressedAt = Date.now();
+}
+
+// A press became a click that changes what is shown, so the change renders at once.
+function releaseHold() {
+    pressedAt = 0;
+}
+
+// True while a press may still become a click. The visible tab renders once the hold ends.
+function holdingStill() {
+    var remaining = pressedAt + CLICK_HOLD_MS - Date.now();
+    if (remaining <= 0) return false;
+    if (heldRender === null) {
+        heldRender = setTimeout(function() {
+            heldRender = null;
+            renderActiveTab();
+        }, remaining);
+    }
+    return true;
+}
+
 function selectTab(name) {
+    releaseHold();
     for (var j = 0; j < tabs.length; j++) {
         tabs[j].classList.toggle("active", tabs[j].getAttribute("data-tab") === name);
         panels[j].classList.remove("active");
@@ -245,6 +273,7 @@ function sendSettings(settings) {
 
 // Tell the server what this browser is looking at. It answers with just that view.
 function sendView(view) {
+    releaseHold();
     Object.assign(saved.view, view);
     saveState();
     postView({ view: view });
@@ -507,6 +536,7 @@ function updateTaskEvents(rows) {
 
 // Filtering to one task and paging both run on the server, so this renders the page it was handed.
 function renderTaskEvents() {
+    if (holdingStill()) return;
     taskEventsBody.innerHTML = "";
     for (var i = 0; i < lastTaskEvents.length; i++) {
         var ev = lastTaskEvents[i];
@@ -1454,11 +1484,6 @@ function closestSample(samples, time) {
 
 // -- Workers --
 var managerCollapsed = {};  // manager id -> folded by this browser
-// A rebuild between a press and its release swallows the click, so the rows hold still briefly after a press.
-var CLICK_HOLD_MS = 600;
-var workersPressedAt = 0;
-
-workerDetailsContainer.addEventListener("pointerdown", function() { workersPressedAt = Date.now(); });
 
 function updateWorkerDetails(workerDetails) {
     lastWorkerDetails = workerDetails;
@@ -1466,7 +1491,7 @@ function updateWorkerDetails(workerDetails) {
 }
 
 function renderWorkerDetails() {
-    if (Date.now() - workersPressedAt < CLICK_HOLD_MS) return;  // the next update draws it
+    if (holdingStill()) return;
 
     // Each group carries fleet-wide summary numbers, but only this page's workers.
     var groups = lastWorkerDetails || [];
@@ -1687,6 +1712,8 @@ window.addEventListener("resize", function() {
 });
 
 // -- Start --
+taskEventsBody.addEventListener("pointerdown", holdStill);
+workerDetailsContainer.addEventListener("pointerdown", holdStill);
 applySettings(saved.settings);
 selectTab($("panel-" + saved.tab) ? saved.tab : "live");
 connect();
