@@ -19,7 +19,7 @@ Prerequisites
 
   .. code-block:: bash
 
-     pip install opengris-scaler[kubernetes]
+     uv pip install opengris-scaler[kubernetes]
 
 * RBAC permissions granting the service account ``get``, ``list``, ``watch``,
   ``create``, and ``delete`` on ``pods`` in the target namespace.
@@ -47,9 +47,9 @@ Create a virtual environment and install Scaler with the Kubernetes extra:
 
 .. code-block:: bash
 
-   python -m venv .venv
+   uv venv
    source .venv/bin/activate
-   pip install opengris-scaler[kubernetes]
+   uv pip install opengris-scaler[kubernetes]
 
 Verify your cluster access:
 

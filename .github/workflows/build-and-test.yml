@@ -141,6 +141,8 @@ jobs:
     name: Kubernetes Integration Tests (KinD)
     needs: build
     runs-on: ubuntu-latest
+    env:
+      KIND_VERSION: v0.27.0
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -183,7 +185,7 @@ jobs:
         run: |
           mkdir -p "${RUNNER_TEMP}/bin"
           curl -Lo "${RUNNER_TEMP}/bin/kind" \
-            https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64
+            "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
           chmod +x "${RUNNER_TEMP}/bin/kind"
           echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
           "${RUNNER_TEMP}/bin/kind" version

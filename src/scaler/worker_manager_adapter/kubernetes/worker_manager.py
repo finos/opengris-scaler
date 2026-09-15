@@ -18,6 +18,7 @@ import yaml
 from kubernetes.client import ApiClient, V1Container, V1EnvVar, V1ObjectMeta, V1Pod, V1PodSpec
 
 from scaler.config.section.kubernetes_worker_manager import KubernetesWorkerManagerConfig
+from scaler.utility.dict_utils import deep_merge
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
@@ -27,21 +28,6 @@ if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
 logger = logging.getLogger(__name__)
-
-
-def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Return a new dict that is `base` deep-merged with `override`.
-
-    Merge rules: nested dicts are merged recursively; lists replace the base list
-    entirely (no element-level merge); scalars use the override value.
-    """
-    result: Dict[str, Any] = dict(base)
-    for key, val in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
-            result[key] = _deep_merge(result[key], val)
-        else:
-            result[key] = val
-    return result
 
 
 class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
@@ -215,7 +201,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                     template = yaml.safe_load(config.pod_template)
                     if not isinstance(template, dict):
                         raise ValueError(f"pod_template must be a YAML mapping, got {type(template).__name__}")
-                    pod_dict = _deep_merge(pod_dict, template)
+                    pod_dict = deep_merge(pod_dict, template)
 
                 # Config fields override the template.
                 if config.node_selector:
