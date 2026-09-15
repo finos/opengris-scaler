@@ -20,7 +20,7 @@ from kubernetes.client import ApiClient, V1Container, V1EnvVar, V1ObjectMeta, V1
 from scaler.config.section.kubernetes_worker_manager import KubernetesWorkerManagerConfig
 from scaler.utility.dict_utils import deep_merge
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import format_capabilities
+from scaler.worker_manager.cloud.child_command import format_capabilities, load_file_or_inline
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -198,8 +198,9 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                 pod_dict: Dict[str, Any] = cast(Dict[str, Any], ApiClient().sanitize_for_serialization(pod_manifest))
 
                 # Layer 1: pod_template YAML — deep-merged as a base layer.
-                if config.pod_template.strip():
-                    template = yaml.safe_load(config.pod_template)
+                pod_template_content = load_file_or_inline(config.pod_template)
+                if pod_template_content.strip():
+                    template = yaml.safe_load(pod_template_content)
                     if not isinstance(template, dict):
                         raise ValueError(f"pod_template must be a YAML mapping, got {type(template).__name__}")
                     pod_dict = deep_merge(pod_dict, template)
