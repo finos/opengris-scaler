@@ -27,7 +27,12 @@ var streamRows = [];       // row labels (truncated) for the current page
 var streamFullRows = [];   // row labels (full worker names) for the current page
 var streamRowManagers = []; // manager color per row, current page
 var streamManagerColors = {}; // manager_id -> color
-var memoryPoints = [];     // memory chart points
+var memorySamples = [];    // [time, memory bytes, CPU percent], oldest first, timed by the server's clock
+var memoryServerNow = 0;   // the server's clock when the latest chart update was built
+var memoryReceivedAt = 0;  // performance.now() when that update arrived
+var memoryDrawnAt = 0;     // the chart time the canvas last drew
+var memoryPlotWidth = 0;   // CSS pixels, as the canvas last drew
+var timeAxis = "relative"; // "relative" labels seconds before now, "absolute" the time of day
 var memoryScale = "linear";
 var memoryYTicks = [];
 var streamTicks = [];
@@ -224,6 +229,14 @@ setupToggle("scale-toggle", function(val) {
     sendSettings({ memory_scale: val });
 });
 
+// The browser alone draws the time axis, so the choice is saved here and never sent.
+setupToggle("time-toggle", function(val) {
+    timeAxis = val;
+    saved.settings.time_axis = val;
+    saveState();
+    memoryNeedsRedraw = true;
+});
+
 function sendSettings(settings) {
     Object.assign(saved.settings, settings);
     saveState();
@@ -313,7 +326,6 @@ function handleMessage(data) {
     if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (data.worker_events) handleWorkerEvents(data.worker_events);
     if (data.task_stream) updateTaskStream(data.task_stream);
-    if (data.memory_chart && data.memory_chart.cpu_points) lastCpuPoints = data.memory_chart.cpu_points;
     if (data.memory_chart) updateMemoryChart(data.memory_chart);
     if (data.worker_details) updateWorkerDetails(data.worker_details);
     if (data.settings) applySettings(data.settings);
@@ -341,17 +353,18 @@ function applyPageInfo(data) {
 }
 
 function applySettings(settings) {
-    if (settings.stream_window) {
-        var btns = $("window-toggle").querySelectorAll(".toggle-btn");
-        for (var i = 0; i < btns.length; i++) {
-            btns[i].classList.toggle("active", btns[i].getAttribute("data-value") === String(settings.stream_window));
-        }
+    if (settings.stream_window) markToggle("window-toggle", String(settings.stream_window));
+    if (settings.memory_scale) markToggle("scale-toggle", settings.memory_scale);
+    if (settings.time_axis) {
+        timeAxis = settings.time_axis;
+        markToggle("time-toggle", settings.time_axis);
     }
-    if (settings.memory_scale) {
-        var btns2 = $("scale-toggle").querySelectorAll(".toggle-btn");
-        for (var i = 0; i < btns2.length; i++) {
-            btns2[i].classList.toggle("active", btns2[i].getAttribute("data-value") === settings.memory_scale);
-        }
+}
+
+function markToggle(groupId, value) {
+    var btns = $(groupId).querySelectorAll(".toggle-btn");
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle("active", btns[i].getAttribute("data-value") === value);
     }
 }
 
@@ -485,7 +498,6 @@ var TASK_EVENT_FIELDS = ["time", "task_id", "event", "client", "worker", "functi
 var TASK_LOG_FIELDS = ["task_id", "function", "client", "worker", "time", "duration", "peak_mem", "objects",
                        "status", "capabilities"];
 
-var lastCpuPoints = [];
 var lastCpuTicks = [];  // the right axis, from 0 up to its last tick
 
 function updateTaskEvents(rows) {
@@ -1186,14 +1198,72 @@ var MEM_LABEL_WIDTH = 80;
 var CPU_LABEL_WIDTH = 60;
 var CPU_COLOR = "#d97706";
 var MEM_PADDING = { top: 20, right: CPU_LABEL_WIDTH, bottom: 30, left: MEM_LABEL_WIDTH };
+// Steps the absolute axis ticks at, the smallest that keeps it to a few labels.
+var CLOCK_TICK_STEPS_SECONDS = [10, 15, 30, 60, 120, 300, 600, 900, 1800];
+var CLOCK_TICK_MAX_INTERVALS = 6;
+var SECONDS_PER_MINUTE = 60;
+// How near a sample the pointer must be, as a share of the window, for the tooltip to read it.
+var MEMORY_HOVER_REACH = 0.05;
 
+// A whole window may answer a request made before the stream's latest samples, so it keeps any newer ones held.
 function updateMemoryChart(data) {
-    memoryPoints = data.points || [];
+    var samples = data.samples || [];
+    if (data.append) {
+        var newest = memorySamples.length ? memorySamples[memorySamples.length - 1][0] : -Infinity;
+        for (var i = 0; i < samples.length; i++) {
+            if (samples[i][0] > newest) memorySamples.push(samples[i]);
+        }
+    } else {
+        var last = samples.length ? samples[samples.length - 1][0] : -Infinity;
+        memorySamples = samples.concat(memorySamples.filter(function(sample) { return sample[0] > last; }));
+    }
+
+    var windowStart = data.now - data.window;
+    var inWindow = 0;
+    while (inWindow < memorySamples.length && memorySamples[inWindow][0] < windowStart) inWindow++;
+    memorySamples.splice(0, inWindow);
+
+    memoryServerNow = data.now;
+    memoryReceivedAt = performance.now();
     memoryYTicks = data.y_ticks || [];
     lastCpuTicks = data.cpu_ticks || [];
     memoryScale = data.scale || "linear";
     streamWindow = data.window || streamWindow;
     if (activeTab === "stream") memoryNeedsRedraw = true;
+}
+
+// The server's clock now, so samples sit where the clock that timed them puts them, whatever the browser's reads.
+function chartNow() {
+    return memoryServerNow + (performance.now() - memoryReceivedAt) / 1000;
+}
+
+// The chart has moved a device pixel since it drew: redrawing then scrolls smoothly at a few frames a second.
+function memoryScrolled() {
+    if (memorySamples.length === 0 || memoryPlotWidth <= 0) return false;
+    var secondsPerPixel = streamWindow / (memoryPlotWidth * (window.devicePixelRatio || 1));
+    return chartNow() - memoryDrawnAt >= secondsPerPixel;
+}
+
+// Ticks at fixed offsets before now, the ones the stream above labels its axis with.
+function relativeTicks(now) {
+    return streamTicks.map(function(tick) { return { time: now + tick.val, label: tick.label }; });
+}
+
+// Ticks at round times of day, which scroll with the samples.
+function clockTicks(now) {
+    var step = CLOCK_TICK_STEPS_SECONDS[CLOCK_TICK_STEPS_SECONDS.length - 1];
+    for (var i = 0; i < CLOCK_TICK_STEPS_SECONDS.length; i++) {
+        if (streamWindow / CLOCK_TICK_STEPS_SECONDS[i] <= CLOCK_TICK_MAX_INTERVALS) {
+            step = CLOCK_TICK_STEPS_SECONDS[i];
+            break;
+        }
+    }
+    var ticks = [];
+    for (var time = Math.ceil((now - streamWindow) / step) * step; time <= now; time += step) {
+        var label = formatTime(time);
+        ticks.push({ time: time, label: step < SECONDS_PER_MINUTE ? label : label.slice(0, 5) });
+    }
+    return ticks;
 }
 
 function drawMemoryChart() {
@@ -1202,22 +1272,28 @@ function drawMemoryChart() {
     var cw = container.clientWidth;
     var ch = container.clientHeight;
 
-    memoryCanvas.width = cw * dpr;
-    memoryCanvas.height = ch * dpr;
-    memoryCanvas.style.width = cw + "px";
-    memoryCanvas.style.height = ch + "px";
+    // Resizing reallocates the canvas, so it happens when the size changes rather than on every scrolled pixel.
+    if (memoryCanvas.width !== Math.round(cw * dpr) || memoryCanvas.height !== Math.round(ch * dpr)) {
+        memoryCanvas.width = Math.round(cw * dpr);
+        memoryCanvas.height = Math.round(ch * dpr);
+        memoryCanvas.style.width = cw + "px";
+        memoryCanvas.style.height = ch + "px";
+    }
     memoryCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     var plotLeft = MEM_PADDING.left;
     var plotTop = MEM_PADDING.top;
     var plotWidth = cw - MEM_PADDING.left - MEM_PADDING.right;
     var plotHeight = ch - MEM_PADDING.top - MEM_PADDING.bottom;
+    var now = chartNow();
+    memoryPlotWidth = plotWidth;
+    memoryDrawnAt = now;
 
     // Clear
     memoryCtx.fillStyle = "#ffffff";
     memoryCtx.fillRect(0, 0, cw, ch);
 
-    if (memoryPoints.length === 0) {
+    if (memorySamples.length === 0) {
         memoryCtx.fillStyle = "#94a3b8";
         memoryCtx.font = "13px " + getComputedStyle(document.body).fontFamily;
         memoryCtx.textAlign = "center";
@@ -1225,19 +1301,16 @@ function drawMemoryChart() {
         return;
     }
 
-    // Determine y range
-    var maxY = 0;
-    for (var i = 0; i < memoryPoints.length; i++) {
-        if (memoryPoints[i].y > maxY) maxY = memoryPoints[i].y;
-    }
-    maxY = Math.max(maxY, 1024 * 1024 * 1024); // min 1GB
+    // Both axes top out at their last tick, so the gridlines and the series agree.
+    var maxY = memoryYTicks.length ? memoryYTicks[memoryYTicks.length - 1].val : 0;
     var cpuMax = lastCpuTicks.length ? lastCpuTicks[lastCpuTicks.length - 1].val : 0;
 
-    function mapX(val) {
-        return plotLeft + ((val + streamWindow) / streamWindow) * plotWidth;
+    function mapX(time) {
+        return plotLeft + ((time - now + streamWindow) / streamWindow) * plotWidth;
     }
 
     function mapY(val) {
+        if (maxY <= 0) return plotTop + plotHeight;
         if (memoryScale === "log") {
             if (val <= 0) return plotTop + plotHeight;
             var logMax = Math.log10(maxY);
@@ -1284,33 +1357,41 @@ function drawMemoryChart() {
     memoryCtx.fillStyle = "#64748b";
 
     // X axis ticks
+    var xTicks = timeAxis === "absolute" ? clockTicks(now) : relativeTicks(now);
     memoryCtx.textAlign = "center";
     memoryCtx.textBaseline = "top";
-    for (var s = 0; s < streamTicks.length; s++) {
-        var tx = mapX(streamTicks[s].val);
+    for (var s = 0; s < xTicks.length; s++) {
+        var tx = mapX(xTicks[s].time);
         memoryCtx.beginPath();
         memoryCtx.moveTo(tx, plotTop);
         memoryCtx.lineTo(tx, plotTop + plotHeight);
         memoryCtx.stroke();
-        memoryCtx.fillText(streamTicks[s].label, tx, plotTop + plotHeight + 4);
+        memoryCtx.fillText(xTicks[s].label, tx, plotTop + plotHeight + 4);
     }
 
-    // Draw filled area
+    // Samples scroll past the plot's edges between updates, so the series are drawn inside it alone.
+    memoryCtx.save();
     memoryCtx.beginPath();
-    memoryCtx.moveTo(mapX(memoryPoints[0].x), mapY(0));
-    for (var p = 0; p < memoryPoints.length; p++) {
-        memoryCtx.lineTo(mapX(memoryPoints[p].x), mapY(memoryPoints[p].y));
+    memoryCtx.rect(plotLeft, 0, plotWidth, ch);
+    memoryCtx.clip();
+
+    // Draw filled area
+    var lastSample = memorySamples[memorySamples.length - 1];
+    memoryCtx.beginPath();
+    memoryCtx.moveTo(mapX(memorySamples[0][0]), mapY(0));
+    for (var p = 0; p < memorySamples.length; p++) {
+        memoryCtx.lineTo(mapX(memorySamples[p][0]), mapY(memorySamples[p][1]));
     }
-    memoryCtx.lineTo(mapX(memoryPoints[memoryPoints.length - 1].x), mapY(0));
+    memoryCtx.lineTo(mapX(lastSample[0]), mapY(0));
     memoryCtx.closePath();
     memoryCtx.fillStyle = "rgba(59, 130, 246, 0.3)";
     memoryCtx.fill();
 
     // Draw line
     memoryCtx.beginPath();
-    for (var q = 0; q < memoryPoints.length; q++) {
-        var px = mapX(memoryPoints[q].x);
-        var py = mapY(memoryPoints[q].y);
+    for (var q = 0; q < memorySamples.length; q++) {
+        var px = mapX(memorySamples[q][0]);
+        var py = mapY(memorySamples[q][1]);
         if (q === 0) memoryCtx.moveTo(px, py);
         else memoryCtx.lineTo(px, py);
     }
@@ -1319,11 +1400,11 @@ function drawMemoryChart() {
     memoryCtx.stroke();
 
     // CPU against the right axis: the shape says whether held memory is computing.
-    if (lastCpuPoints.length > 1 && cpuMax > 0) {
+    if (memorySamples.length > 1 && cpuMax > 0) {
         memoryCtx.beginPath();
-        for (var k = 0; k < lastCpuPoints.length; k++) {
-            var cx = mapX(lastCpuPoints[k].x);
-            var cy = mapCpuY(lastCpuPoints[k].y);
+        for (var k = 0; k < memorySamples.length; k++) {
+            var cx = mapX(memorySamples[k][0]);
+            var cy = mapCpuY(memorySamples[k][2]);
             if (k === 0) memoryCtx.moveTo(cx, cy);
             else memoryCtx.lineTo(cx, cy);
         }
@@ -1331,29 +1412,25 @@ function drawMemoryChart() {
         memoryCtx.lineWidth = 1.5;
         memoryCtx.setLineDash([4, 3]);
         memoryCtx.stroke();
-        memoryCtx.setLineDash([]);
     }
 
+    memoryCtx.restore();
     memoryCtx.lineWidth = 1;
 }
 
 // Memory hover
 memoryCanvas.addEventListener("mousemove", function(evt) {
-    if (memoryPoints.length === 0) return;
+    if (memorySamples.length === 0) return;
     var rect = memoryCanvas.getBoundingClientRect();
     var mx = evt.clientX - rect.left;
-    var container = memoryCanvas.parentElement;
-    var cw = container.clientWidth;
-    var plotWidth = cw - MEM_PADDING.left - MEM_PADDING.right;
+    var plotWidth = memoryCanvas.parentElement.clientWidth - MEM_PADDING.left - MEM_PADDING.right;
+    var now = chartNow();
+    var time = now - streamWindow + ((mx - MEM_PADDING.left) / plotWidth) * streamWindow;
 
-    // convert mx to time
-    var t = ((mx - MEM_PADDING.left) / plotWidth) * streamWindow - streamWindow;
-
-    var closest = closestPoint(memoryPoints, t);
-    if (closest && Math.abs(closest.x - t) < streamWindow * 0.05) {
-        var cpu = closestPoint(lastCpuPoints, closest.x);
-        var reading = formatBytes(closest.y) + (cpu ? ", CPU " + cpu.y + "%" : "");
-        tooltip.textContent = reading + " at " + closest.x.toFixed(1) + "s";
+    var closest = closestSample(memorySamples, time);
+    if (Math.abs(closest[0] - time) < streamWindow * MEMORY_HOVER_REACH) {
+        var when = timeAxis === "absolute" ? formatTime(closest[0]) : (closest[0] - now).toFixed(1) + "s";
+        tooltip.textContent = formatBytes(closest[1]) + ", CPU " + closest[2] + "% at " + when;
         tooltip.style.left = (evt.clientX + 10) + "px";
         tooltip.style.top = (evt.clientY - 30) + "px";
         tooltip.classList.add("visible");
@@ -1366,11 +1443,11 @@ memoryCanvas.addEventListener("mouseleave", function() {
     tooltip.classList.remove("visible");
 });
 
-// The point of `points` nearest time `x`, or null when there are none.
-function closestPoint(points, x) {
-    var closest = null;
-    for (var i = 0; i < points.length; i++) {
-        if (closest === null || Math.abs(points[i].x - x) < Math.abs(closest.x - x)) closest = points[i];
+// The sample nearest `time`, of a list that holds at least one.
+function closestSample(samples, time) {
+    var closest = samples[0];
+    for (var i = 1; i < samples.length; i++) {
+        if (Math.abs(samples[i][0] - time) < Math.abs(closest[0] - time)) closest = samples[i];
     }
     return closest;
 }
@@ -1595,7 +1672,7 @@ function renderLoop() {
             streamNeedsRedraw = false;
             drawTaskStream();
         }
-        if (memoryNeedsRedraw) {
+        if (memoryNeedsRedraw || memoryScrolled()) {
             memoryNeedsRedraw = false;
             drawMemoryChart();
         }

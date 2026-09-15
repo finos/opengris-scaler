@@ -69,6 +69,9 @@ TASK_ID_DISPLAY_LENGTH = 12
 # The memory chart's axis floor, so an idle cluster is a flat line rather than noise filling the plot.
 MEMORY_CHART_MINIMUM_BYTES = 1024**3
 
+# Samples are taken a scheduler report apart, so a tenth of a second places each one to well under a pixel.
+MEMORY_SAMPLE_TIME_DECIMALS = 1
+
 # Ticks on each of the chart's y axes, memory on the left and CPU on the right, the last at the axis maximum.
 MEMORY_CHART_TICKS = 5
 
@@ -263,7 +266,7 @@ class _RenderCache:
         self._sorted: Dict[Tuple[str, Optional[str], bool], List[Dict[str, Any]]] = {}
         self._worker_details: Optional[List[Dict[str, Any]]] = None
         self._stream: Dict[int, Dict[str, Any]] = {}
-        self._memory: Dict[Tuple[float, str], Dict[str, Any]] = {}
+        self._memory: Dict[Tuple[float, str, Optional[float]], Dict[str, Any]] = {}
 
     def sorted_rows(
         self,
@@ -294,10 +297,10 @@ class _RenderCache:
             self._stream[window_minutes] = stream_data
         return self._stream[window_minutes]
 
-    def memory(self, app: "WebUIApp", window_seconds: float, scale: str) -> Dict[str, Any]:
-        key = (window_seconds, scale)
+    def memory(self, app: "WebUIApp", window_seconds: float, scale: str, since: Optional[float]) -> Dict[str, Any]:
+        key = (window_seconds, scale, since)
         if key not in self._memory:
-            self._memory[key] = app._memory_chart.get_render_data(window_seconds, scale)
+            self._memory[key] = app._memory_chart.get_render_data(window_seconds, scale, since)
         return self._memory[key]
 
 
@@ -888,11 +891,13 @@ def _cpu_axis_ticks(peak_percent: float) -> List[float]:
 
 
 class MemoryChartState:
-    """Server-side state for the chart of what the fleet holds and how hard it computes."""
+    """Server-side state for the chart of what the fleet holds and how hard it computes.
+
+    Each sample carries the time it was taken, so the browser places it against the clock and scrolls between updates.
+    """
 
     def __init__(self) -> None:
         self._start_time = datetime.datetime.now()
-        self._points: List[Tuple[float, int]] = []  # (timestamp, memory_bytes)
         # What the fleet holds, sampled once per scheduler update.
         self._live: Deque[Tuple[float, int, float]] = deque()  # (timestamp, rss_bytes, cpu_percent)
         self._memory_store_time = datetime.timedelta(minutes=30)
@@ -906,81 +911,37 @@ class MemoryChartState:
             while self._live[0][0] < cutoff:
                 self._live.popleft()
 
-    def _live_series(self, now_ts: float, window_seconds: float) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    def latest_sample_time(self) -> float:
+        """When the newest sample was taken, 0 before the first."""
         with self._lock:
-            samples = list(self._live)
-        memory_points, cpu_points = [], []
-        for timestamp, rss_bytes, cpu_percent in samples:
-            offset = timestamp - now_ts
-            if offset < -window_seconds:
-                continue
-            memory_points.append({"x": round(offset, 2), "y": rss_bytes})
-            cpu_points.append({"x": round(offset, 2), "y": round(cpu_percent, 1)})
-        return memory_points, cpu_points
+            return self._live[-1][0] if self._live else 0.0
 
-    def handle_task_state(self, state_task: StateTask) -> None:
-        if state_task.metadata == b"":
-            return
+    def get_render_data(self, window_seconds: float, scale: str, since: Optional[float]) -> Dict[str, Any]:
+        """The window's samples and axes. Window and scale are per-browser, so they are passed in.
 
-        try:
-            profile = ProfileResult.deserialize(state_task.metadata)
-        except struct.error:
-            return
-
-        if profile.memory_peak == 0:
-            return
-
-        now = datetime.datetime.now()
+        With `since`, only the samples taken after it travel, and the browser appends them to what it holds.
+        The axes always cover the whole window.
+        """
+        now_ts = datetime.datetime.now().timestamp()
+        window_start_ts = now_ts - window_seconds
         with self._lock:
-            start_ts = now.timestamp() - profile.duration_s
-            self._points.append((start_ts, profile.memory_peak))
-            self._points.append((now.timestamp(), -profile.memory_peak))
+            samples = [sample for sample in self._live if sample[0] >= window_start_ts]
 
-    def get_render_data(self, window_seconds: float, scale: str) -> Dict[str, Any]:
-        """Render the chart. Window and scale are per-browser, so they are passed in."""
-        now = datetime.datetime.now()
-        now_ts = now.timestamp()
-        cutoff_ts = now_ts - self._memory_store_time.total_seconds()
-
-        with self._lock:
-            # prune old points
-            self._points = [(t, m) for t, m in self._points if t >= cutoff_ts]
-
-            # build memory timeline within visible window
-            events = sorted(self._points, key=lambda p: p[0])
-
-        # accumulate memory usage
-        running_mem = 0
-        chart_points: List[Dict[str, Any]] = []
-        for ts, delta in events:
-            running_mem += delta
-            if running_mem < 0:
-                running_mem = 0
-            x = ts - now_ts  # relative seconds
-            if x < -window_seconds:
-                continue
-            chart_points.append({"x": round(x, 2), "y": max(running_mem, 0)})
-
-        # always include current point
-        if not chart_points or chart_points[-1]["x"] < -0.1:
-            chart_points.append({"x": 0, "y": max(running_mem, 0)})
-
-        live_memory, live_cpu = self._live_series(now_ts, window_seconds)
-        if live_memory:
-            # the series derived from task profiles is the fallback until the first live sample
-            chart_points = live_memory
-
-        max_mem = max(max((point["y"] for point in chart_points), default=0), MEMORY_CHART_MINIMUM_BYTES)
+        max_mem = max(max((rss_bytes for _, rss_bytes, _ in samples), default=0), MEMORY_CHART_MINIMUM_BYTES)
         ticks = [int(max_mem * step / (MEMORY_CHART_TICKS - 1)) for step in range(MEMORY_CHART_TICKS)]
-        y_ticks = [{"val": tick, "label": format_bytes(tick)} for tick in ticks]
-        cpu_ticks = _cpu_axis_ticks(max((point["y"] for point in live_cpu), default=0.0))
+        cpu_ticks = _cpu_axis_ticks(max((cpu_percent for _, _, cpu_percent in samples), default=0.0))
+        sent = samples if since is None else [sample for sample in samples if sample[0] > since]
 
         return {
-            "points": chart_points,
-            "y_ticks": y_ticks,
+            "samples": [
+                [round(timestamp, MEMORY_SAMPLE_TIME_DECIMALS), rss_bytes, round(cpu_percent, 1)]
+                for timestamp, rss_bytes, cpu_percent in sent
+            ],
+            "append": since is not None,
+            "now": now_ts,
+            "y_ticks": [{"val": tick, "label": format_bytes(tick)} for tick in ticks],
             "scale": scale,
             "window": window_seconds,
-            "cpu_points": live_cpu,
             # the CPU axis stays linear whatever the memory scale, from 0 up to its last tick
             "cpu_ticks": [{"val": tick, "label": f"{tick:g}%"} for tick in cpu_ticks],
         }
@@ -1083,6 +1044,8 @@ class WebUIApp:
 
     def _batch_once(self) -> None:
         """One tick: apply everything the subscriber queued, then queue each browser its own payload."""
+        # a browser holds every sample taken up to here, so this tick sends only the ones it adds
+        latest_sample_time = self._memory_chart.latest_sample_time()
         messages: List[BaseMessage] = []
         while True:
             try:
@@ -1149,9 +1112,7 @@ class WebUIApp:
                 **(self._task_log_section(view, cache) if has_task_update else {}),
                 **(self._task_events_section(view, cache) if has_task_update else {}),
                 "task_stream": self._stream_section(view, cache),
-                "memory_chart": cache.memory(
-                    self, cache.stream(self, view.stream_window_minutes)["window"], view.memory_scale
-                ),
+                **(self._memory_section(view, cache, latest_sample_time) if has_scheduler_update else {}),
             }
         )
 
@@ -1496,9 +1457,7 @@ class WebUIApp:
         if func_name and task_id_hex not in self._task_id_to_function:
             self._task_id_to_function[task_id_hex] = func_name
 
-        # forward to chart states
         self._task_stream.handle_task_state(state_task)
-        self._memory_chart.handle_task_state(state_task)
 
         if not func_name:
             func_name = self._task_id_to_function.get(task_id_hex, "")
@@ -1851,6 +1810,11 @@ class WebUIApp:
         stream_data["total_rows"] = len(rows)
         return stream_data
 
+    def _memory_section(self, view: BrowserView, cache: "_RenderCache", since: Optional[float]) -> Dict[str, Any]:
+        """The memory chart over this browser's window: the samples taken after `since`, or all of them without it."""
+        window_seconds = cache.stream(self, view.stream_window_minutes)["window"]
+        return {"memory_chart": cache.memory(self, window_seconds, view.memory_scale, since)}
+
     def _fleet_worker_count(self) -> int:
         """Full fleet size, for the "N of M" indicator next to a bounded worker list.
 
@@ -1963,7 +1927,6 @@ class WebUIApp:
     def __full_state(self, view: BrowserView) -> Dict[str, Any]:
         cache = _RenderCache()
         stream_data = self._stream_section(view, cache)
-        memory_data = cache.memory(self, stream_data["window"], view.memory_scale)
         # Build scheduler data with a last_seen derived from the periodic heartbeat.
         sched = dict(self._scheduler_data) if self._scheduler_data else {}
         sched.update(self.__scheduler_liveness())
@@ -1978,7 +1941,7 @@ class WebUIApp:
             **self._task_log_section(view, cache),
             **self._task_events_section(view, cache),
             "task_stream": stream_data,
-            "memory_chart": memory_data,
+            **self._memory_section(view, cache, None),
             **self._worker_details_section(view, cache),
             "worker_managers": list(self._worker_managers_data.values()),
             "settings": view.settings(),
@@ -2000,7 +1963,7 @@ class WebUIApp:
             **self._task_log_section(view, cache),
             **self._task_events_section(view, cache),
             "task_stream": stream_data,
-            "memory_chart": cache.memory(self, stream_data["window"], view.memory_scale),
+            **self._memory_section(view, cache, None),
             "settings": view.settings(),
         }
 
