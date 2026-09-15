@@ -295,9 +295,10 @@ element-level merge.
    * - ``pod_template``
      - ``str``
      - ``""``
-     - Multi-line TOML string containing a partial Kubernetes pod template in YAML
-       format. Parsed with ``yaml.safe_load`` and deep-merged into the generated pod
-       dict. Use standard camelCase Kubernetes field names.
+     - Partial Kubernetes pod template in YAML format, either as an inline TOML
+       multi-line string or a path to a YAML file. Parsed with ``yaml.safe_load``
+       and deep-merged into the generated pod dict. Use standard camelCase
+       Kubernetes field names.
 
 .. code-block:: toml
 
