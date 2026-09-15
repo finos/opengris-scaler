@@ -32,12 +32,17 @@ def extract_desired_count(
     return total
 
 
+def load_file_or_inline(value: str) -> str:
+    """Return file contents if *value* is a path to an existing file, otherwise return *value* as-is."""
+    if os.path.isfile(value):
+        with open(value) as f:
+            return f.read()
+    return value
+
+
 def load_requirements_content(requirements_txt: str) -> str:
     """Return requirements file content, reading from disk if requirements_txt is a file path."""
-    if os.path.isfile(requirements_txt):
-        with open(requirements_txt) as f:
-            return f.read()
-    return requirements_txt
+    return load_file_or_inline(requirements_txt)
 
 
 def format_capabilities(capabilities: Dict[str, int]) -> str:
