@@ -205,24 +205,30 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                     pod_dict = deep_merge(pod_dict, template)
 
                 # Config fields override the template.
+                spec = pod_dict.setdefault("spec", {})
+                containers = spec.setdefault("containers", [{}])
+                container = containers[0] if containers else {}
+                if not containers:
+                    containers.append(container)
+
                 if config.node_selector:
-                    pod_dict["spec"]["nodeSelector"] = config.node_selector
+                    spec["nodeSelector"] = config.node_selector
 
                 if config.service_account_name:
-                    pod_dict["spec"]["serviceAccountName"] = config.service_account_name
+                    spec["serviceAccountName"] = config.service_account_name
 
                 if config.image_pull_policy:
-                    pod_dict["spec"]["containers"][0]["imagePullPolicy"] = config.image_pull_policy
+                    container["imagePullPolicy"] = config.image_pull_policy
 
                 if config.resource_requests or config.resource_limits:
-                    resources = pod_dict["spec"]["containers"][0].setdefault("resources", {})
+                    resources = container.setdefault("resources", {})
                     if config.resource_requests:
                         resources["requests"] = config.resource_requests
                     if config.resource_limits:
                         resources["limits"] = config.resource_limits
 
                 # Invariant: restartPolicy must always be Never.
-                pod_dict["spec"]["restartPolicy"] = "Never"
+                spec["restartPolicy"] = "Never"
 
                 await loop.run_in_executor(
                     None, functools.partial(self._core_v1.create_namespaced_pod, config.namespace, pod_dict)
