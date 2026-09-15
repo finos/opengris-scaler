@@ -529,7 +529,7 @@ function updateWorkers(workers) {
 var MACHINE_FIELDS = ["host", "workers", "busy", "idle", "managers", "cpu", "rss", "rss_free",
                       "mem_used_pct", "queued", "sent", "net_sent", "net_recv", "last_seen"];
 
-var TASK_EVENT_FIELDS = ["time", "task_id", "event", "client", "worker", "function", "detail"];
+var TASK_EVENT_FIELDS = ["time", "task_id", "status", "event", "client", "worker", "function", "detail"];
 
 // Column order of the task list, shared by its header row and the cells below it.
 var TASK_LOG_FIELDS = ["task_id", "function", "client", "worker", "time", "duration", "peak_mem", "objects",
@@ -558,6 +558,7 @@ function renderTaskEvents() {
             var td = document.createElement("td");
             var value = ev[TASK_EVENT_FIELDS[f]];
             if (TASK_EVENT_FIELDS[f] === "task_id" && value) value = value.slice(0, 12);
+            if (TASK_EVENT_FIELDS[f] === "status" && value) td.className = statusClass(value);
             td.textContent = (value === undefined || value === null || value === "") ? "\u2014" : value;
             tr.appendChild(td);
         }

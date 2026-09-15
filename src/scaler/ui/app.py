@@ -49,6 +49,10 @@ COMPLETED_TASK_STATUSES = (
 # What a task the scheduler reports running is doing on its worker, as that worker's processors report it.
 WORKER_TASK_STATUSES = ("queued", "running", "suspended")
 
+# What made a Task Log row that no scheduler event did, named for the message that carried it.
+PROCESSOR_REPORT_EVENT = "WorkerStatus"
+BALANCE_ADVICE_EVENT = "StateBalanceAdvice"
+
 SLIDING_WINDOW_OPTIONS = {
     5: datetime.timedelta(minutes=5),
     10: datetime.timedelta(minutes=10),
@@ -146,7 +150,7 @@ TASK_LOG_SORT = SortSpec(
 )
 # A trail row's time is a clock reading, so it orders by the sequence number it was appended with.
 TASK_EVENTS_SORT = SortSpec(
-    text=frozenset({"task_id", "event", "client", "worker", "function", "detail"}), raw={"time": "seq"}
+    text=frozenset({"task_id", "status", "event", "client", "worker", "function", "detail"}), raw={"time": "seq"}
 )
 OBJECTS_SORT = SortSpec(
     text=frozenset({"object", "name", "type", "client"}), numeric=frozenset({"tasks"}), raw={"size": "size_bytes"}
@@ -333,15 +337,6 @@ def _current_task_label(processor_statuses: Iterable[ProcessorStatus]) -> str:
     if len(busy) == 1:
         return bytes(busy[0].currentTaskId).hex()[:TASK_ID_DISPLAY_LENGTH]
     return f"{len(busy)} tasks"
-
-
-def _task_status(state: TaskState) -> str:
-    """The status a task's rows show for a state the scheduler reported.
-
-    The scheduler reports a task running when it dispatches it, so it waits in the worker's queue until a status
-    frame shows a processor holding it.
-    """
-    return "queued" if state == TaskState.running else state.name
 
 
 def paginate(items: Collection[Any], page: int, size: int) -> Tuple[List[Any], int, int]:
@@ -993,6 +988,8 @@ class WebUIApp:
         self._task_id_to_function: Dict[str, str] = {}
         # Tasks each worker holds; a dict, not a set, because a worker works through them in arrival order.
         self._worker_tasks: Dict[str, Dict[str, None]] = {}
+        # Task id -> (worker, whether its processor is suspended), for every task on a processor in the last frame.
+        self._processor_tasks: Dict[str, Tuple[str, bool]] = {}
         self._task_worker: Dict[str, str] = {}
         self._task_stream = TaskStreamState()
         self._memory_chart = MemoryChartState()
@@ -1187,7 +1184,7 @@ class WebUIApp:
             self._worker_managers_data.pop(mid, None)
 
         current_workers = set()
-        processor_tasks: Dict[str, bool] = {}  # task id -> whether the processor holding it is suspended
+        processor_tasks: Dict[str, Tuple[str, bool]] = {}
         for worker_data in data.workerManager.workers:
             worker_name = worker_data.workerId.decode()
             current_workers.add(worker_name)
@@ -1258,7 +1255,7 @@ class WebUIApp:
                     running_tasks.append((bytes(ps.currentTaskId), ps.taskAgeSeconds))
                 task_id = bytes(ps.currentTaskId).hex() if ps.hasTask else ""
                 if task_id:
-                    processor_tasks[task_id] = bool(ps.suspended)
+                    processor_tasks[task_id] = (worker_name, bool(ps.suspended))
                 self._worker_processors[worker_name]["processors"].append(
                     {
                         "pid": ps.pid,
@@ -1324,24 +1321,48 @@ class WebUIApp:
 
         return self.__settle_worker_task_statuses(processor_tasks)
 
-    def __settle_worker_task_statuses(self, processor_tasks: Dict[str, bool]) -> bool:
+    def __settle_worker_task_statuses(self, processor_tasks: Dict[str, Tuple[str, bool]]) -> bool:
         """Mark each dispatched task a processor holds as running or suspended. True when any row changed.
 
         A task that leaves its processor keeps its status: it finished, and the result that ends it is on its way.
         """
+        self._processor_tasks = processor_tasks
         changed = False
-        for task_id, suspended in processor_tasks.items():
+        for task_id, (worker, _) in processor_tasks.items():
             entry = self._task_log_by_id.get(task_id)
-            status = "suspended" if suspended else "running"
-            if entry is None or entry["status"] not in WORKER_TASK_STATUSES or entry["status"] == status:
+            if entry is None or entry["status"] not in WORKER_TASK_STATUSES:
+                continue
+
+            status = self.__task_status(TaskState.running, task_id, worker)
+            if entry["status"] == status:
                 continue
 
             entry["status"] = status
             self.__append_task_event(
-                task_id=task_id, event=status, worker=entry["full_worker"], client="", function="", detail=""
+                task_id=task_id,
+                status=status,
+                event=PROCESSOR_REPORT_EVENT,
+                worker=entry["full_worker"],
+                client="",
+                function="",
+                detail="",
             )
             changed = True
         return changed
+
+    def __task_status(self, state: TaskState, task_id: str, worker: str) -> str:
+        """The status a task's rows show for a state the scheduler reported.
+
+        The scheduler's running covers a task waiting in its worker's queue.
+        It reads running or suspended only while a processor on that worker holds the task.
+        """
+        if state != TaskState.running:
+            return state.name
+
+        worker_and_suspended = self._processor_tasks.get(task_id)
+        if worker_and_suspended is None or worker_and_suspended[0] != worker:
+            return "queued"
+        return "suspended" if worker_and_suspended[1] else "running"
 
     @staticmethod
     def __storage_section(status: ObjectManagerStatus) -> Dict[str, Any]:
@@ -1506,7 +1527,7 @@ class WebUIApp:
             entry["client"], entry["full_client"] = client_str, full_client
 
         entry["function"] = func_name
-        entry["status"] = _task_status(state_task.state)
+        entry["status"] = self.__task_status(state_task.state, task_id_hex, entry["full_worker"])
         entry["capabilities"] = caps_str
         entry["objects"] = format_bytes(state_task.objectBytes) if state_task.objectBytes else "\u2014"
         entry["object_bytes"] = state_task.objectBytes
@@ -1584,13 +1605,14 @@ class WebUIApp:
         stream_data["manager_legend"] = manager_legend
 
     def _record_task_event(self, state_task: StateTask) -> None:
-        """One immutable row per state change, so the sequence a task went through stays readable."""
+        """One immutable row per state change, naming the scheduler event that made it."""
         task_id = state_task.taskId.hex()
         worker = state_task.worker.decode() if state_task.worker else ""
         client = state_task.client.decode(errors="replace") if state_task.client else ""
         self.__append_task_event(
             task_id=task_id,
-            event=_task_status(state_task.state),
+            status=self.__task_status(state_task.state, task_id, worker),
+            event=state_task.event,
             worker=worker,
             client=client,
             function=state_task.functionName.decode(errors="replace") if state_task.functionName else "",
@@ -1598,20 +1620,21 @@ class WebUIApp:
         )
 
     def _record_balance_advice(self, advice: StateBalanceAdvice) -> None:
-        """A rebalance moves tasks off a worker; without this the trail just shows them reappearing."""
+        """The balancer's pick, which the scheduler may still refuse, so it is not a status of its own."""
         worker = advice.workerId.decode() if advice.workerId else ""
         for task_id in advice.taskIds:
             self.__append_task_event(
                 task_id=bytes(task_id).hex(),
-                event="rebalance",
+                status="",
+                event=BALANCE_ADVICE_EVENT,
                 worker=worker,
                 client="",
                 function="",
-                detail="moved off this worker",
+                detail="picked to move off this worker",
             )
 
     def __append_task_event(
-        self, task_id: str, event: str, worker: str, client: str, function: str, detail: str
+        self, task_id: str, status: str, event: str, worker: str, client: str, function: str, detail: str
     ) -> None:
         """A row of the trail.
 
@@ -1626,6 +1649,7 @@ class WebUIApp:
                 "time": datetime.datetime.now().strftime("%H:%M:%S"),
                 "task_id": task_id,
                 "function": function or known.get("function", ""),
+                "status": status,
                 "event": event,
                 "worker": _format_worker_name(worker) if worker else known.get("worker", "") or "\u2014",
                 "client": _format_client_name(client) if client else known.get("client", "") or "\u2014",

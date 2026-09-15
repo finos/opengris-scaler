@@ -148,7 +148,7 @@ class TestTaskLogPaging(unittest.TestCase):
         section = app._task_events_section(BrowserView(task_events_task=wanted), _RenderCache())
         self.assertEqual(section["task_events_held"], 2)
         self.assertEqual({row["task_id"] for row in section["task_events"]}, {wanted})
-        self.assertEqual([row["event"] for row in section["task_events"]], ["success", "queued"])
+        self.assertEqual([row["status"] for row in section["task_events"]], ["success", "queued"])
 
     def test_a_result_still_names_the_worker_that_ran_the_task(self) -> None:
         """A result message carries no worker, so a bare "success" row would say nothing about where."""
@@ -160,17 +160,30 @@ class TestTaskLogPaging(unittest.TestCase):
             app._record_task_event(task)
 
         events = app._task_events_section(BrowserView(), _RenderCache())["task_events"]
-        self.assertEqual([row["event"] for row in events], ["success", "queued"])
+        self.assertEqual([row["status"] for row in events], ["success", "queued"])
         self.assertEqual({row["worker"] for row in events}, {"w1"})
         self.assertEqual({row["client"] for row in events}, {"Client|one"})
 
     def test_a_rebalance_leaves_its_own_row(self) -> None:
+        """The balancer's pick is not a transition: the scheduler may still refuse it, so the row sets no status."""
         app = make_app()
         run_tasks(app, 1)
         app._record_balance_advice(StateBalanceAdvice(workerId=b"w1", taskIds=[(0).to_bytes(32, "big")]))
 
         events = app._task_events_section(BrowserView(), _RenderCache())["task_events"]
-        self.assertEqual([row["event"] for row in events], ["rebalance", "success", "queued"])
+        self.assertEqual([row["status"] for row in events], ["", "success", "queued"])
+        self.assertEqual(events[0]["event"], "StateBalanceAdvice")
+
+    def test_a_row_names_the_scheduler_event_that_made_it(self) -> None:
+        app = make_app()
+        task = make_task(
+            taskId=b"t" * 32, state=TaskState.balanceCanceling, worker=b"w1", event="BalanceCancelRequested"
+        )
+        app._process_task_state(task)
+        app._record_task_event(task)
+
+        [row] = app._task_events_section(BrowserView(), _RenderCache())["task_events"]
+        self.assertEqual((row["status"], row["event"]), ("balanceCanceling", "BalanceCancelRequested"))
 
 
 class TestSortedTaskViews(unittest.TestCase):
@@ -220,9 +233,9 @@ class TestSortedTaskViews(unittest.TestCase):
         run_tasks(app, 5)
         wanted = (2).to_bytes(32, "big").hex()
 
-        view = BrowserView(task_events_task=wanted, task_events_sort="event", task_events_sort_ascending=True)
+        view = BrowserView(task_events_task=wanted, task_events_sort="status", task_events_sort_ascending=True)
         section = app._task_events_section(view, _RenderCache())
-        self.assertEqual([row["event"] for row in section["task_events"]], ["queued", "success"])
+        self.assertEqual([row["status"] for row in section["task_events"]], ["queued", "success"])
         self.assertEqual(section["task_events_held"], 2)
 
 

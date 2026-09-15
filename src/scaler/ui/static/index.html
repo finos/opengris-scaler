@@ -192,7 +192,8 @@
                         <tr>
                             <th>Time</th>
                             <th>Task</th>
-                            <th title="A state the scheduler reported, a processor starting or suspending the task, or a rebalance moving the task off a worker">Event</th>
+                            <th title="The task's status after this row: a state the scheduler reported, with a task on a worker queued, running or suspended as its processors reported it">Status</th>
+                            <th title="What made this row: the scheduler's state machine event, WorkerStatus for a processor starting or suspending the task, or StateBalanceAdvice for the balancer picking it to move">Event</th>
                             <th>Client</th>
                             <th title="The worker the task was on for this event">Worker</th>
                             <th>Function</th>

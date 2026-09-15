@@ -282,15 +282,39 @@ class TestTaskStatus(unittest.TestCase):
         dispatch(app, 0)
         app._record_task_event(
             StateTask.from_bytes(
-                StateTask(taskId=task_id(0), functionName=b"work", state=TaskState.running, worker=WORKER).to_bytes()
+                StateTask(
+                    taskId=task_id(0), functionName=b"work", state=TaskState.running, worker=WORKER, event="HasCapacity"
+                ).to_bytes()
             )
         )
         for suspended in ((), (0,), ()):
             report(app, running=[0], suspended=suspended)
 
-        trail = app._task_events_section(BrowserView(), _RenderCache())["task_events"]
-        self.assertEqual([row["event"] for row in reversed(trail)], ["queued", "running", "suspended", "running"])
+        trail = list(reversed(app._task_events_section(BrowserView(), _RenderCache())["task_events"]))
+        self.assertEqual([row["status"] for row in trail], ["queued", "running", "suspended", "running"])
+        self.assertEqual(
+            [row["event"] for row in trail], ["HasCapacity", "WorkerStatus", "WorkerStatus", "WorkerStatus"]
+        )
         self.assertEqual({row["worker"] for row in trail}, {"Worker|one"})
+
+    def test_a_task_its_processor_already_holds_reads_running_when_a_refused_cancel_returns_it(self) -> None:
+        """The worker refuses to cancel a task it is running, so the scheduler's running there is not a queue."""
+        app = make_app()
+        dispatch(app, 0)
+        report(app, running=[0])
+        dispatch(app, 0, state=TaskState.balanceCanceling)
+        self.assertEqual(statuses(app), ["balanceCanceling"])
+
+        dispatch(app, 0)
+        self.assertEqual(statuses(app), ["running"])
+
+    def test_a_task_sent_to_another_worker_is_queued_there_whatever_its_old_processor_held(self) -> None:
+        app = make_app()
+        dispatch(app, 0)
+        report(app, running=[0])
+
+        dispatch(app, 0, worker=b"Worker|two")
+        self.assertEqual(statuses(app), ["queued"])
 
 
 if __name__ == "__main__":
