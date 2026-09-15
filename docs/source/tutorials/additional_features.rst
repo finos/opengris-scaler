@@ -86,7 +86,7 @@ What the Web GUI shows:
 * **Worker Task Stream**: a timeline by worker with capability colors and status overlays (failed and canceled patterns).
 * **Memory and CPU**: rolling chart of what the fleet holds, read on the left axis, and the CPU it uses, read on a right axis that scales to the busiest moment in the window.
 * **Workers**: one row per worker under a row for its manager, which sums the same columns: the worker's memory against its limit and its CPU, the task each processor holds and for how long, and the queue waiting behind it in the order it runs. Click a queued task for its trail.
-* **Machines**: one row per host, with its workers, CPU, memory and host-wide network counters.
+* **Machines**: one row per host, with its workers, CPU, memory, host-wide network counters, and how long since any worker on it last reported.
 * **Clients**: one row per connected client, with its host, tasks in flight, finished and failed counts, CPU, memory and latency. Finished counts every task that reached a terminal state, cancelled ones included.
 * **Objects**: the biggest objects the scheduler tracks, with their size, the client that created them, and the tasks holding them, a page at a time.
 

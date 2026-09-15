@@ -1747,6 +1747,7 @@ class WebUIApp:
                     "net_sent": 0,
                     "net_recv": 0,
                     "managers": set(),
+                    "last_s": worker.get("last_s", 0),
                 },
             )
             entry["workers"] += 1
@@ -1758,6 +1759,8 @@ class WebUIApp:
             entry["queued"] += worker.get("queued", 0)
             entry["sent"] += worker.get("sent", 0)
             entry["managers"].add(worker.get("manager_id", "\u2014"))
+            # the host is as fresh as the worker on it that reported last
+            entry["last_s"] = min(entry["last_s"], worker.get("last_s", 0))
             # host-wide, so take one reading rather than accumulating
             entry["rss_free"] = max(entry["rss_free"], worker.get("rss_free", 0))
             entry["mem_limit"] = max(entry["mem_limit"], worker.get("mem_limit", 0))
@@ -1783,6 +1786,7 @@ class WebUIApp:
                     "sent": entry["sent"],
                     "net_sent": format_bytes(entry["net_sent"]),
                     "net_recv": format_bytes(entry["net_recv"]),
+                    "last_seen": format_seconds(entry["last_s"]),
                 }
             )
         rows.sort(key=lambda row: row["host"])

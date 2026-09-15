@@ -477,7 +477,7 @@ function updateWorkers(workers) {
 }
 
 var MACHINE_FIELDS = ["host", "workers", "busy", "idle", "managers", "cpu", "rss", "rss_free",
-                      "mem_used_pct", "queued", "sent", "net_sent", "net_recv"];
+                      "mem_used_pct", "queued", "sent", "net_sent", "net_recv", "last_seen"];
 
 var TASK_EVENT_FIELDS = ["time", "task_id", "event", "client", "worker", "function", "detail"];
 
