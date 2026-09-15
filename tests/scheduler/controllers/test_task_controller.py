@@ -156,6 +156,55 @@ class TestTaskStateGraph(unittest.IsolatedAsyncioTestCase):
         return edges
 
 
+class TestTaskStateMonitoring(unittest.IsolatedAsyncioTestCase):
+    """The monitor hears every transition, so a surface built on it can show a task's whole trail."""
+
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+    async def test_every_transition_reaches_the_monitor_once_with_its_event(self):
+        for source in LIVE_TASK_STATES:
+            for scenario in SCENARIOS:
+                with self.subTest(source=source.name, scenario=scenario.name):
+                    harness = TaskControllerHarness()
+                    target_name = await drive(harness, source, scenario)
+
+                    expected = [] if target_name == REJECTED else [(target_name, type(scenario.event).__name__)]
+                    transitions = [(state.name, event) for state, event in harness.monitored_transitions()]
+                    self.assertEqual(transitions, expected)
+
+    async def test_a_refused_balance_cancel_tells_the_monitor_the_task_runs_again(self):
+        harness = TaskControllerHarness()
+        await harness.enter_state(TaskState.balanceCanceling)
+
+        await harness.controller.on_task_cancel_confirm(
+            WORKER_ID, make_task_cancel_confirm(TaskCancelConfirmType.cancelFailed)
+        )
+
+        self.assertEqual(harness.monitored_transitions(), [(TaskState.running, "CancelConfirmFailed")])
+
+    async def test_a_new_task_without_a_worker_reports_the_state_it_starts_in_without_an_event(self):
+        harness = TaskControllerHarness()
+        harness.set_capacity_available(False)
+
+        await harness.controller.on_task_new(make_task())
+
+        self.assertEqual(harness.monitored_transitions(), [(TaskState.inactive, "")])
+
+    async def test_a_faulted_task_is_reported_failed_even_when_its_client_is_gone(self):
+        harness = TaskControllerHarness()
+        await harness.enter_state(TaskState.canceling)
+        harness.worker_controller.on_task_done.side_effect = RuntimeError("the action failed")
+        harness.client_controller.on_task_finish.return_value = None
+
+        await harness.controller.on_task_cancel_confirm(
+            WORKER_ID, make_task_cancel_confirm(TaskCancelConfirmType.canceled)
+        )
+
+        self.assertEqual(harness.monitored_transitions(), [(TaskState.failed, "CancelConfirmCanceled")])
+
+
 class TestTaskControllerBehavior(unittest.IsolatedAsyncioTestCase):
     """The defects that moving the actions onto the transitions resolves."""
 

@@ -319,6 +319,7 @@ class StateTask(BaseMessage):
     metadata: bytes
     objectBytes: int
     client: ClientID
+    event: str
 
 class StateGraphTask(BaseMessage):
     graphTaskId: TaskID

@@ -190,6 +190,7 @@ struct StateTask {
     metadata @5 :Data;
     objectBytes @6 :UInt64;  # payload bytes this task's arguments move, so a heavy task is visible
     client @7 :Data;         # client that submitted the task
+    event @8 :Text;          # state machine event that moved the task into this state, empty for the state it starts in
 }
 
 struct StateGraphTask {

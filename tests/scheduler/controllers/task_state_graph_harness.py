@@ -254,8 +254,12 @@ class TaskControllerHarness:
         return [message for message in self.messages_sent_to(peer) if isinstance(message, TaskResult)]
 
     def monitored_task_states(self) -> List[TaskState]:
+        return [state for state, _ in self.monitored_transitions()]
+
+    def monitored_transitions(self) -> List[Tuple[TaskState, str]]:
+        """Each state the monitor was told the task is in, with the event it named for it."""
         return [
-            call.args[0].state
+            (call.args[0].state, call.args[0].event)
             for call in self.binder_monitor.send.await_args_list
             if isinstance(call.args[0], StateTask)
         ]
