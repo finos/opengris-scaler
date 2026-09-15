@@ -85,7 +85,7 @@ class TestTaskLogPaging(unittest.TestCase):
 
         section = app._task_events_section(BrowserView(), _RenderCache())
         self.assertEqual(len(section["task_events"]), TASK_EVENTS_PAGE_SIZE)
-        self.assertEqual(section["task_events_held"], 400)  # one running and one success per task
+        self.assertEqual(section["task_events_held"], 400)  # one queued and one success per task
 
     def test_filtering_to_one_task_shows_only_its_events(self) -> None:
         app = make_app()
@@ -95,7 +95,7 @@ class TestTaskLogPaging(unittest.TestCase):
         section = app._task_events_section(BrowserView(task_events_task=wanted), _RenderCache())
         self.assertEqual(section["task_events_held"], 2)
         self.assertEqual({row["task_id"] for row in section["task_events"]}, {wanted})
-        self.assertEqual([row["event"] for row in section["task_events"]], ["success", "running"])
+        self.assertEqual([row["event"] for row in section["task_events"]], ["success", "queued"])
 
     def test_a_result_still_names_the_worker_that_ran_the_task(self) -> None:
         """A result message carries no worker, so a bare "success" row would say nothing about where."""
@@ -107,7 +107,7 @@ class TestTaskLogPaging(unittest.TestCase):
             app._record_task_event(task)
 
         events = app._task_events_section(BrowserView(), _RenderCache())["task_events"]
-        self.assertEqual([row["event"] for row in events], ["success", "running"])
+        self.assertEqual([row["event"] for row in events], ["success", "queued"])
         self.assertEqual({row["worker"] for row in events}, {"w1"})
         self.assertEqual({row["client"] for row in events}, {"Client|one"})
 
@@ -117,7 +117,7 @@ class TestTaskLogPaging(unittest.TestCase):
         app._record_balance_advice(StateBalanceAdvice(workerId=b"w1", taskIds=[(0).to_bytes(32, "big")]))
 
         events = app._task_events_section(BrowserView(), _RenderCache())["task_events"]
-        self.assertEqual([row["event"] for row in events], ["rebalance", "success", "running"])
+        self.assertEqual([row["event"] for row in events], ["rebalance", "success", "queued"])
 
 
 class TestSortedTaskViews(unittest.TestCase):
@@ -169,7 +169,7 @@ class TestSortedTaskViews(unittest.TestCase):
 
         view = BrowserView(task_events_task=wanted, task_events_sort="event", task_events_sort_ascending=True)
         section = app._task_events_section(view, _RenderCache())
-        self.assertEqual([row["event"] for row in section["task_events"]], ["running", "success"])
+        self.assertEqual([row["event"] for row in section["task_events"]], ["queued", "success"])
         self.assertEqual(section["task_events_held"], 2)
 
 

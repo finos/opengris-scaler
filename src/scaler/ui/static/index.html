@@ -157,7 +157,7 @@
                             <th title="Wall clock the processor spent on the task">Duration</th>
                             <th title="Highest memory the processor reached while running it">Peak Mem</th>
                             <th title="Bytes of function and arguments the task moves through object storage">Objects</th>
-                            <th title="State the scheduler reports; running means dispatched to a worker, which may still have it queued">Status</th>
+                            <th title="State the scheduler reports. A task on a worker is queued, running or suspended as that worker's processors last reported it, so a task shorter than a status report may never read running.">Status</th>
                             <th>Capabilities</th>
                         </tr>
                     </thead>
@@ -186,7 +186,7 @@
                         <tr>
                             <th>Time</th>
                             <th>Task</th>
-                            <th title="A state the scheduler reported, or a rebalance moving the task off a worker">Event</th>
+                            <th title="A state the scheduler reported, a processor starting or suspending the task, or a rebalance moving the task off a worker">Event</th>
                             <th>Client</th>
                             <th title="The worker the task was on for this event">Worker</th>
                             <th>Function</th>

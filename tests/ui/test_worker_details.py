@@ -1,4 +1,4 @@
-"""The Workers tab: what each worker is running, and what is queued behind it.
+"""What each worker is running and what is queued behind it, on the Workers tab and in each task's status.
 
 The scheduler reports a task running the moment it dispatches it, well before a processor picks it up.
 The processors name what is on a core, and everything else the worker holds is waiting there.
@@ -56,8 +56,11 @@ def report(
     worker: bytes = WORKER,
     suspended: Collection[int] = (),
     rss_bytes: int = 1_000_000,
-) -> None:
-    """One status frame in which `worker` has a processor per running task, `suspended` naming the held ones."""
+) -> bool:
+    """One status frame in which `worker` has a processor per running task, `suspended` naming the held ones.
+
+    Returns whether the frame moved a task between queued, running and suspended.
+    """
     processors = [
         ProcessorStatus(
             pid=100 + index,
@@ -100,7 +103,7 @@ def report(
         ),
         scalingManager=ScalingManagerStatus(managedWorkers=[], workerManagerDetails=[]),
     )
-    app._process_scheduler(StateScheduler.from_bytes(status.to_bytes()))
+    return app._process_scheduler(StateScheduler.from_bytes(status.to_bytes()))
 
 
 def worker_card(app: WebUIApp) -> Dict[str, Any]:
@@ -222,6 +225,72 @@ class TestWorkerQueue(unittest.TestCase):
 
         self.assertEqual(len(app._task_worker), 4)
         self.assertEqual(worker_card(app)["queue_named"], 4)
+
+
+def statuses(app: WebUIApp) -> List[str]:
+    """Each task's status in the task list, oldest task first."""
+    return [row["status"] for row in reversed(app._task_log)]
+
+
+class TestTaskStatus(unittest.TestCase):
+    def test_a_dispatched_task_is_queued_until_a_processor_holds_it(self) -> None:
+        app = make_app()
+        for index in range(2):
+            dispatch(app, index)
+        self.assertEqual(statuses(app), ["queued", "queued"])
+
+        report(app, running=[0], queued=1)
+        self.assertEqual(statuses(app), ["running", "queued"])
+
+    def test_only_a_frame_that_changes_a_status_asks_for_the_task_views_to_be_sent(self) -> None:
+        app = make_app()
+        dispatch(app, 0)
+        self.assertTrue(report(app, running=[0]))
+        self.assertFalse(report(app, running=[0]))
+
+    def test_a_suspended_processor_marks_its_task_suspended_until_it_resumes(self) -> None:
+        app = make_app()
+        dispatch(app, 0)
+        report(app, running=[0], suspended=[0])
+        self.assertEqual(statuses(app), ["suspended"])
+
+        report(app, running=[0])
+        self.assertEqual(statuses(app), ["running"])
+
+    def test_a_task_that_leaves_its_processor_stays_running_until_its_result(self) -> None:
+        """The processor frees up before the result reaches the monitor, and the task was not queued in between."""
+        app = make_app()
+        dispatch(app, 0)
+        report(app, running=[0])
+        report(app, running=[])
+        self.assertEqual(statuses(app), ["running"])
+
+        dispatch(app, 0, state=TaskState.success)
+        report(app, running=[0])
+        self.assertEqual(statuses(app), ["success"], "a frame older than the result does not revive the task")
+
+    def test_a_cancel_in_flight_is_not_overwritten_by_the_processor(self) -> None:
+        app = make_app()
+        dispatch(app, 0)
+        dispatch(app, 0, state=TaskState.canceling)
+        report(app, running=[0])
+
+        self.assertEqual(statuses(app), ["canceling"])
+
+    def test_the_trail_records_when_a_processor_takes_and_suspends_the_task(self) -> None:
+        app = make_app()
+        dispatch(app, 0)
+        app._record_task_event(
+            StateTask.from_bytes(
+                StateTask(taskId=task_id(0), functionName=b"work", state=TaskState.running, worker=WORKER).to_bytes()
+            )
+        )
+        for suspended in ((), (0,), ()):
+            report(app, running=[0], suspended=suspended)
+
+        trail = app._task_events_section(BrowserView(), _RenderCache())["task_events"]
+        self.assertEqual([row["event"] for row in reversed(trail)], ["queued", "running", "suspended", "running"])
+        self.assertEqual({row["worker"] for row in trail}, {"Worker|one"})
 
 
 if __name__ == "__main__":

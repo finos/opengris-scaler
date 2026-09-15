@@ -46,6 +46,9 @@ COMPLETED_TASK_STATUSES = (
     TaskState.failedWorkerDied,
 )
 
+# What a task the scheduler reports running is doing on its worker, as that worker's processors report it.
+WORKER_TASK_STATUSES = ("queued", "running", "suspended")
+
 SLIDING_WINDOW_OPTIONS = {
     5: datetime.timedelta(minutes=5),
     10: datetime.timedelta(minutes=10),
@@ -315,6 +318,15 @@ def _current_task_label(processor_statuses: Iterable[ProcessorStatus]) -> str:
     if len(busy) == 1:
         return bytes(busy[0].currentTaskId).hex()[:TASK_ID_DISPLAY_LENGTH]
     return f"{len(busy)} tasks"
+
+
+def _task_status(state: TaskState) -> str:
+    """The status a task's rows show for a state the scheduler reported.
+
+    The scheduler reports a task running when it dispatches it, so it waits in the worker's queue until a status
+    frame shows a processor holding it.
+    """
+    return "queued" if state == TaskState.running else state.name
 
 
 def paginate(items: Collection[Any], page: int, size: int) -> Tuple[List[Any], int, int]:
@@ -1086,7 +1098,7 @@ class WebUIApp:
         for msg in messages:
             try:
                 if isinstance(msg, StateScheduler):
-                    self._process_scheduler(msg)
+                    has_task_update |= self._process_scheduler(msg)
                     has_scheduler_update = True
                 elif isinstance(msg, StateWorker):
                     event = self._process_worker_state(msg)
@@ -1143,7 +1155,8 @@ class WebUIApp:
             }
         )
 
-    def _process_scheduler(self, data: StateScheduler) -> None:
+    def _process_scheduler(self, data: StateScheduler) -> bool:
+        """Apply one status frame. True when it moved a task between queued, running and suspended."""
         self._scheduler_data = {
             "cpu": format_percentage(data.scheduler.cpu),
             "rss": format_bytes(data.scheduler.rss),
@@ -1201,6 +1214,7 @@ class WebUIApp:
             self._worker_managers_data.pop(mid, None)
 
         current_workers = set()
+        processor_tasks: Dict[str, bool] = {}  # task id -> whether the processor holding it is suspended
         for worker_data in data.workerManager.workers:
             worker_name = worker_data.workerId.decode()
             current_workers.add(worker_name)
@@ -1270,6 +1284,8 @@ class WebUIApp:
                 if ps.hasTask:
                     running_tasks.append((bytes(ps.currentTaskId), ps.taskAgeSeconds))
                 task_id = bytes(ps.currentTaskId).hex() if ps.hasTask else ""
+                if task_id:
+                    processor_tasks[task_id] = bool(ps.suspended)
                 self._worker_processors[worker_name]["processors"].append(
                     {
                         "pid": ps.pid,
@@ -1332,6 +1348,27 @@ class WebUIApp:
             mgr_data["total_sent"] = mgr_sent
             mgr_data["total_queued"] = mgr_queued
             mgr_data["total_suspended"] = mgr_suspended
+
+        return self.__settle_worker_task_statuses(processor_tasks)
+
+    def __settle_worker_task_statuses(self, processor_tasks: Dict[str, bool]) -> bool:
+        """Mark each dispatched task a processor holds as running or suspended. True when any row changed.
+
+        A task that leaves its processor keeps its status: it finished, and the result that ends it is on its way.
+        """
+        changed = False
+        for task_id, suspended in processor_tasks.items():
+            entry = self._task_log_by_id.get(task_id)
+            status = "suspended" if suspended else "running"
+            if entry is None or entry["status"] not in WORKER_TASK_STATUSES or entry["status"] == status:
+                continue
+
+            entry["status"] = status
+            self.__append_task_event(
+                task_id=task_id, event=status, worker=entry["full_worker"], client="", function="", detail=""
+            )
+            changed = True
+        return changed
 
     @staticmethod
     def __storage_section(status: ObjectManagerStatus) -> Dict[str, Any]:
@@ -1498,7 +1535,7 @@ class WebUIApp:
             entry["client"], entry["full_client"] = client_str, full_client
 
         entry["function"] = func_name
-        entry["status"] = state_task.state.name
+        entry["status"] = _task_status(state_task.state)
         entry["capabilities"] = caps_str
         entry["objects"] = format_bytes(state_task.objectBytes) if state_task.objectBytes else "\u2014"
         entry["object_bytes"] = state_task.objectBytes
@@ -1582,7 +1619,7 @@ class WebUIApp:
         client = state_task.client.decode(errors="replace") if state_task.client else ""
         self.__append_task_event(
             task_id=task_id,
-            event=state_task.state.name,
+            event=_task_status(state_task.state),
             worker=worker,
             client=client,
             function=state_task.functionName.decode(errors="replace") if state_task.functionName else "",

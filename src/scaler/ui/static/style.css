@@ -285,6 +285,11 @@ th.sort-desc::after {
     font-weight: 600;
 }
 
+.status-waiting {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
 /* Task ID (clickable) */
 .task-id {
     cursor: pointer;
