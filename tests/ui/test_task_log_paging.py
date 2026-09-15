@@ -78,6 +78,59 @@ class TestTaskListPaging(unittest.TestCase):
         self.assertEqual(app._task_log_section(BrowserView(), _RenderCache())["task_log_total"], 250)
 
 
+class TestTaskListFilters(unittest.TestCase):
+    @staticmethod
+    def submit(app: WebUIApp, index: int, client: bytes, worker: bytes, state: TaskState) -> None:
+        task = make_task(
+            taskId=index.to_bytes(32, "big"), functionName=b"work", state=state, worker=worker, client=client
+        )
+        app._process_task_state(task)
+
+    def make_tasks(self) -> WebUIApp:
+        """60 tasks of Client|a and 40 of Client|b, alternating workers, every tenth failed."""
+        app = make_app()
+        for index in range(100):
+            client = b"Client|a" if index < 60 else b"Client|b"
+            worker = b"Worker|one" if index % 2 else b"Worker|two"
+            self.submit(app, index, client, worker, TaskState.failed if index % 10 == 0 else TaskState.success)
+        return app
+
+    def test_a_client_filter_pages_through_that_clients_tasks_alone(self) -> None:
+        app = self.make_tasks()
+        section = app._task_log_section(BrowserView(task_log_client="Client|b"), _RenderCache())
+
+        self.assertEqual({row["full_client"] for row in section["task_log"]}, {"Client|b"})
+        self.assertEqual(section["task_log_matched"], 40)
+        self.assertEqual(section["task_log_pages"], 1)
+        self.assertEqual(section["task_log_held"], 100, "the badge still counts everything the list holds")
+        self.assertEqual(section["task_log_client"], "Client|b", "the browser mirrors the filter it was served")
+
+    def test_filters_combine(self) -> None:
+        app = self.make_tasks()
+        view = BrowserView(task_log_client="Client|a", task_log_worker="Worker|two", task_log_status="failed")
+        rows = app._task_log_section(view, _RenderCache())["task_log"]
+
+        self.assertEqual(len(rows), 6)
+        self.assertEqual({(row["full_worker"], row["status"]) for row in rows}, {("Worker|two", "failed")})
+
+    def test_a_filtered_list_sorts_within_the_filter(self) -> None:
+        app = self.make_tasks()
+        view = BrowserView(task_log_status="failed", task_log_sort="task_id", task_log_sort_ascending=False)
+        rows = app._task_log_section(view, _RenderCache())["task_log"]
+
+        self.assertEqual(
+            [row["task_id"] for row in rows[:2]], [(90).to_bytes(32, "big").hex(), (80).to_bytes(32, "big").hex()]
+        )
+
+    def test_two_browsers_with_different_filters_share_a_cache_without_mixing(self) -> None:
+        app = self.make_tasks()
+        cache = _RenderCache()
+        first = app._task_log_section(BrowserView(task_log_client="Client|a", task_log_sort="task_id"), cache)
+        second = app._task_log_section(BrowserView(task_log_client="Client|b", task_log_sort="task_id"), cache)
+
+        self.assertEqual((first["task_log_matched"], second["task_log_matched"]), (60, 40))
+
+
 class TestTaskLogPaging(unittest.TestCase):
     def test_a_browser_is_sent_one_page_of_events(self) -> None:
         app = make_app()

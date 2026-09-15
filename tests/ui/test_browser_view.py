@@ -70,6 +70,15 @@ class TestBrowserView(unittest.TestCase):
         view.apply_view({"workers_page": -3})
         self.assertEqual(view.workers_page, 0)
 
+    def test_filters_are_kept_as_text_and_an_empty_one_clears(self) -> None:
+        view = BrowserView()
+        view.apply_view({"task_log_client": "Client|a", "task_log_status": "failed", "worker_details_host": "box-1"})
+        self.assertEqual(view.task_log_filter(), {"full_client": "Client|a", "status": "failed"})
+        self.assertEqual(view.worker_details_host, "box-1")
+
+        view.apply_view({"task_log_client": ""})
+        self.assertEqual(view.task_log_filter(), {"status": "failed"})
+
     def test_invalid_settings_are_ignored(self) -> None:
         view = BrowserView()
         view.apply_settings({"stream_window": 7, "memory_scale": "sideways"})
@@ -151,6 +160,27 @@ class TestWorkerDetailsSection(unittest.TestCase):
         self.assertEqual(group["total_processors"], worker_count)
         self.assertEqual(section["worker_details_total"], worker_count)
         self.assertEqual(section["worker_details_pages"], 2)
+
+    def test_a_host_filter_shows_and_sums_that_hosts_workers_alone(self) -> None:
+        app = make_app(0)
+        for index in range(6):
+            name = f"worker-{index}"
+            app._workers_data[name] = {"host": "box-1" if index < 2 else "box-2", "worker_rss": 10}
+            app._worker_processors[name] = {
+                "name": name,
+                "full_name": name,
+                "manager_id": "pod-1",
+                "rss_free": 0,
+                "processors": [{"rss": 10, "cpu": 1.0, "has_task": False, "task_id": ""}],
+            }
+
+        section = app._worker_details_section(BrowserView(worker_details_host="box-1"), _RenderCache())
+        group = section["worker_details"][0]
+
+        self.assertEqual([worker["name"] for worker in group["workers"]], ["worker-0", "worker-1"])
+        self.assertEqual((group["worker_count"], group["total_rss"]), (2, 20))
+        self.assertEqual(section["worker_details_total"], 2)
+        self.assertEqual(section["worker_details_host"], "box-1")
 
 
 if __name__ == "__main__":

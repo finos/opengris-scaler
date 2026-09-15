@@ -800,7 +800,17 @@ body.fit-page #memory-card .memory-container {
     gap: 10px;
 }
 
-/* Rows in the linear task log filter to one task when clicked. */
+/* A cell or name that filters a page to what it holds when clicked. */
+.filter-link {
+    cursor: pointer;
+}
+
+.filter-link:hover {
+    text-decoration: underline;
+    color: var(--accent);
+}
+
+/* Rows that filter a page to what they hold when clicked. */
 tr.clickable {
     cursor: pointer;
 }

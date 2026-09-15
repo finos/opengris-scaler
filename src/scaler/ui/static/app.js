@@ -83,12 +83,15 @@ var lastStorageData = null;
 var taskEventsBody = $("taskevents-body");
 var taskEventsCount = $("taskevents-count");
 var taskEventsClear = $("taskevents-clear");
-var taskEventsFilterLabel = $("taskevents-filter-label");
 var lastTaskEvents = [];     // this browser's page of event rows, newest first
 var taskEventsPage = 0;
 var taskEventsPages = 1;
 var taskEventsHeld = 0;      // events the server holds under the current filter
 var taskEventFilter = "";    // task id the server is filtering to, empty for every task
+// The Task List's filters as the server applied them, each empty while unset.
+var taskLogFilter = { task_log_client: "", task_log_worker: "", task_log_status: "" };
+var taskLogMatched = 0;      // tasks the server holds that the filters match
+var workersHost = "";        // host the Workers page is filtered to, empty for every host
 var machinesTotal = $("machines-total");
 var lastMachinesData = [];
 var clientsBody = $("clients-body");
@@ -375,6 +378,11 @@ function applyPageInfo(data) {
     if (typeof data.task_log_held === "number") taskLogHeld = data.task_log_held;
     if (typeof data.task_log_page === "number") taskLogPage = data.task_log_page;
     if (typeof data.task_log_pages === "number") taskLogPages = data.task_log_pages;
+    if (typeof data.task_log_matched === "number") taskLogMatched = data.task_log_matched;
+    for (var filterName in taskLogFilter) {
+        if (typeof data[filterName] === "string") taskLogFilter[filterName] = data[filterName];
+    }
+    if (typeof data.worker_details_host === "string") workersHost = data.worker_details_host;
     if (typeof data.task_events_held === "number") taskEventsHeld = data.task_events_held;
     if (typeof data.task_events_page === "number") taskEventsPage = data.task_events_page;
     if (typeof data.task_events_pages === "number") taskEventsPages = data.task_events_pages;
@@ -556,10 +564,7 @@ function renderTaskEvents() {
         taskEventsBody.appendChild(tr);
     }
     if (taskEventsCount) taskEventsCount.textContent = "(" + taskEventsHeld + ")";
-    if (taskEventsClear) taskEventsClear.style.display = taskEventFilter ? "" : "none";
-    if (taskEventsFilterLabel) {
-        taskEventsFilterLabel.textContent = taskEventFilter ? "filtered to " + taskEventFilter.slice(0, 12) : "";
-    }
+    renderFilterLabel("taskevents", taskEventFilter.slice(0, 12));
     renderPagers("taskevents-pager", taskEventsPage, taskEventsPages, taskEventsHeld, function(p) {
         taskEventsPage = p;
         sendView({ task_events_page: p });
@@ -572,6 +577,54 @@ function showOnlyTask(taskId) {
     sendView({ task_events_task: taskId, task_events_page: 0 });
 }
 
+// "filtered to" what `description` names, and the button that clears it, both hidden while nothing is filtered.
+function renderFilterLabel(prefix, description) {
+    $(prefix + "-filter-label").textContent = description ? "filtered to " + description : "";
+    $(prefix + "-clear").style.display = description ? "" : "none";
+}
+
+// Narrow the Task List. A change naming a filter as empty clears it.
+function filterTaskLog(change) {
+    Object.assign(taskLogFilter, change);
+    taskLogPage = 0;
+    sendView(Object.assign({ task_log_page: 0 }, change));
+    renderTaskLogFilter();
+}
+
+function renderTaskLogFilter() {
+    var parts = [];
+    if (taskLogFilter.task_log_client) parts.push("client " + taskLogFilter.task_log_client);
+    if (taskLogFilter.task_log_worker) parts.push("worker " + taskLogFilter.task_log_worker);
+    if (taskLogFilter.task_log_status) parts.push("status " + taskLogFilter.task_log_status);
+    renderFilterLabel("tasklog", parts.join(", "));
+}
+
+// One client's or one worker's tasks, from another page: the Task List with only that filter set.
+function focusTasks(filterName, value) {
+    var change = { task_log_client: "", task_log_worker: "", task_log_status: "" };
+    change[filterName] = value;
+    selectTab("tasklist");
+    filterTaskLog(change);
+}
+
+function filterWorkersHost(host) {
+    workersHost = host;
+    workerDetailsPage = 0;
+    sendView({ worker_details_host: host, worker_details_page: 0 });
+    renderFilterLabel("workerdetails", host ? "host " + host : "");
+}
+
+// The workers on one machine, from another page.
+function focusHost(host) {
+    selectTab("workers");
+    filterWorkersHost(host);
+}
+
+$("tasklog-clear").addEventListener("click", function() {
+    filterTaskLog({ task_log_client: "", task_log_worker: "", task_log_status: "" });
+});
+$("workerdetails-clear").addEventListener("click", function() { filterWorkersHost(""); });
+
 if (taskEventsClear) {
     taskEventsClear.addEventListener("click", function() { showOnlyTask(""); });
 }
@@ -582,10 +635,12 @@ function updateMachines(machines) {
 }
 
 function renderMachines() {
+    if (holdingStill()) return;
     machinesBody.innerHTML = "";
     for (var i = 0; i < lastMachinesData.length; i++) {
         var m = lastMachinesData[i];
-        var tr = document.createElement("tr");
+        var tr = makeElement("tr", "clickable", null, "Click to show this machine's workers");
+        tr.addEventListener("click", focusHost.bind(null, m.host));
         for (var f = 0; f < MACHINE_FIELDS.length; f++) {
             var td = document.createElement("td");
             var value = m[MACHINE_FIELDS[f]];
@@ -606,15 +661,17 @@ function updateClients(clients) {
 }
 
 function renderClients() {
+    if (holdingStill()) return;
     clientsBody.innerHTML = "";
     for (var i = 0; i < lastClientsData.length; i++) {
         var c = lastClientsData[i];
-        var tr = document.createElement("tr");
+        var tr = makeElement("tr", "clickable", null, "Click to show this client's tasks");
+        tr.addEventListener("click", focusTasks.bind(null, "task_log_client", c.full_client));
         for (var f = 0; f < CLIENT_FIELDS.length; f++) {
             var td = document.createElement("td");
             var value = c[CLIENT_FIELDS[f]];
             td.textContent = (value === undefined || value === null) ? "\u2014" : value;
-            if (CLIENT_FIELDS[f] === "client") td.title = c.full_client || "";
+            if (CLIENT_FIELDS[f] === "client") td.title = (c.full_client || "") + " - click to show its tasks";
             tr.appendChild(td);
         }
         clientsBody.appendChild(tr);
@@ -843,10 +900,12 @@ function updateTaskLog(rows) {
 }
 
 function renderTaskLog() {
+    if (holdingStill()) return;
     tasklogBody.innerHTML = "";
     for (var i = 0; i < taskLogData.length; i++) tasklogBody.appendChild(makeTaskLogRow(taskLogData[i]));
     updateTaskLogBadge();
-    renderPagers("tasklog-pager", taskLogPage, taskLogPages, taskLogHeld, function(p) {
+    renderTaskLogFilter();
+    renderPagers("tasklog-pager", taskLogPage, taskLogPages, taskLogMatched, function(p) {
         taskLogPage = p;
         sendView({ task_log_page: p });
     });
@@ -873,22 +932,32 @@ var TASK_LOG_CELLS = {
         return td;
     },
     client: function(e) {
-        var td = makeCell(e.client || "\u2014");
-        td.title = e.full_client || e.client || "";
-        return td;
+        return makeFilterCell(e.client || "\u2014", e.full_client, "task_log_client");
     },
     worker: function(e) {
-        var td = makeCell(e.worker || "");
-        td.title = e.full_worker || e.worker || "";
-        return td;
+        return makeFilterCell(e.worker || "", e.full_worker, "task_log_worker");
     },
     time: function(e) { return makeCell(formatTime(e.time)); },
     status: function(e) {
-        var td = makeCell(e.status);
-        td.className = statusClass(e.status);
+        var td = makeFilterCell(e.status, e.status, "task_log_status");
+        td.classList.add(statusClass(e.status));
         return td;
     }
 };
+
+// A cell that narrows the Task List to the tasks whose `filterName` field holds `value`.
+function makeFilterCell(text, value, filterName) {
+    var td = makeCell(text);
+    if (!value) return td;
+    td.className = "filter-link";
+    td.title = value + " - click to show only these tasks";
+    td.addEventListener("click", function() {
+        var change = {};
+        change[filterName] = value;
+        filterTaskLog(change);
+    });
+    return td;
+}
 
 function makeTaskLogRow(e) {
     var tr = document.createElement("tr");
@@ -1497,6 +1566,7 @@ function renderWorkerDetails() {
     var groups = lastWorkerDetails || [];
     workerDetailsContainer.innerHTML = "";
     workerDetailsCount.textContent = workerDetailsTotal ? "(" + workerDetailsTotal + ")" : "";
+    renderFilterLabel("workerdetails", workersHost ? "host " + workersHost : "");
     if (workerDetailsTotal === 0) {
         workerDetailsContainer.appendChild(makeElement("div", "worker-empty worker-detail", "No workers connected"));
     }
@@ -1546,8 +1616,12 @@ function buildWorkerRow(worker) {
 
 function buildWorkerIdentity(worker) {
     var cell = makeElement("div");
-    cell.appendChild(makeElement("div", "worker-name", worker.name, worker.full_name || worker.name));
-    cell.appendChild(makeElement("div", "worker-detail", worker.host, worker.host));
+    var name = makeElement("div", "worker-name filter-link", worker.name, worker.full_name + " - click for its tasks");
+    name.addEventListener("click", focusTasks.bind(null, "task_log_worker", worker.full_name));
+    cell.appendChild(name);
+    var host = makeElement("div", "worker-detail filter-link", worker.host, worker.host + " - click for its workers");
+    host.addEventListener("click", filterWorkersHost.bind(null, worker.host));
+    cell.appendChild(host);
     cell.appendChild(makeElement("div", "worker-detail", "seen " + worker.last_seen + " ago", "Its last heartbeat"));
     if (worker.capabilities && worker.capabilities !== "<no capabilities>") {
         cell.appendChild(makeElement("div", "worker-detail", worker.capabilities, "Capabilities"));
@@ -1714,6 +1788,9 @@ window.addEventListener("resize", function() {
 // -- Start --
 taskEventsBody.addEventListener("pointerdown", holdStill);
 workerDetailsContainer.addEventListener("pointerdown", holdStill);
+tasklogBody.addEventListener("pointerdown", holdStill);
+machinesBody.addEventListener("pointerdown", holdStill);
+clientsBody.addEventListener("pointerdown", holdStill);
 applySettings(saved.settings);
 selectTab($("panel-" + saved.tab) ? saved.tab : "live");
 connect();

@@ -143,7 +143,13 @@
     <!-- Tab: Task Log -->
     <div class="tab-panel" id="panel-tasklist">
         <div class="card">
-            <h3 title="One row per task, rewritten in place as the task moves">Task List <span class="badge" id="tasklog-count" title="Tasks finished since this monitor started; the list also holds the ones still running">0</span></h3>
+            <div class="card-header-row">
+                <h3 title="One row per task, rewritten in place as the task moves. Click a client, worker or status to show only the tasks sharing it.">Task List <span class="badge" id="tasklog-count" title="Tasks finished since this monitor started; the list also holds the ones still running">0</span></h3>
+                <div class="inline-controls">
+                    <span class="muted" id="tasklog-filter-label"></span>
+                    <button class="fit-page-btn" id="tasklog-clear" style="display:none">Show all</button>
+                </div>
+            </div>
             <div class="pager pager-top" id="tasklog-pager-top"></div>
             <div class="table-wrap">
                 <table class="data-table" id="tasklog-table">
@@ -249,7 +255,13 @@
     <!-- Tab: Workers -->
     <div class="tab-panel" id="panel-workers">
         <div class="card">
-            <h3 title="What each worker is running and what is queued behind it, under the manager that started it">Workers <span class="muted" id="workerdetails-total"></span></h3>
+            <div class="card-header-row">
+                <h3 title="What each worker is running and what is queued behind it, under the manager that started it. Click a worker for its tasks, or its host for the workers on that host.">Workers <span class="muted" id="workerdetails-total"></span></h3>
+                <div class="inline-controls">
+                    <span class="muted" id="workerdetails-filter-label"></span>
+                    <button class="fit-page-btn" id="workerdetails-clear" style="display:none">Show all</button>
+                </div>
+            </div>
             <div class="pager pager-top" id="workerdetails-pager-top"></div>
             <div class="table-wrap">
                 <div class="worker-grid">
@@ -271,7 +283,7 @@
     <div class="tab-panel" id="panel-machines">
         <div class="card">
             <div class="card-head">
-                <h2 title="Workers grouped by the host they run on: a box running 64 workers is one row">Machines <span class="muted" id="machines-total"></span></h2>
+                <h2 title="Workers grouped by the host they run on: a box running 64 workers is one row. Click a machine to show its workers.">Machines <span class="muted" id="machines-total"></span></h2>
             </div>
             <div class="table-wrap">
                 <table class="data-table" id="machines-table">
@@ -303,7 +315,7 @@
     <div class="tab-panel" id="panel-clients">
         <div class="card">
             <div class="card-head">
-                <h2 title="Every client the scheduler currently holds a heartbeat from">Clients <span class="muted" id="clients-total"></span></h2>
+                <h2 title="Every client the scheduler currently holds a heartbeat from. Click a client to show its tasks.">Clients <span class="muted" id="clients-total"></span></h2>
             </div>
             <div class="table-wrap">
                 <table class="data-table" id="clients-table">

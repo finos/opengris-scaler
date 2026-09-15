@@ -158,6 +158,9 @@ SORTABLE_TABLES = {
     "objects": OBJECTS_SORT,
 }
 
+# The Task List's filters: each view field names the row field it matches exactly.
+TASK_LOG_FILTERS = {"task_log_client": "full_client", "task_log_worker": "full_worker", "task_log_status": "status"}
+
 
 @dataclasses.dataclass
 class BrowserView:
@@ -171,6 +174,9 @@ class BrowserView:
     task_log_page: int = 0
     task_log_sort: Optional[str] = None
     task_log_sort_ascending: bool = True
+    task_log_client: str = ""  # each Task List filter shows only the tasks holding this value; empty shows every task
+    task_log_worker: str = ""
+    task_log_status: str = ""
     task_events_page: int = 0
     task_events_sort: Optional[str] = None
     task_events_sort_ascending: bool = True
@@ -178,6 +184,7 @@ class BrowserView:
     objects_page: int = 0
     objects_sort: Optional[str] = None
     objects_sort_ascending: bool = True
+    worker_details_host: str = ""  # show only the workers on this host; empty shows every host
     stream_window_minutes: int = DEFAULT_STREAM_WINDOW_MINUTES
     memory_scale: str = "linear"
 
@@ -194,8 +201,9 @@ class BrowserView:
             if name in view:
                 setattr(self, name, max(0, int(view[name])))
 
-        if "task_events_task" in view:
-            self.task_events_task = str(view["task_events_task"])
+        for name in (*TASK_LOG_FILTERS, "task_events_task", "worker_details_host"):
+            if name in view:
+                setattr(self, name, str(view[name]))
 
         for name, spec in SORTABLE_TABLES.items():
             if f"{name}_sort" in view:
@@ -217,6 +225,10 @@ class BrowserView:
 
     def settings(self) -> Dict[str, Any]:
         return {"stream_window": self.stream_window_minutes, "memory_scale": self.memory_scale}
+
+    def task_log_filter(self) -> Dict[str, str]:
+        """Row field to the value it must hold, for each Task List filter this browser set."""
+        return {field: getattr(self, name) for name, field in TASK_LOG_FILTERS.items() if getattr(self, name)}
 
 
 class BrowserStream:
@@ -264,7 +276,7 @@ class _RenderCache:
 
     def __init__(self) -> None:
         self._sorted: Dict[Tuple[str, Optional[str], bool], List[Dict[str, Any]]] = {}
-        self._worker_details: Optional[List[Dict[str, Any]]] = None
+        self._worker_details: Dict[str, List[Dict[str, Any]]] = {}
         self._stream: Dict[int, Dict[str, Any]] = {}
         self._memory: Dict[Tuple[float, str, Optional[float]], Dict[str, Any]] = {}
 
@@ -285,10 +297,10 @@ class _RenderCache:
             self._sorted[key] = spec.sort(rows(), field, ascending)
         return self._sorted[key]
 
-    def worker_details(self, app: "WebUIApp") -> List[Dict[str, Any]]:
-        if self._worker_details is None:
-            self._worker_details = app._build_worker_details()
-        return self._worker_details
+    def worker_details(self, app: "WebUIApp", host: str) -> List[Dict[str, Any]]:
+        if host not in self._worker_details:
+            self._worker_details[host] = app._build_worker_details(host)
+        return self._worker_details[host]
 
     def stream(self, app: "WebUIApp", window_minutes: int) -> Dict[str, Any]:
         if window_minutes not in self._stream:
@@ -1634,12 +1646,13 @@ class WebUIApp:
         return {"clients": rows, "clients_total": len(rows)}
 
     def _task_log_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
-        """One page of the task list: one row per retained task, newest first unless sorted."""
+        """One page of the task list: one row per retained task the filters match, newest first unless sorted."""
+        filters = view.task_log_filter()
         tasks: Collection[Dict[str, Any]] = self._task_log
-        if view.task_log_sort is not None:
+        if filters or view.task_log_sort is not None:
             tasks = cache.sorted_rows(
-                "task_log",
-                lambda: list(self._task_log),
+                f"task_log:{sorted(filters.items())}",
+                lambda: [row for row in self._task_log if all(row[field] == value for field, value in filters.items())],
                 TASK_LOG_SORT,
                 view.task_log_sort,
                 view.task_log_sort_ascending,
@@ -1650,8 +1663,10 @@ class WebUIApp:
             "task_log": rows,
             "task_log_page": page,
             "task_log_pages": total_pages,
+            "task_log_matched": len(tasks),
             "task_log_held": len(self._task_log),
             "task_log_total": self._task_log_total,
+            **{name: getattr(view, name) for name in TASK_LOG_FILTERS},
         }
 
     def _task_events_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
@@ -1770,8 +1785,8 @@ class WebUIApp:
         }
 
     def _worker_details_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
-        """One page of worker detail; the per-manager summaries still cover every worker."""
-        groups = cache.worker_details(self)
+        """One page of worker detail; the per-manager summaries cover every worker the host filter matches."""
+        groups = cache.worker_details(self, view.worker_details_host)
         flat: List[Tuple[str, Dict[str, Any]]] = [
             (group["manager_id"], worker) for group in groups for worker in group["workers"]
         ]
@@ -1788,6 +1803,7 @@ class WebUIApp:
             "worker_details_page": page,
             "worker_details_pages": total_pages,
             "worker_details_total": len(flat),
+            "worker_details_host": view.worker_details_host,
         }
 
     def _stream_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
@@ -1823,14 +1839,16 @@ class WebUIApp:
         """
         return max(self._total_workers, len(self._workers_data))
 
-    def _build_worker_details(self) -> List[Dict[str, Any]]:
-        """Every worker with what it is running and what is waiting behind it, grouped by manager.
+    def _build_worker_details(self, host: str) -> List[Dict[str, Any]]:
+        """Every worker on `host`, or on any host when it is empty, with what it runs and what waits behind it.
 
-        `_worker_details_section` slices one page of workers out of this per browser.
+        Workers are grouped by manager. `_worker_details_section` slices one page of workers out of this per browser.
         """
         # Group every worker by manager for complete per-manager summaries.
         managers: Dict[str, List[Dict[str, Any]]] = {}
         for worker_name, wp in self._worker_processors.items():
+            if host and self._workers_data.get(worker_name, {}).get("host") != host:
+                continue
             mid = wp.get("manager_id", "—")
             managers.setdefault(mid, []).append(dict(wp, **self.__worker_task_lists(worker_name, wp["processors"])))
 
