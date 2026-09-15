@@ -1,5 +1,19 @@
 import re
-from typing import Any
+from typing import Any, Dict
+
+
+def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a new dict that is *base* deep-merged with *override*.
+
+    Nested dicts merge recursively; lists replace entirely; scalars use override.
+    """
+    result: Dict[str, Any] = dict(base)
+    for key, val in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
+            result[key] = deep_merge(result[key], val)
+        else:
+            result[key] = val
+    return result
 
 
 def to_camel_case(snake_str: str) -> str:
