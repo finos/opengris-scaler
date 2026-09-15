@@ -321,7 +321,7 @@ element-level merge.
    [worker_manager.resource_limits]
    memory = "32Gi"
 
-   # pod_template for everything else:
+   # pod_template as an inline YAML string:
    pod_template = """
    metadata:
      labels:
@@ -346,6 +346,17 @@ element-level merge.
          capabilities:
            drop: ["ALL"]
    """
+
+Alternatively, point ``pod_template`` at a YAML file:
+
+.. code-block:: toml
+
+   [[worker_manager]]
+   type = "k8s_raw"
+   namespace = "scaler"
+   pod_image = "myregistry.example.com/scaler:latest"
+   workers_per_pod = 4
+   pod_template = "pod-template.yaml"
 
 .. warning::
    If you specify ``env`` in the YAML template's container spec, it **replaces**
