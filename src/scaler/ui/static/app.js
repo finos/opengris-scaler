@@ -728,6 +728,7 @@ function renderObjects() {
 }
 
 function renderWorkers() {
+    if (holdingStill()) return;
     // lastWorkersData is already this browser's page, sorted by the server.
     var pageRows = lastWorkersData;
 
@@ -803,6 +804,12 @@ function createWorkerRow(w) {
         if (WORKER_GAUGE_FIELDS[WORKER_FIELDS[i]]) buildGauge(td);
         tr.appendChild(td);
     }
+    var name = workerCell(tr, "name");
+    name.className = "filter-link";
+    name.addEventListener("click", function() { focusTasks("task_log_worker", w.full_name); });
+    var host = workerCell(tr, "host");
+    host.className = "filter-link";
+    host.addEventListener("click", function() { focusHost(w.host); });
     return tr;
 }
 
@@ -855,8 +862,8 @@ function updateWorkerRow(tr, w) {
                 ? "—" : w[field];
         }
     }
-    workerCell(tr, "name").title = w.full_name || w.name;
-    workerCell(tr, "host").title = w.host;
+    workerCell(tr, "name").title = w.full_name + " - click for its tasks";
+    workerCell(tr, "host").title = w.host + " - click for its workers";
     workerCell(tr, "mem_used_pct").title = w.mem_limit ? (w.mem_used + " / " + w.mem_limit + " MB used") : "";
 }
 
@@ -922,13 +929,8 @@ function makeCell(text) {
 var TASK_LOG_CELLS = {
     task_id: function(e) {
         var td = document.createElement("td");
-        var span = document.createElement("span");
-        span.className = "task-id";
-        span.textContent = e.task_id;
-        span.title = e.task_id;
-        span.addEventListener("click", function() {
-            if (navigator.clipboard) navigator.clipboard.writeText(e.task_id);
-        });
+        var span = makeElement("span", "task-id", e.task_id, e.task_id + " - click for this task's trail");
+        span.addEventListener("click", focusTask.bind(null, e.task_id));
         td.appendChild(span);
         return td;
     },
@@ -1244,10 +1246,24 @@ function drawSlashHatch(ctx, x, y, w, h) {
 }
 
 // Stream hover tooltip
+// The row whose label is under the pointer, or null when the pointer is off the labels.
+function streamLabelRow(evt) {
+    var rect = streamCanvas.getBoundingClientRect();
+    if (evt.clientX - rect.left >= STREAM_LABEL_WIDTH) return null;
+    var row = Math.floor((evt.clientY - rect.top - STREAM_PADDING_TOP) / STREAM_ROW_HEIGHT);
+    return row >= 0 && row < streamFullRows.length ? row : null;
+}
+
+streamCanvas.addEventListener("click", function(evt) {
+    var row = streamLabelRow(evt);
+    if (row !== null) focusTasks("task_log_worker", streamFullRows[row]);
+});
+
 streamCanvas.addEventListener("mousemove", function(evt) {
     var rect = streamCanvas.getBoundingClientRect();
     var mx = evt.clientX - rect.left;
     var my = evt.clientY - rect.top;
+    streamCanvas.style.cursor = "";
 
     var containerWidth = streamContainer.clientWidth;
     var chartWidth = containerWidth - STREAM_LABEL_WIDTH;
@@ -1273,16 +1289,12 @@ streamCanvas.addEventListener("mousemove", function(evt) {
         }
     }
 
-    // If not over a bar, check if hovering over a row label
-    if (mx < STREAM_LABEL_WIDTH) {
-        for (var r = 0; r < streamFullRows.length; r++) {
-            var ry = STREAM_PADDING_TOP + r * STREAM_ROW_HEIGHT;
-            if (my >= ry && my < ry + STREAM_ROW_HEIGHT) {
-                streamCanvas.title = streamFullRows[r];
-                tooltip.classList.remove("visible");
-                return;
-            }
-        }
+    var labelRow = streamLabelRow(evt);
+    if (labelRow !== null) {
+        streamCanvas.title = streamFullRows[labelRow] + " - click for its tasks";
+        streamCanvas.style.cursor = "pointer";
+        tooltip.classList.remove("visible");
+        return;
     }
 
     streamCanvas.title = "";
@@ -1790,6 +1802,7 @@ window.addEventListener("resize", function() {
 taskEventsBody.addEventListener("pointerdown", holdStill);
 workerDetailsContainer.addEventListener("pointerdown", holdStill);
 tasklogBody.addEventListener("pointerdown", holdStill);
+workersBody.addEventListener("pointerdown", holdStill);
 machinesBody.addEventListener("pointerdown", holdStill);
 clientsBody.addEventListener("pointerdown", holdStill);
 applySettings(saved.settings);

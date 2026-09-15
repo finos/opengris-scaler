@@ -107,7 +107,7 @@
         </div>
 
         <div class="card">
-            <h3>Workers <span class="badge" id="workers-count" title="Workers in the whole fleet; the table below holds one page of them">0</span></h3>
+            <h3 title="Click a worker for its tasks, or a host for the workers on that host">Workers <span class="badge" id="workers-count" title="Workers in the whole fleet; the table below holds one page of them">0</span></h3>
             <div class="pager pager-top" id="workers-pager-top"></div>
             <div class="table-wrap">
                 <table class="data-table" id="workers-table">
@@ -155,7 +155,7 @@
                 <table class="data-table" id="tasklog-table">
                     <thead>
                         <tr>
-                            <th title="Click an ID to copy it">Task ID</th>
+                            <th title="Click an ID for its trail">Task ID</th>
                             <th>Function</th>
                             <th title="The client that submitted the task">Client</th>
                             <th title="The worker the scheduler sent the task to">Worker</th>
@@ -211,7 +211,7 @@
     <div class="tab-panel" id="panel-stream">
         <div class="card" id="stream-card">
             <div class="card-header-row">
-                <h3 title="One row per worker, one bar per task it actually ran. A bar outlined in yellow is still running.">Worker Task Stream</h3>
+                <h3 title="One row per worker, one bar per task it actually ran. A bar outlined in yellow is still running. Click a worker's name for its tasks.">Worker Task Stream</h3>
                 <div class="inline-controls">
                     <div class="toggle-group" id="window-toggle" title="Sliding window length">
                         <button class="toggle-btn active" data-value="5">5 min</button>

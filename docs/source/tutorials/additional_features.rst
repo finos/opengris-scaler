@@ -79,12 +79,12 @@ Open ``http://127.0.0.1:50001`` in your browser.
 
 What the Web GUI shows:
 
-* **Live**: scheduler metrics, worker manager summary, and worker-level metrics (CPU/PSS/free/sent/queued/lag/ITL).
-* **Task List**: one row per task, with its client, worker, status, duration, peak memory and capabilities. Click a column header to sort the whole retained list by it, and a client, worker or status to show only the tasks sharing it.
+* **Live**: scheduler metrics, worker manager summary, and worker-level metrics (CPU/PSS/free/sent/queued/lag/ITL). Click a worker for its tasks, or a host for the workers on that host.
+* **Task List**: one row per task, with its client, worker, status, duration, peak memory and capabilities. Click a column header to sort the whole retained list by it, a client, worker or status to show only the tasks sharing it, and a task ID for its trail.
   A task on a worker reads queued, running or suspended as that worker's processors last reported it, so a task shorter than a status report may never read running.
 * **Task Log**: one row per state change in the order it happened, including a processor starting or suspending the task, so a task that is rebalanced or retried leaves its whole trail. Click a row to see one task's trail alone.
   Each row names what made it: the scheduler's state machine event, ``WorkerStatus`` for a processor, or ``StateBalanceAdvice`` for the balancer picking the task to move.
-* **Worker Task Stream**: a timeline by worker with capability colors and status overlays (failed and canceled patterns).
+* **Worker Task Stream**: a timeline by worker with capability colors and status overlays (failed and canceled patterns). Click a worker's name for its tasks.
 * **Memory and CPU**: rolling chart of what the fleet holds, read on the left axis, and the CPU it uses, read on a right axis that scales to the busiest moment in the window.
   The browser scrolls it between updates, and its time axis reads in seconds before now or as the time of day on the web GUI server's clock.
 * **Workers**: one row per worker under a row for its manager, which sums the same columns: the worker's memory against its limit and its CPU, the task each processor holds and for how long, and the queue waiting behind it in the order it runs. Click a queued task for its trail, a worker for its tasks, or its host for the workers on that host.
