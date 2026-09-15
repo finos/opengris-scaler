@@ -26,6 +26,7 @@ RUN chmod +x /app/entrypoint.sh
 
 RUN adduser -D -u 1001 -G root scaler && \
     mkdir -p /app && \
+    chown -R scaler:root /opt/python /opt/opengris-scaler && \
     chmod g+rwx /app /opt/opengris-scaler
 
 USER 1001
