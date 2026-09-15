@@ -904,7 +904,6 @@ class MemoryChartState:
     """
 
     def __init__(self) -> None:
-        self._start_time = datetime.datetime.now()
         # What the fleet holds, sampled once per scheduler update.
         self._live: Deque[Tuple[float, int, float]] = deque()  # (timestamp, rss_bytes, cpu_percent)
         self._memory_store_time = datetime.timedelta(minutes=30)
