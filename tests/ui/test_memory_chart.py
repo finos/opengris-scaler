@@ -4,6 +4,7 @@ import datetime
 import json
 import unittest
 from typing import Any, Dict, Optional
+from unittest import mock
 
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import (
@@ -94,12 +95,15 @@ class TestMemorySamples(unittest.TestCase):
         self.assertFalse(data["append"])
 
     def test_since_sends_only_newer_samples_against_axes_for_the_whole_window(self) -> None:
+        """The clock stands still, as Windows' coarse clock does between two samples taken in a row."""
         chart = MemoryChartState()
-        chart.record_fleet_sample(rss_bytes=3_000_000_000, cpu_percent=900.0)
-        since = chart.latest_sample_time()
-        chart.record_fleet_sample(rss_bytes=1_000, cpu_percent=1.0)
+        with mock.patch("scaler.ui.app.datetime") as clock:
+            clock.datetime.now.return_value = datetime.datetime.now()
+            chart.record_fleet_sample(rss_bytes=3_000_000_000, cpu_percent=900.0)
+            since = chart.samples_taken()
+            chart.record_fleet_sample(rss_bytes=1_000, cpu_percent=1.0)
 
-        data = chart.get_render_data(window_seconds=WINDOW_SECONDS, scale="linear", since=since)
+            data = chart.get_render_data(window_seconds=WINDOW_SECONDS, scale="linear", since=since)
         self.assertTrue(data["append"])
         self.assertEqual([sample[1] for sample in data["samples"]], [1_000])
         self.assertEqual(data["y_ticks"][-1]["val"], 3_000_000_000, "the older, bigger sample still sets the axis")
@@ -108,7 +112,7 @@ class TestMemorySamples(unittest.TestCase):
     def test_a_sample_older_than_the_window_is_not_sent(self) -> None:
         chart = MemoryChartState()
         now = datetime.datetime.now().timestamp()
-        chart._live.extend([(now - WINDOW_SECONDS - 1, 1, 0.0), (now - 1, 2, 0.0)])
+        chart._live.extend([(1, now - WINDOW_SECONDS - 1, 1, 0.0), (2, now - 1, 2, 0.0)])
 
         data = chart.get_render_data(window_seconds=WINDOW_SECONDS, scale="linear", since=None)
         self.assertEqual([sample[1] for sample in data["samples"]], [2])

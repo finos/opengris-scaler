@@ -313,7 +313,7 @@ class _RenderCache:
             self._stream[window_minutes] = stream_data
         return self._stream[window_minutes]
 
-    def memory(self, app: "WebUIApp", window_seconds: float, scale: str, since: Optional[float]) -> Dict[str, Any]:
+    def memory(self, app: "WebUIApp", window_seconds: float, scale: str, since: Optional[int]) -> Dict[str, Any]:
         key = (window_seconds, scale, since)
         if key not in self._memory:
             self._memory[key] = app._memory_chart.get_render_data(window_seconds, scale, since)
@@ -905,7 +905,9 @@ class MemoryChartState:
 
     def __init__(self) -> None:
         # What the fleet holds, sampled once per scheduler update.
-        self._live: Deque[Tuple[float, int, float]] = deque()  # (timestamp, rss_bytes, cpu_percent)
+        self._live: Deque[Tuple[int, float, int, float]] = deque()  # (number, timestamp, rss_bytes, cpu_percent)
+        # A browser's place is a sample's number, not its time: a coarse clock (Windows') times two in a row alike.
+        self._samples_taken: int = 0
         self._memory_store_time = datetime.timedelta(minutes=30)
         self._lock = threading.Lock()
 
@@ -913,35 +915,36 @@ class MemoryChartState:
         now = datetime.datetime.now().timestamp()
         cutoff = now - self._memory_store_time.total_seconds()
         with self._lock:
-            self._live.append((now, rss_bytes, cpu_percent))
-            while self._live[0][0] < cutoff:
+            self._samples_taken += 1
+            self._live.append((self._samples_taken, now, rss_bytes, cpu_percent))
+            while self._live[0][1] < cutoff:
                 self._live.popleft()
 
-    def latest_sample_time(self) -> float:
-        """When the newest sample was taken, 0 before the first."""
+    def samples_taken(self) -> int:
+        """How many samples have been taken, which is also the newest one's number."""
         with self._lock:
-            return self._live[-1][0] if self._live else 0.0
+            return self._samples_taken
 
-    def get_render_data(self, window_seconds: float, scale: str, since: Optional[float]) -> Dict[str, Any]:
+    def get_render_data(self, window_seconds: float, scale: str, since: Optional[int]) -> Dict[str, Any]:
         """The window's samples and axes. Window and scale are per-browser, so they are passed in.
 
-        With `since`, only the samples taken after it travel, and the browser appends them to what it holds.
-        The axes always cover the whole window.
+        With `since`, a count from `samples_taken`, only the samples taken after it travel, and the browser appends
+        them to what it holds. The axes always cover the whole window.
         """
         now_ts = datetime.datetime.now().timestamp()
         window_start_ts = now_ts - window_seconds
         with self._lock:
-            samples = [sample for sample in self._live if sample[0] >= window_start_ts]
+            samples = [sample for sample in self._live if sample[1] >= window_start_ts]
 
-        max_mem = max(max((rss_bytes for _, rss_bytes, _ in samples), default=0), MEMORY_CHART_MINIMUM_BYTES)
+        max_mem = max(max((rss_bytes for _, _, rss_bytes, _ in samples), default=0), MEMORY_CHART_MINIMUM_BYTES)
         ticks = [int(max_mem * step / (MEMORY_CHART_TICKS - 1)) for step in range(MEMORY_CHART_TICKS)]
-        cpu_ticks = _cpu_axis_ticks(max((cpu_percent for _, _, cpu_percent in samples), default=0.0))
+        cpu_ticks = _cpu_axis_ticks(max((cpu_percent for _, _, _, cpu_percent in samples), default=0.0))
         sent = samples if since is None else [sample for sample in samples if sample[0] > since]
 
         return {
             "samples": [
                 [round(timestamp, MEMORY_SAMPLE_TIME_DECIMALS), rss_bytes, round(cpu_percent, 1)]
-                for timestamp, rss_bytes, cpu_percent in sent
+                for _, timestamp, rss_bytes, cpu_percent in sent
             ],
             "append": since is not None,
             "now": now_ts,
@@ -1053,7 +1056,7 @@ class WebUIApp:
     def _batch_once(self) -> None:
         """One tick: apply everything the subscriber queued, then queue each browser its own payload."""
         # a browser holds every sample taken up to here, so this tick sends only the ones it adds
-        latest_sample_time = self._memory_chart.latest_sample_time()
+        samples_taken = self._memory_chart.samples_taken()
         messages: List[BaseMessage] = []
         while True:
             try:
@@ -1120,7 +1123,7 @@ class WebUIApp:
                 **(self._task_log_section(view, cache) if has_task_update else {}),
                 **(self._task_events_section(view, cache) if has_task_update else {}),
                 "task_stream": self._stream_section(view, cache),
-                **(self._memory_section(view, cache, latest_sample_time) if has_scheduler_update else {}),
+                **(self._memory_section(view, cache, samples_taken) if has_scheduler_update else {}),
             }
         )
 
@@ -1849,7 +1852,7 @@ class WebUIApp:
         stream_data["total_rows"] = len(rows)
         return stream_data
 
-    def _memory_section(self, view: BrowserView, cache: "_RenderCache", since: Optional[float]) -> Dict[str, Any]:
+    def _memory_section(self, view: BrowserView, cache: "_RenderCache", since: Optional[int]) -> Dict[str, Any]:
         """The memory chart over this browser's window: the samples taken after `since`, or all of them without it."""
         window_seconds = cache.stream(self, view.stream_window_minutes)["window"]
         return {"memory_chart": cache.memory(self, window_seconds, view.memory_scale, since)}
