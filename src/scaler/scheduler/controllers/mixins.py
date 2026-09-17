@@ -58,6 +58,7 @@ class ObjectController(Reporter):
         object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
+        object_size: int,
     ):
         raise NotImplementedError()
 

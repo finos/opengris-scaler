@@ -1,9 +1,8 @@
 import asyncio
 import dataclasses
-import heapq
 import logging
 from asyncio import Queue
-from typing import Dict, List, Optional, Set
+from typing import List, Optional, Set
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher, ObjectStorageTotals
 from scaler.protocol.capnp import ObjectInstruction, ObjectManagerStatus, ObjectMetadata
@@ -26,9 +25,13 @@ class _ObjectCreation(ObjectUsage):
     object_creator: ClientID
     object_type: ObjectMetadata.ObjectContentType
     object_name: bytes
+    object_size: int
 
     def get_object_key(self) -> ObjectID:
         return self.object_id
+
+    def get_object_size(self) -> int:
+        return self.object_size
 
 
 class VanillaObjectController(ObjectController, Looper, Reporter):
@@ -44,8 +47,6 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncPublisher] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        # keyed by raw id bytes: ids arrive off the wire, and an ObjectID would validate a length nobody needs
-        self._object_sizes: Dict[bytes, int] = {}
 
         self._client_manager: Optional[ClientController] = None
         self._worker_manager: Optional[WorkerController] = None
@@ -84,8 +85,9 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
+        object_size: int,
     ):
-        creation = _ObjectCreation(object_id, client_id, object_type, object_name)
+        creation = _ObjectCreation(object_id, client_id, object_type, object_name, object_size)
         logger.debug(
             f"add object cache "
             f"object_name={creation.object_name!r}, "
@@ -117,28 +119,27 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
             self._storage_totals = ObjectStorageTotals()
 
     def get_object_size(self, object_id: bytes) -> int:
-        """Payload bytes for an object, 0 if it was created by a client that does not report sizes."""
-        return self._object_sizes.get(bytes(object_id), 0)
+        """Payload bytes for an object, 0 if it is gone or its client does not report sizes."""
+        key = ObjectID(object_id)
+        if not self._object_tracker.has_object(key):
+            return 0
+
+        return self._object_tracker.get_object(key).object_size
 
     def object_count(self) -> int:
         return self._object_tracker.object_count()
 
     def get_largest_objects(self, limit: int) -> List[ObjectDetail]:
-        """The `limit` biggest tracked objects, biggest first, which is what a full store is made of.
-
-        A heap, because this runs on the scheduler's event loop.
-        Sorting a few hundred thousand objects every status frame costs seconds.
-        """
-        largest = heapq.nlargest(limit, self._object_tracker.items(), key=lambda item: self.get_object_size(item[0]))
+        """The `limit` biggest tracked objects, biggest first, which is what a full store is made of."""
         return [
             ObjectDetail(
-                object_id=object_id,
+                object_id=creation.object_id,
                 name=creation.object_name,
                 content_type=creation.object_type,
-                size=self.get_object_size(object_id),
+                size=creation.object_size,
                 creator=creation.object_creator,
             )
-            for object_id, creation in largest
+            for creation in self._object_tracker.largest(limit)
         ]
 
     def has_object(self, object_id: ObjectID) -> bool:
@@ -184,7 +185,6 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
 
         for object_id in deleted_object_ids:
             await self._connector_storage.delete_object(object_id)
-            self.__forget_object_size(object_id)
 
     def __on_object_create(self, source: bytes, instruction: ObjectInstruction):
         if not self._client_manager.has_client_id(instruction.objectUser):
@@ -199,11 +199,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         for object_id, object_type, object_name, object_size in zip(
             object_ids, instruction.objectMetadata.objectTypes, instruction.objectMetadata.objectNames, sizes
         ):
-            self._object_sizes[bytes(object_id)] = object_size
-            self.on_add_object(instruction.objectUser, object_id, object_type, object_name)
-
-    def __forget_object_size(self, object_id: ObjectID) -> None:
-        self._object_sizes.pop(bytes(object_id), None)
+            self.on_add_object(instruction.objectUser, object_id, object_type, object_name, object_size)
 
     def __finished_object_storage(self, creation: _ObjectCreation):
         logger.debug(f"del object cache object_name={creation.object_name!r}, object_id={creation.object_id!r}")

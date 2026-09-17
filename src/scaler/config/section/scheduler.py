@@ -66,7 +66,8 @@ class SchedulerConfig(ConfigClass):
         metadata=dict(
             short="-orl",
             help="how many of the biggest objects each status report carries, which is how many the web GUI "
-            "can page through. Each one costs the report about 240 bytes.",
+            "can page through. They are taken by size class, so the smallest size in the list is reached "
+            "part way. Each one costs the report about 240 bytes.",
         ),
     )
     protected: bool = dataclasses.field(

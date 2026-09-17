@@ -409,7 +409,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         )
         await self._connector_storage.set_object(object_id, payload)
         self._object_controller.on_add_object(
-            client, object_id, ObjectMetadata.ObjectContentType.object, b"<scheduler error>"
+            client, object_id, ObjectMetadata.ObjectContentType.object, b"<scheduler error>", len(payload)
         )
 
         task_result = TaskResult(

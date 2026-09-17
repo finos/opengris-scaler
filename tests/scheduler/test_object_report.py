@@ -28,8 +28,7 @@ def make_object_controller(sizes) -> VanillaObjectController:
     controller = VanillaObjectController(config_controller=make_config_controller())
     client_id = ClientID.generate_client_id()
     for name, object_id, size in sizes:
-        controller.on_add_object(client_id, object_id, ObjectMetadata.ObjectContentType.object, name)
-        controller._object_sizes[bytes(object_id)] = size
+        controller.on_add_object(client_id, object_id, ObjectMetadata.ObjectContentType.object, name, size)
     return controller
 
 
@@ -59,12 +58,25 @@ class TestLargestObjects(unittest.TestCase):
         self.assertEqual([detail.name for detail in largest], [b"huge", b"medium"])
         self.assertEqual([detail.size for detail in largest], [4000, 500])
         self.assertEqual(controller.object_count(), 4)
+        self.assertEqual(controller.get_object_size(ids[1]), 4000)
+
+    def test_an_object_the_client_released_is_no_longer_reported(self) -> None:
+        client_id = ClientID.generate_client_id()
+        ids = [ObjectID.generate_object_id(client_id) for _ in range(2)]
+        controller = VanillaObjectController(config_controller=make_config_controller())
+        controller.on_add_object(client_id, ids[0], ObjectMetadata.ObjectContentType.object, b"kept", 10)
+        controller.on_add_object(client_id, ids[1], ObjectMetadata.ObjectContentType.object, b"released", 4_000)
+
+        controller.on_del_objects(client_id, {ids[1]})
+
+        self.assertEqual([detail.name for detail in controller.get_largest_objects(10)], [b"kept"])
+        self.assertEqual(controller.get_object_size(ids[1]), 0)
 
     def test_an_object_whose_client_reports_no_size_still_appears(self) -> None:
         client_id = ClientID.generate_client_id()
         object_id = ObjectID.generate_object_id(client_id)
         controller = VanillaObjectController(config_controller=make_config_controller())
-        controller.on_add_object(client_id, object_id, ObjectMetadata.ObjectContentType.object, b"unsized")
+        controller.on_add_object(client_id, object_id, ObjectMetadata.ObjectContentType.object, b"unsized", 0)
 
         largest = controller.get_largest_objects(10)
 

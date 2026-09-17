@@ -501,7 +501,11 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         await self._connector_storage.duplicate_object_id(object_id, new_object_id)
 
         self._object_controller.on_add_object(
-            owner, new_object_id, ObjectMetadata.ObjectContentType.object, object_name
+            owner,
+            new_object_id,
+            ObjectMetadata.ObjectContentType.object,
+            object_name,
+            self._object_controller.get_object_size(object_id),
         )
 
     async def __send_results(self, client_id: ClientID, results: List[TaskResult]):
