@@ -220,7 +220,7 @@ Sizing
      - Description
    * - ``workers_per_pod``
      - ``int``
-     - ``1``
+     - ``4``
      - Number of Scaler worker processes launched inside each Pod.
        Acts as the divisor when converting ``max_task_concurrency`` to a pod count.
        Must be >= 1.
