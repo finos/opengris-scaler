@@ -270,26 +270,30 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
 
         graph_info = self._graph_task_id_to_graph[graph_task_id]
 
-        if graph_info.status in {_GraphState.Canceling, _GraphState.Aborting}:
-            # if graph is already in canceling or aborting, we don't need to proceed whole graph canceling again
+        if graph_info.status == _GraphState.Aborting:
+            # the abort answers every remaining node with the failing result, a cancel confirm would race it
             return
 
-        # must stay before the gather: the cancels below re-enter the task router, which locks per task, and this is
-        # one of the two guards that keep that lock acquisition graph acyclic. the other is __mark_node_done and
-        # __mark_node_canceled removing the task from running_task_ids before they fan out here, so that a task is
-        # never a member of its own fan-out set. either one alone is enough, do not drop both
+        # Two guards keep the task router's per-task lock acquisition acyclic, and they close different
+        # windows. __mark_node_done and __mark_node_canceled drop a task from running_task_ids before they
+        # fan out here, so a task is never a member of its own fan-out. The status guard below stops a
+        # re-entrant call fanning out a second time, which is the path where the caller is already in the
+        # outer fan-out. The sweep further down still runs on every entry, because the confirms the first
+        # pass triggers are what make the rest of the graph ready.
+        first_pass = graph_info.status != _GraphState.Canceling
         graph_info.status = _GraphState.Canceling
 
-        await asyncio.gather(
-            *[
-                self._task_controller.on_task_cancel(
-                    graph_info.client, TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=True))
-                )
-                for task_id in graph_info.running_task_ids
-            ]
-        )
+        if first_pass:
+            await asyncio.gather(
+                *[
+                    self._task_controller.on_task_cancel(
+                        graph_info.client, TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=True))
+                    )
+                    for task_id in graph_info.running_task_ids
+                ]
+            )
 
-        # cancel all inactive tasks
+        # cancel the inactive tasks that are ready now
         task_cancel_confirms: List[TaskCancelConfirm] = list()
         while graph_info.sorter.is_active():
             ready_task_ids = graph_info.sorter.get_ready()
