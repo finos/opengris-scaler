@@ -1,9 +1,9 @@
 # AGENTS.md: rules for working on OpenGRIS Scaler
 
-- These rules bind as written, neither looser nor stricter: where they decide, act.
+- These rules bind as written: where they decide, act.
 - What Scaler is and how to use it: `README.md` and `docs/`.
 - Dependencies, supported Python versions, and Python tool settings: `pyproject.toml`. C++ formatting: `.clang-format`. CI: `.github/`.
-- `.agents-local.md` (gitignored) holds one developer's overrides: read it before any build, install, or shell command.
+- `.agents-local.md` (gitignored) holds one's overrides and takes precedence over anything here if it exists: read it before any build, install, commit, or shell command.
 
 ## Layout
 
