@@ -167,6 +167,9 @@ class VanillaClientController(ClientController, Looper, Reporter):
         if client_id not in self._client_to_task_ids.keys():
             return
 
+        # a worker refuses an unforced cancel of a task it is already running, and the client is gone
+        cancel_flags = TaskCancel.TaskCancelFlags(force=True)
+
         tasks = self._client_to_task_ids.get_values(client_id).copy()
         for task in tasks:
-            await self._task_controller.on_task_cancel(client_id, TaskCancel(taskId=task))
+            await self._task_controller.on_task_cancel(client_id, TaskCancel(taskId=task, flags=cancel_flags))
