@@ -8,7 +8,9 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <span>
+#include <utility>
 
 #include "scaler/logging/logging.h"
 #include "scaler/object_storage/constants.h"
@@ -73,6 +75,10 @@ private:
 
     // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
     std::map<ObjectID, std::vector<PendingRequest>> pendingRequests;
+    // Kept with pendingRequests, so an info request reads its totals without walking every request.
+    uint64_t _pendingRequestCount {0};
+    // The objects pendingRequests waits for, by when the first request for each arrived: the oldest is first.
+    std::set<std::pair<std::chrono::steady_clock::time_point, ObjectID>> _pendingObjectsByAge;
 
     scaler::ymq::Logger _logger;
 
@@ -97,6 +103,11 @@ private:
         std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, std::unique_ptr<scaler::ymq::Bytes>> request);
 
     void processInfoGetTotalRequest(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
+
+    void addPendingRequest(
+        const ObjectID& objectID, std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
+
+    void clearPendingRequests();
 
     template <ObjectStorageMessage T>
     void writeMessage(std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload)

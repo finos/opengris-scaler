@@ -715,6 +715,7 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
         EXPECT_EQ(fields[2], expectedNumBytes);
         EXPECT_EQ(fields[3], expectedNumPending);
         EXPECT_EQ(fields[4], expectedNumPendingIDs);
+        return fields;
     };
 
     testInfoGetTotalRequest(*client, 0, 0, 0);
@@ -819,6 +820,43 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
     EXPECT_EQ(waitingHeader.responseType, ObjectResponseType::GET_O_K);
 
     testInfoGetTotalRequest(*client, 1, 1, payloadContent.size());
+
+    // The oldest wait is the oldest object still waited for: creating that object moves it to the next one.
+    const uint64_t olderWaitSeconds = 2;
+    auto sendWaitingGet             = [&](const ObjectID& objectID) {
+        ObjectRequestHeader requestHeader {
+                        .objectID      = objectID,
+                        .payloadLength = 0,
+                        .requestID     = requestID++,
+                        .requestType   = ObjectRequestType::GET_OBJECT,
+        };
+        waitingClient->writeRequest(requestHeader, std::nullopt);
+    };
+
+    sendWaitingGet({8, 8, 8, 8});
+    std::this_thread::sleep_for(std::chrono::seconds {olderWaitSeconds});
+    sendWaitingGet({9, 9, 9, 9});
+
+    auto fields = testInfoGetTotalRequest(*waitingClient, 1, 1, payloadContent.size(), 2, 2);
+    EXPECT_GE(fields[5], olderWaitSeconds);
+
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = {8, 8, 8, 8},
+            .payloadLength = payloadContent.size(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, payloadSpan);
+        client->readResponse(responseHeader, responsePayload);
+    }
+
+    waitingClient->readResponse(waitingHeader, waitingPayload);
+    EXPECT_EQ(waitingHeader.responseType, ObjectResponseType::GET_O_K);
+
+    fields = testInfoGetTotalRequest(*waitingClient, 2, 1, payloadContent.size(), 1, 1);
+    EXPECT_LT(fields[5], olderWaitSeconds);
 }
 
 // This test fixture is specifically for verifying server logging behavior.
