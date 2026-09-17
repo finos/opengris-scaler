@@ -69,9 +69,6 @@ Scaler Web GUI
 Scaler also provides a browser-based monitoring dashboard through ``scaler_gui``.
 It subscribes to the scheduler monitor stream and serves a real-time web UI over HTTP.
 
-.. note::
-   The GUI requires optional dependencies. Install with ``pip install opengris-scaler[gui]``.
-
 Start the GUI by pointing it at the scheduler monitor address:
 
 .. code:: bash
@@ -82,11 +79,21 @@ Open ``http://127.0.0.1:50001`` in your browser.
 
 What the Web GUI shows:
 
-* **Live**: scheduler metrics, worker manager summary, and worker-level metrics (CPU/PSS/free/sent/queued/lag/ITL).
-* **Task Log**: recent task lifecycle updates (running/success/failure/canceled), duration, peak memory, and capabilities.
-* **Worker Task Stream**: a timeline by worker with capability colors and status overlays (failed and canceled patterns).
-* **Memory Usage**: rolling cluster memory chart derived from task profiling metadata.
-* **Worker Processors**: manager-grouped view of processor-level CPU/PSS and state flags (initialized, has task, suspended).
+* **Live**: scheduler metrics, worker manager summary, and worker-level metrics (CPU/PSS/free/sent/queued/lag/ITL). Click a worker for its tasks, or a host for the workers on that host.
+* **Task List**: one row per task, with its client, worker, status, duration, peak memory and capabilities. Click a column header to sort the whole retained list by it, a client, worker or status to show only the tasks sharing it, and a task ID for its trail.
+  A task on a worker reads queued, running or suspended as that worker's processors last reported it, so a task shorter than a status report may never read running.
+* **Task Log**: one row per state change in the order it happened, including a processor starting or suspending the task, so a task that is rebalanced or retried leaves its whole trail. Click a row to see one task's trail alone.
+  Each row names what made it: the scheduler's state machine event, ``WorkerStatus`` for a processor, or ``StateBalanceAdvice`` for the balancer picking the task to move.
+* **Worker Task Stream**: a timeline by worker with capability colors and status overlays (failed and canceled patterns). Click a worker's name for its tasks.
+* **Memory and CPU**: rolling chart of what the fleet holds, read on the left axis, and the CPU it uses, read on a right axis that scales to the busiest moment in the window.
+  The browser scrolls it between updates, and its time axis reads in seconds before now or as the time of day on the web GUI server's clock.
+* **Workers**: one row per worker under a row for its manager, which sums the same columns: the worker's memory against its limit and its CPU, the task each processor holds and for how long, and the queue waiting behind it in the order it runs. Click a queued task for its trail, a worker for its tasks, or its host for the workers on that host.
+* **Machines**: one row per host, with its workers, CPU, memory, host-wide network counters, and how long since any worker on it last reported. Click a machine to show its workers.
+* **Clients**: one row per connected client, with its host, tasks in flight, finished and failed counts, CPU, memory and latency. Finished counts every task that reached a terminal state, cancelled ones included. Click a client to show its tasks.
+* **Objects**: the biggest objects the scheduler tracks, with their size, the client that created them, and the tasks holding them, a page at a time.
+
+The Live tab also carries an Object Storage card: how many objects the storage server holds, how many distinct payloads are behind them, the bytes they occupy, and how many requests are waiting for an object that does not exist yet.
+A waiting count that does not fall is a fetch nobody can answer, because a client blocks in ``get_object`` until the object is created.
 
 .. note::
    Worker memory is reported as PSS (proportional set size) on Linux, so the shared copy-on-write pages a
@@ -95,6 +102,7 @@ What the Web GUI shows:
 
 Interactive behavior:
 
-* Uses WebSocket updates with auto-reconnect if the browser temporarily disconnects.
+* Pushes updates over a server-sent event stream, which the page reconnects when it drops.
 * Sends a full current snapshot on connect, then incremental updates in short batches.
-* Supports runtime settings for stream window length (5/10/30 minutes) and memory chart scale (linear/log).
+* Supports runtime settings for stream window length (5/10/30 minutes), memory axis scale (linear/log), and chart time axis (relative/absolute).
+* Keeps each browser tab's view, meaning its tab, settings, sorting, pages and filters, across a reload or a dropped stream.

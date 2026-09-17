@@ -6,7 +6,7 @@ router and recording the state that comes back.
 """
 
 import dataclasses
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 from unittest.mock import create_autospec
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
@@ -60,13 +60,15 @@ LIVE_TASK_STATES = (TaskState.inactive, TaskState.running, TaskState.canceling, 
 REJECTED = "(rejected)"
 
 
-def make_task(task_id: TaskID = TASK_ID) -> Task:
+def make_task(task_id: TaskID = TASK_ID, argument_object_ids: Sequence[ObjectID] = ()) -> Task:
     return Task(
         taskId=task_id,
         source=CLIENT_ID,
         metadata=b"",
         funcObjectId=FUNCTION_OBJECT_ID,
-        functionArgs=[],
+        functionArgs=[
+            Task.Argument(type=Task.Argument.ArgumentType.objectID, data=object_id) for object_id in argument_object_ids
+        ],
         capabilities=[],
     )
 
@@ -254,8 +256,12 @@ class TaskControllerHarness:
         return [message for message in self.messages_sent_to(peer) if isinstance(message, TaskResult)]
 
     def monitored_task_states(self) -> List[TaskState]:
+        return [state for state, _ in self.monitored_transitions()]
+
+    def monitored_transitions(self) -> List[Tuple[TaskState, str]]:
+        """Each state the monitor was told the task is in, with the event it named for it."""
         return [
-            call.args[0].state
+            (call.args[0].state, call.args[0].event)
             for call in self.binder_monitor.send.await_args_list
             if isinstance(call.args[0], StateTask)
         ]
