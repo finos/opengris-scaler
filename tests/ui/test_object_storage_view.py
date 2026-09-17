@@ -118,7 +118,6 @@ def make_objects(*object_ids: bytes, name: bytes = b"payload", sizes: Optional[L
                     objectType=ObjectMetadata.ObjectContentType.object,
                     size=payload_sizes[index],
                     creator=b"Client|one",
-                    taskIds=[],
                     taskCount=0,
                 )
                 for index, object_id in enumerate(object_ids)
@@ -129,7 +128,7 @@ def make_objects(*object_ids: bytes, name: bytes = b"payload", sizes: Optional[L
 
 
 class TestObjectsView(unittest.TestCase):
-    def test_an_object_row_names_its_client_and_its_tasks(self) -> None:
+    def test_an_object_row_names_its_client_and_counts_its_tasks(self) -> None:
         app = make_app()
         state = StateObject.from_bytes(
             StateObject(
@@ -140,7 +139,6 @@ class TestObjectsView(unittest.TestCase):
                         objectType=ObjectMetadata.ObjectContentType.object,
                         size=2_000_000,
                         creator=b"Client|one",
-                        taskIds=[b"b" * 32, b"c" * 32],
                         taskCount=57,
                     )
                 ],
@@ -155,8 +153,7 @@ class TestObjectsView(unittest.TestCase):
         self.assertEqual(row["name"], "heavy_frame")
         self.assertEqual(row["size"], "1.9M")
         self.assertEqual(row["full_client"], "Client|one")
-        self.assertEqual(row["tasks"], 57, "the count is the whole set, not the sample that travels with it")
-        self.assertEqual(row["task_ids"], ["626262626262", "636363636363"])
+        self.assertEqual(row["tasks"], 57, "the live tasks naming the object")
 
     def test_two_objects_of_one_client_are_told_apart(self) -> None:
         """An object ID starts with its owner's hash, so the head is the same for all of a client's."""

@@ -285,7 +285,6 @@ class StateObject(BaseMessage):
         objectType: ObjectMetadata.ObjectContentType
         size: int
         creator: ClientID
-        taskIds: Any
         taskCount: int
 
     objects: Any

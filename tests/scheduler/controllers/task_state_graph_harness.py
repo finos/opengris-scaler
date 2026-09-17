@@ -6,7 +6,7 @@ router and recording the state that comes back.
 """
 
 import dataclasses
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 from unittest.mock import create_autospec
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
@@ -60,13 +60,15 @@ LIVE_TASK_STATES = (TaskState.inactive, TaskState.running, TaskState.canceling, 
 REJECTED = "(rejected)"
 
 
-def make_task(task_id: TaskID = TASK_ID) -> Task:
+def make_task(task_id: TaskID = TASK_ID, argument_object_ids: Sequence[ObjectID] = ()) -> Task:
     return Task(
         taskId=task_id,
         source=CLIENT_ID,
         metadata=b"",
         funcObjectId=FUNCTION_OBJECT_ID,
-        functionArgs=[],
+        functionArgs=[
+            Task.Argument(type=Task.Argument.ArgumentType.objectID, data=object_id) for object_id in argument_object_ids
+        ],
         capabilities=[],
     )
 

@@ -54,6 +54,7 @@ else:
 
 logger = logging.getLogger(__name__)
 
+
 # A transition holds its machine's lock for a few sends and no I/O waits, so this is not a tuning knob balancing
 # throughput against latency: it is the point past which the only remaining explanation is a deadlock. It sits well
 # below the 60 second worker and client timeouts, so a stuck lock reports itself as a specific error naming the task
@@ -71,6 +72,16 @@ CancelConfirmCanceledTargetStates = Literal[TaskState.canceled, TaskState.inacti
 CancelConfirmFailedTargetStates = Literal[TaskState.running]
 CancelConfirmNotFoundTargetStates = Literal[TaskState.canceledNotFound, TaskState.inactive, TaskState.running]
 DisconnectTargetStates = Literal[TaskState.inactive, TaskState.running, TaskState.canceled]
+
+
+def task_object_ids(task: Task) -> Set[ObjectID]:
+    """The objects a task names: its function and every argument that is one, each named once."""
+    arguments = (
+        ObjectID(argument.data)
+        for argument in task.functionArgs
+        if argument.type == Task.Argument.ArgumentType.objectID
+    )
+    return {task.funcObjectId, *arguments}
 
 
 def task_result_target(result_type: TaskResultType) -> TaskResultTargetStates:
@@ -99,6 +110,8 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._graph_controller: Optional[GraphTaskController] = None
 
         self._task_id_to_task: Dict[TaskID, Task] = dict()
+        # Live tasks naming each object, counted as tasks arrive and leave: a status report reads it per object.
+        self._object_task_counts: Dict[ObjectID, int] = dict()
         self._task_state_manager: TaskStateManager = TaskStateManager(debug=True)
 
         self._unassigned: Deque[TaskID] = deque()
@@ -126,19 +139,9 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         # TODO: we don't need loop task anymore, but I will leave this routine API here in case we need in the future
         pass
 
-    def get_task_ids_by_object(self, object_ids: Set[ObjectID]) -> Dict[ObjectID, List[TaskID]]:
-        """Which live tasks name each of these objects as their function or as an argument."""
-        task_ids_by_object: Dict[ObjectID, List[TaskID]] = {object_id: [] for object_id in object_ids}
-        for task_id, task in self._task_id_to_task.items():
-            if task.funcObjectId in task_ids_by_object:
-                task_ids_by_object[task.funcObjectId].append(task_id)
-            for argument in task.functionArgs:
-                if argument.type != Task.Argument.ArgumentType.objectID:
-                    continue
-                argument_object_id = ObjectID(argument.data)
-                if argument_object_id in task_ids_by_object:
-                    task_ids_by_object[argument_object_id].append(task_id)
-        return task_ids_by_object
+    def get_task_count(self, object_id: ObjectID) -> int:
+        """How many live tasks name this object as their function or as an argument."""
+        return self._object_task_counts.get(object_id, 0)
 
     async def on_task_new(self, task: Task):
         task.capabilities = capabilities_to_dict(task.capabilities)
@@ -153,7 +156,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._task_state_manager.add_state_machine(task.taskId)
 
         self._client_controller.on_task_begin(task.source, task.taskId)
-        self._task_id_to_task[task.taskId] = task
+        self.__hold_task(task)
 
         worker_id = self._worker_controller.acquire_worker(task)
         if not worker_id.is_valid():
@@ -327,7 +330,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
             if target in TERMINAL_TASK_STATES:
                 self._task_state_manager.remove_state_machine(event.task_id)
-                self._task_id_to_task.pop(event.task_id, None)
+                self.__release_task(event.task_id)
 
     def __is_task_owned_by_worker(self, event: WorkerReportedTaskEvent) -> bool:
         """Answer whether the worker that reported on a task is the worker that holds it.
@@ -382,7 +385,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         except Exception:
             logger.exception(f"{event.task_id!r}: could not report the faulted task to the monitor")
 
-        self._task_id_to_task.pop(event.task_id, None)
+        self.__release_task(event.task_id)
         if event.task_id in self._unassigned:
             # the payload is gone, so an id left in the queue would raise in __acquire_workers on every later drain
             self._unassigned.remove(event.task_id)
@@ -733,11 +736,25 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         if task is None or self._object_controller is None:
             return 0
 
-        total = self._object_controller.get_object_size(task.funcObjectId)
-        for argument in task.functionArgs:
-            if argument.type == Task.Argument.ArgumentType.objectID:
-                total += self._object_controller.get_object_size(argument.data)
-        return total
+        return sum(self._object_controller.get_object_size(object_id) for object_id in task_object_ids(task))
+
+    def __hold_task(self, task: Task) -> None:
+        """Keep a task and count it against the objects it names, which is what a status report reads."""
+        self._task_id_to_task[task.taskId] = task
+        for object_id in task_object_ids(task):
+            self._object_task_counts[object_id] = self._object_task_counts.get(object_id, 0) + 1
+
+    def __release_task(self, task_id: TaskID) -> None:
+        task = self._task_id_to_task.pop(task_id, None)
+        if task is None:
+            return
+
+        for object_id in task_object_ids(task):
+            remaining = self._object_task_counts[object_id] - 1
+            if remaining:
+                self._object_task_counts[object_id] = remaining
+            else:
+                self._object_task_counts.pop(object_id)
 
     async def __retry_unassignable(self):
         futures = [

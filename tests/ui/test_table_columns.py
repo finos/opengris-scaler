@@ -135,7 +135,6 @@ def object_row() -> Dict:
                         objectType=ObjectMetadata.ObjectContentType.object,
                         size=2_000_000,
                         creator=b"Client|one",
-                        taskIds=[b"b" * 32],
                         taskCount=1,
                     )
                 ],

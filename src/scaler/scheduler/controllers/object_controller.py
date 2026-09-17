@@ -118,13 +118,12 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
             # A storage server that is gone or slow must not stop the scheduler reporting everything else.
             self._storage_totals = ObjectStorageTotals()
 
-    def get_object_size(self, object_id: bytes) -> int:
+    def get_object_size(self, object_id: ObjectID) -> int:
         """Payload bytes for an object, 0 if it is gone or its client does not report sizes."""
-        key = ObjectID(object_id)
-        if not self._object_tracker.has_object(key):
+        if not self._object_tracker.has_object(object_id):
             return 0
 
-        return self._object_tracker.get_object(key).object_size
+        return self._object_tracker.get_object(object_id).object_size
 
     def object_count(self) -> int:
         return self._object_tracker.object_count()

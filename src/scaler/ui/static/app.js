@@ -700,8 +700,7 @@ var OBJECT_FIELDS = ["object", "name", "type", "size", "client", "tasks"];
 var OBJECT_TITLE_FIELDS = {
     "object": function(o) { return o.object_id || ""; },
     "name": function(o) { return o.full_name || ""; },
-    "client": function(o) { return o.full_client || ""; },
-    "tasks": function(o) { return (o.task_ids || []).join(" "); }
+    "client": function(o) { return o.full_client || ""; }
 };
 
 function renderObjects() {

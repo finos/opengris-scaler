@@ -16,9 +16,6 @@ from scaler.scheduler.controllers.worker_manager_controller import WorkerManager
 from scaler.utility.memory import get_memory_limit_and_available, get_process_memory
 from scaler.utility.mixins import Looper
 
-# An object's task ids that travel with it; a graph-wide object has one per node, so the rest is a count.
-OBJECT_TASK_ID_LIMIT = 20
-
 
 class VanillaInformationController(InformationController, Looper):
     def __init__(self, config_controller: VanillaConfigController):
@@ -61,24 +58,20 @@ class VanillaInformationController(InformationController, Looper):
         await self.__send_object_state()
 
     async def __send_object_state(self) -> None:
-        """The biggest objects, and the tasks holding each one, which is what a full store is made of."""
+        """The biggest objects, and how many tasks hold each one, which is what a full store is made of."""
         details = self._object_controller.get_largest_objects(self._config_controller.get_config("object_report_limit"))
-        task_ids_by_object = self._task_controller.get_task_ids_by_object({detail.object_id for detail in details})
 
-        objects = []
-        for detail in details:
-            task_ids = task_ids_by_object[detail.object_id]
-            objects.append(
-                StateObject.ObjectDetail(
-                    objectId=detail.object_id,
-                    name=detail.name,
-                    objectType=detail.content_type,
-                    size=detail.size,
-                    creator=detail.creator,
-                    taskIds=task_ids[:OBJECT_TASK_ID_LIMIT],
-                    taskCount=len(task_ids),
-                )
+        objects = [
+            StateObject.ObjectDetail(
+                objectId=detail.object_id,
+                name=detail.name,
+                objectType=detail.content_type,
+                size=detail.size,
+                creator=detail.creator,
+                taskCount=self._task_controller.get_task_count(detail.object_id),
             )
+            for detail in details
+        ]
 
         await self._monitor_binder.send(
             StateObject(objects=objects, totalObjects=self._object_controller.object_count())

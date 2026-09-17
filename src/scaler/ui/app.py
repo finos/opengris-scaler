@@ -1387,10 +1387,9 @@ class WebUIApp:
         }
 
     def _process_objects(self, state: StateObject) -> None:
-        """The biggest objects the scheduler tracks, and the tasks holding each one."""
+        """The biggest objects the scheduler tracks, and how many tasks hold each one."""
         rows = []
         for detail in state.objects:
-            task_ids = [bytes(task_id).hex()[:TASK_ID_DISPLAY_LENGTH] for task_id in detail.taskIds]
             creator = bytes(detail.creator).decode(errors="replace")
             object_id = bytes(detail.objectId)
             name = detail.name.decode(errors="replace")
@@ -1406,7 +1405,6 @@ class WebUIApp:
                     "client": _format_client_name(creator) if creator else "\u2014",
                     "full_client": creator,
                     "tasks": detail.taskCount,
-                    "task_ids": task_ids,
                 }
             )
         self._objects_data = rows

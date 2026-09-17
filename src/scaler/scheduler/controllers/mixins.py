@@ -71,7 +71,7 @@ class ObjectController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_object_size(self, object_id: bytes) -> int:
+    def get_object_size(self, object_id: ObjectID) -> int:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -163,7 +163,7 @@ class TaskController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_task_ids_by_object(self, object_ids: Set[ObjectID]) -> Dict[ObjectID, List[TaskID]]:
+    def get_task_count(self, object_id: ObjectID) -> int:
         raise NotImplementedError()
 
     @abc.abstractmethod

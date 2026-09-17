@@ -9,11 +9,12 @@ from scaler.protocol.capnp import Task, TaskCancelConfirmType, TaskResult, TaskR
 from scaler.scheduler.controllers import task_controller
 from scaler.scheduler.task.task_state_machine import TERMINAL_TASK_STATES
 from scaler.utility.exceptions import SchedulerError
-from scaler.utility.identifiers import TaskID
+from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.serialization import deserialize_failure
 from tests.scheduler.controllers.task_state_graph_harness import (
     CLIENT_ID,
+    FUNCTION_OBJECT_ID,
     LIVE_TASK_STATES,
     NO_WORKER,
     REJECTED,
@@ -770,6 +771,56 @@ class TestTaskControllerStatistics(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(harness.get_state_machine())
         self.assertNotIn(TASK_ID, harness.controller._task_id_to_task)
         self.assertEqual(list(harness.controller._unassigned), [])
+
+
+class TestObjectTaskCounts(unittest.IsolatedAsyncioTestCase):
+    """The object report reads these counts, so they follow the tasks that name each object."""
+
+    ARGUMENT_OBJECT_ID = ObjectID(b"argument-object-id-padded-to-32b")
+    UNUSED_OBJECT_ID = ObjectID(b"an-object-no-task-names-padded32")
+
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+        self.harness = TaskControllerHarness()
+
+    async def test_a_task_counts_against_its_function_and_its_arguments(self):
+        await self.harness.controller.on_task_new(make_task(argument_object_ids=[self.ARGUMENT_OBJECT_ID]))
+
+        self.assertEqual(self.harness.controller.get_task_count(FUNCTION_OBJECT_ID), 1)
+        self.assertEqual(self.harness.controller.get_task_count(self.ARGUMENT_OBJECT_ID), 1)
+        self.assertEqual(self.harness.controller.get_task_count(self.UNUSED_OBJECT_ID), 0)
+
+    async def test_an_object_two_tasks_name_counts_twice(self):
+        for task_id in (TaskID(b"first-task"), TaskID(b"second-task")):
+            await self.harness.controller.on_task_new(make_task(task_id, argument_object_ids=[self.ARGUMENT_OBJECT_ID]))
+
+        self.assertEqual(self.harness.controller.get_task_count(self.ARGUMENT_OBJECT_ID), 2)
+
+    async def test_an_object_named_twice_by_one_task_counts_once(self):
+        arguments = [self.ARGUMENT_OBJECT_ID, self.ARGUMENT_OBJECT_ID]
+
+        await self.harness.controller.on_task_new(make_task(argument_object_ids=arguments))
+
+        self.assertEqual(self.harness.controller.get_task_count(self.ARGUMENT_OBJECT_ID), 1)
+
+    async def test_a_task_that_reaches_a_terminal_state_stops_counting(self):
+        await self.harness.enter_state(TaskState.running)
+
+        await self.harness.controller.on_task_result(WORKER_ID, make_task_result(TaskResultType.success))
+
+        self.assertEqual(self.harness.controller.get_task_count(FUNCTION_OBJECT_ID), 0)
+        self.assertEqual(self.harness.controller._object_task_counts, {})
+
+    async def test_a_faulted_task_stops_counting(self):
+        await self.harness.enter_state(TaskState.canceling)
+        self.harness.worker_controller.on_task_done.side_effect = RuntimeError("the action failed")
+
+        await self.harness.controller.on_task_cancel_confirm(
+            WORKER_ID, make_task_cancel_confirm(TaskCancelConfirmType.canceled)
+        )
+
+        self.assertEqual(self.harness.controller._object_task_counts, {})
 
 
 if __name__ == "__main__":
