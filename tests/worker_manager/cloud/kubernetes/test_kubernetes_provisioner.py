@@ -313,6 +313,36 @@ class TestDesiredTaskConcurrency(unittest.IsolatedAsyncioTestCase):
 class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
     """Tests for the COMMAND env var injected into the pod spec."""
 
+    def _env_names(self, core_v1: MagicMock, call_index: int = 0) -> list[str]:
+        pod = core_v1.create_namespaced_pod.call_args_list[call_index].args[1]
+        return [env_var["name"] for env_var in pod["spec"]["containers"][0]["env"]]
+
+    def _env_value(self, core_v1: MagicMock, name: str, call_index: int = 0) -> str:
+        pod = core_v1.create_namespaced_pod.call_args_list[call_index].args[1]
+        for env_var in pod["spec"]["containers"][0]["env"]:
+            if env_var["name"] == name:
+                return env_var["value"]
+        raise AssertionError(f"{name} env var not found in pod spec")
+
+    async def test_python_version_is_not_injected(self) -> None:
+        """python_version is baked into the image and must not be sent as PYTHON_VERSION."""
+        from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
+
+        cfg = _make_config(python_worker_environment=PythonWorkerEnvironmentConfig(python_version="3.12"))
+        provisioner, core_v1 = _make_provisioner(config=cfg)
+        await provisioner.start_units(1)
+        self.assertNotIn("PYTHON_VERSION", self._env_names(core_v1))
+
+    async def test_requirements_txt_is_injected(self) -> None:
+        """requirements_txt must be forwarded as PYTHON_REQUIREMENTS for extra task packages."""
+        from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
+
+        cfg = _make_config(python_worker_environment=PythonWorkerEnvironmentConfig(requirements_txt="numpy\npandas"))
+        provisioner, core_v1 = _make_provisioner(config=cfg)
+        await provisioner.start_units(1)
+        self.assertEqual(self._env_value(core_v1, "PYTHON_REQUIREMENTS"), "numpy\npandas")
+        self.assertNotIn("PYTHON_VERSION", self._env_names(core_v1))
+
     async def test_command_contains_worker_manager_id(self) -> None:
         """COMMAND must include '--worker-manager-id test-wm'."""
         provisioner, core_v1 = _make_provisioner()
