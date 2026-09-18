@@ -108,16 +108,54 @@ ok "python:  $(python --version) at $(command -v python)"
 ok "scaler:  $(python -c 'import scaler; print(scaler.__version__)' 2>/dev/null || echo 'ok')"
 
 # ── Step 2: build worker image ───────────────────────────────────────────────
+PYTHON_VERSION="${SCALER_KIND_PYTHON_VERSION:-3.14}"
+BASE_TAG="scaler-base:kind-build"
+
 if [[ $DO_BUILD -eq 1 ]]; then
-    step "Building worker image '${IMAGE_TAG}'..."
+    step "Building base image with scaler wheel..."
+    "$CLI" build \
+        --tag "${BASE_TAG}" \
+        --build-arg "PYTHON_VERSION=${PYTHON_VERSION}" \
+        -f - "${REPO_ROOT}" <<'BASE_DOCKERFILE'
+FROM ghcr.io/astral-sh/uv:latest AS uv
+
+FROM alpine:3.23 AS builder
+ARG PYTHON_VERSION=3.14
+
+COPY --from=uv /uv /usr/local/bin/uv
+
+RUN apk add --no-cache \
+    ca-certificates cmake gcc g++ make musl-dev pkgconf \
+    capnproto capnproto-dev \
+    libuv-dev openssl-dev
+
+ENV UV_PYTHON_INSTALL_DIR="/opt/python"
+RUN uv python install "${PYTHON_VERSION}"
+
+COPY . /src
+RUN cd /src && uv build --wheel --out-dir /wheels
+
+FROM alpine:3.23
+COPY --from=builder /wheels/ /wheels/
+BASE_DOCKERFILE
+    [[ $? -eq 0 ]] && ok "Base image built" || die "Base image build failed"
+
+    SCALER_KIND_WHEEL=$("$CLI" run --rm "${BASE_TAG}" ls /wheels/ | head -1)
+    [[ -n "${SCALER_KIND_WHEEL}" ]] || die "No wheel found in base image"
+    ok "Wheel: ${SCALER_KIND_WHEEL}"
+
+    step "Building worker image '${IMAGE_TAG}' from base..."
     "$CLI" build \
         --file "${REPO_ROOT}/docker/Dockerfile" \
+        --build-arg "BASE_IMAGE=${BASE_TAG}" \
         --tag  "${IMAGE_TAG}" \
         "${REPO_ROOT}" \
         && ok "Image built" \
         || die "Image build failed"
 else
     step "Skipping image build — using existing '${IMAGE_TAG}'"
+    SCALER_KIND_WHEEL=$("$CLI" run --rm "${IMAGE_TAG}" ls /wheels/ 2>/dev/null | head -1)
+    [[ -n "${SCALER_KIND_WHEEL}" ]] || die "No wheel found in image — rebuild without --no-build"
 fi
 
 # ── Step 3: create KinD cluster ──────────────────────────────────────────────
@@ -184,6 +222,8 @@ SCALER_KIND_IMAGE="${IMAGE_TAG}" \
 SCALER_KIND_KUBECONFIG="${KUBECONFIG_PATH}" \
 SCALER_KIND_NAMESPACE="${NAMESPACE}" \
 SCALER_SCHEDULER_HOST="${KIND_BRIDGE_IP}" \
+SCALER_KIND_WHEEL="${SCALER_KIND_WHEEL}" \
+SCALER_KIND_PYTHON_VERSION="${PYTHON_VERSION}" \
     python -m unittest discover \
         -v \
         -s "${REPO_ROOT}/tests/worker_manager_adapter/kubernetes" \

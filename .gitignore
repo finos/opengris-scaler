@@ -60,4 +60,3 @@ docs/source/.jupyterlite.doit.db
 docs/source/jupyter_lite_config.json
 
 *.pem
-docker/scaler-venv/

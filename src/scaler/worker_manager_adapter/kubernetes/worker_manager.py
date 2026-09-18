@@ -173,10 +173,10 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
             env_vars = [V1EnvVar(name="COMMAND", value=command)]
             pwe = config.python_worker_environment
-            if pwe.requirements_txt is not None:
-                env_vars.append(V1EnvVar(name="PYTHON_REQUIREMENTS", value=pwe.requirements_txt))
             if pwe.python_version is not None:
-                env_vars.append(V1EnvVar(name="PYTHON_VERSION", value=pwe.python_version))
+                logger.warning("python_version is ignored: the worker image bakes its own Python interpreter")
+            if pwe.requirements_txt is not None:
+                env_vars.append(V1EnvVar(name="PYTHON_REQUIREMENTS", value=load_file_or_inline(pwe.requirements_txt)))
 
             pod_manifest = V1Pod(
                 metadata=V1ObjectMeta(
