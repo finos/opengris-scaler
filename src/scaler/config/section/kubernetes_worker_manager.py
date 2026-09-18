@@ -36,7 +36,7 @@ class KubernetesWorkerManagerConfig(ConfigClass):
         default="",
         metadata=dict(
             required=True,
-            help="Container image used for worker Pods (e.g. 'myregistry/scaler-worker:latest'). Required.",
+            help="Container image used for worker Pods (e.g. 'ghcr.io/finos/scaler:latest-amd64'). Required.",
         ),
     )
 

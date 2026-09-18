@@ -39,6 +39,8 @@ _IMAGE = os.environ.get("SCALER_KIND_IMAGE", "scaler-worker:kind-test")
 _KUBECONFIG = os.environ.get("SCALER_KIND_KUBECONFIG", os.path.expanduser("~/.kube/config"))
 _NAMESPACE = os.environ.get("SCALER_KIND_NAMESPACE", "scaler-test")
 _HOST = os.environ.get("SCALER_SCHEDULER_HOST", "172.18.0.1")
+_WHEEL = os.environ.get("SCALER_KIND_WHEEL", "")
+_PYTHON_VERSION = os.environ.get("SCALER_KIND_PYTHON_VERSION", "3.14")
 _PYTHON = sys.executable
 
 # Locate CLI entry points in the same bin/ dir as the active interpreter,
@@ -191,6 +193,8 @@ class KindIntegrationBase(unittest.TestCase):
             workers_per_pod = {workers_per_pod}
             delete_grace_period_seconds = 5
             image_pull_policy = "Never"
+            python_version = "{_PYTHON_VERSION}"
+            requirements_txt = "/wheels/{_WHEEL}"
         """)
         if pod_template:
             toml += f'\npod_template = """\n{pod_template}"""\n'
