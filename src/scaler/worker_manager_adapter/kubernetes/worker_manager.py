@@ -88,9 +88,8 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
                     if event_type == "DELETED" and pod_name in self._pods:
                         logger.warning(f"Watch: pod {pod_name!r} was deleted externally, removing from tracking")
-                        self._pods.remove(pod_name)
                         self._loop.call_soon_threadsafe(
-                            asyncio.ensure_future, self._capacity_coordinator.request_reconcile()
+                            asyncio.ensure_future, self._handle_external_pod_deletion(pod_name)
                         )
             except kubernetes.client.exceptions.ApiException as e:
                 if self._watch_stop.is_set():
@@ -100,6 +99,11 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                 if self._watch_stop.is_set():
                     return
                 logger.error(f"Pod watch error (will reconnect): {e}")
+
+    async def _handle_external_pod_deletion(self, pod_name: str) -> None:
+        if pod_name in self._pods:
+            self._pods.remove(pod_name)
+            await self._capacity_coordinator.request_reconcile()
 
     def _stop_pod_watch(self) -> None:
         self._watch_stop.set()
@@ -257,11 +261,13 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                         grace_period_seconds=config.delete_grace_period_seconds,
                     ),
                 )
-                self._pods.remove(pod_name)
+                if pod_name in self._pods:
+                    self._pods.remove(pod_name)
                 logger.info(f"Stopped Kubernetes pod {pod_name!r}")
             except kubernetes.client.exceptions.ApiException as e:
                 if e.status == 404:
-                    self._pods.remove(pod_name)
+                    if pod_name in self._pods:
+                        self._pods.remove(pod_name)
                     logger.warning(f"Pod {pod_name!r} not found during deletion (already gone)")
                 else:
                     logger.error(f"Failed to delete pod {pod_name!r}: {e}")
