@@ -25,17 +25,21 @@ Prerequisites
   ``create``, and ``delete`` on ``pods`` in the target namespace.
   See `RBAC Example`_ below for a ready-to-apply manifest.
 
-* A container image reachable from the cluster. Use the official image, which
-  bakes in Python 3.14 and ``opengris-scaler``:
+* A container image pushed to a registry reachable from the cluster.  The image
+  must include ``uv`` so that Python and requirements can be installed at container
+  start-up.
 
-  .. code-block:: text
+  The repository includes a ready-made Dockerfile at ``docker/Dockerfile`` that
+  builds a minimal Alpine image with ``uv`` pre-installed and the shared libraries
+  scaler needs at runtime.  The accompanying ``docker/entrypoint.sh`` reads the
+  ``PYTHON_VERSION``, ``PYTHON_REQUIREMENTS``, and ``COMMAND`` environment variables
+  that the k8s_raw worker manager injects into each pod automatically.  To build
+  and push the image:
 
-     ghcr.io/finos/scaler:latest-amd64    # linux/amd64
-     ghcr.io/finos/scaler:latest-arm64    # linux/arm64
+  .. code-block:: bash
 
-  Extra task packages can still be installed at pod start-up via
-  ``requirements_txt`` (wheels only). The Dockerfile at ``docker/Dockerfile``
-  is a two-stage build if you need to customize the image.
+     docker build -t myregistry.example.com/scaler:latest -f docker/Dockerfile .
+     docker push myregistry.example.com/scaler:latest
 
 Quick Start
 -----------
@@ -55,8 +59,8 @@ Verify your cluster access:
    kubectl cluster-info
    kubectl get namespace scaler   # or whichever namespace you plan to use
 
-Copy the ``config.toml`` below, set ``pod_image`` to the GHCR tag that matches
-your cluster architecture, then start services:
+Copy the ``config.toml`` below, replace the placeholder image URI, then start
+services:
 
 .. tabs::
 
@@ -79,7 +83,7 @@ your cluster architecture, then start services:
          max_task_concurrency = 80
 
          namespace = "scaler"
-         pod_image = "ghcr.io/finos/scaler:latest-amd64"
+         pod_image = "myregistry.example.com/scaler:latest"
          workers_per_pod = 4
          delete_grace_period_seconds = 60
 
@@ -89,6 +93,9 @@ your cluster architecture, then start services:
          [worker_manager.resource_requests]
          cpu = "4"
          memory = "16Gi"
+
+         requirements_txt = "opengris-scaler"
+         python_version = "3.14"
 
       Run command:
 
@@ -108,7 +115,7 @@ your cluster architecture, then start services:
              --worker-manager-id wm-k8s-01 \
              --max-task-concurrency 80 \
              --namespace scaler \
-             --pod-image ghcr.io/finos/scaler:latest-amd64 \
+             --pod-image myregistry.example.com/scaler:latest \
              --workers-per-pod 4 \
              --delete-grace-period-seconds 60
 
@@ -198,7 +205,7 @@ Pod Image
      - ``str``
      - *(required)*
      - Container image used for worker Pods
-       (e.g. ``ghcr.io/finos/scaler:latest-amd64``).
+       (e.g. ``myregistry.example.com/scaler:latest``).
        The official image bakes Python 3.14 and ``opengris-scaler``.
 
 Sizing
@@ -299,7 +306,7 @@ element-level merge.
    [[worker_manager]]
    type = "k8s_raw"
    namespace = "scaler"
-   pod_image = "ghcr.io/finos/scaler:latest-amd64"
+   pod_image = "myregistry.example.com/scaler:latest"
    workers_per_pod = 4
 
    # Common options:
@@ -348,7 +355,7 @@ Alternatively, point ``pod_template`` at a YAML file:
    [[worker_manager]]
    type = "k8s_raw"
    namespace = "scaler"
-   pod_image = "ghcr.io/finos/scaler:latest-amd64"
+   pod_image = "myregistry.example.com/scaler:latest"
    workers_per_pod = 4
    pod_template = "pod-template.yaml"
 
@@ -379,9 +386,10 @@ Lifecycle
 Python Environment
 ~~~~~~~~~~~~~~~~~~
 
-The official image already contains Python 3.14 and ``opengris-scaler``. These
-fields are optional extras. They appear as flat keys in the
-``[[worker_manager]]`` TOML section (not a sub-section).
+These values are passed as environment variables into each container so the entrypoint
+can install the right packages at startup. Shares the same
+``PythonWorkerEnvironmentConfig`` fields as other container-based worker managers; they
+appear as flat keys in the ``[[worker_manager]]`` TOML section (not a sub-section).
 
 .. list-table::
    :header-rows: 1
@@ -394,18 +402,15 @@ fields are optional extras. They appear as flat keys in the
    * - ``requirements_txt``
      - ``str``
      - ``None``
-     - Extra Python packages to install inside the container at startup (task
-       dependencies such as ``numpy``). Passed as the ``PYTHON_REQUIREMENTS``
-       environment variable. Can be a path to a requirements.txt file or an
-       inline string. Packages must have wheels; the runtime image has no
-       compilers. ``opengris-scaler`` is already baked in and does not need to
-       be listed.
+     - Python packages to install inside the container at startup. Passed as the
+       ``PYTHON_REQUIREMENTS`` environment variable. Can be a path to a
+       requirements.txt file or an inline string. Include any packages your task
+       functions import. Must include ``opengris-scaler`` itself.
    * - ``python_version``
      - ``str``
      - ``None``
-     - Ignored. The worker image bakes its Python interpreter at build time
-       (default 3.14). To use a different version, rebuild the image with
-       ``--build-arg PYTHON_VERSION=...``.
+     - Python version string passed as the ``PYTHON_VERSION`` environment variable
+       to the container entrypoint.
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -510,9 +515,9 @@ Apply the RBAC manifest in `RBAC Example`_ and confirm ``service_account_name``
 matches the deployed service account.
 
 **``scaler_worker_manager`` not found in container:**
-Use the official image (``ghcr.io/finos/scaler``), which bakes ``opengris-scaler``
-in. If you built a custom image, confirm the Dockerfile installs the package into
-the venv at ``/opt/opengris-scaler``.
+Ensure ``requirements_txt`` includes ``opengris-scaler`` (or at minimum the package
+that provides the ``scaler_worker_manager`` entry point), and that the container
+entrypoint installs it before launching workers.
 
 **Pods are not deleted after scale-down:**
 Check that the worker manager process has not crashed.  The manager holds the list of

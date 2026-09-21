@@ -42,7 +42,7 @@ class KubernetesWorkerManagerConfig(ConfigClass):
 
     # Workers per pod
     workers_per_pod: int = dataclasses.field(
-        default=1, metadata=dict(help="Number of scaler worker processes launched inside each Pod. Must be >= 1.")
+        default=4, metadata=dict(help="Number of scaler worker processes launched inside each Pod. Must be >= 1.")
     )
 
     # Python worker environment (reuses the shared config used by OCI / ORB managers)
