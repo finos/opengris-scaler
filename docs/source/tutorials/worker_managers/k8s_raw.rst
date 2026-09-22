@@ -359,10 +359,10 @@ Alternatively, point ``pod_template`` at a YAML file:
    workers_per_pod = 4
    pod_template = "pod-template.yaml"
 
-.. warning::
-   If you specify ``env`` in the YAML template's container spec, it **replaces**
-   Scaler's injected env vars (``COMMAND``, and ``PYTHON_REQUIREMENTS`` when
-   set) entirely. You must re-include them if you need them.
+.. note::
+   Environment variables from the template are merged with Scaler's injected
+   vars (``COMMAND``, ``PYTHON_REQUIREMENTS``, ``PYTHON_VERSION``).  Scaler's
+   vars take precedence by name; any additional vars you define are preserved.
 
 Lifecycle
 ~~~~~~~~~
