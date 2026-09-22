@@ -167,6 +167,10 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
             provisioner._loop = asyncio.get_running_loop()
             provisioner._pod_watch_loop()
 
+        # The watch schedules _handle_external_pod_deletion via
+        # call_soon_threadsafe; yield so the event loop runs the callback.
+        await asyncio.sleep(0)
+
         self.assertEqual(provisioner._pods, [surviving_name])
 
     async def test_deleted_event_for_unknown_pod_is_ignored(self) -> None:
@@ -324,14 +328,14 @@ class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
                 return env_var["value"]
         raise AssertionError(f"{name} env var not found in pod spec")
 
-    async def test_python_version_is_not_injected(self) -> None:
-        """python_version is baked into the image and must not be sent as PYTHON_VERSION."""
+    async def test_python_version_is_injected(self) -> None:
+        """python_version must be forwarded as PYTHON_VERSION for the dynamic entrypoint."""
         from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 
         cfg = _make_config(python_worker_environment=PythonWorkerEnvironmentConfig(python_version="3.12"))
         provisioner, core_v1 = _make_provisioner(config=cfg)
         await provisioner.start_units(1)
-        self.assertNotIn("PYTHON_VERSION", self._env_names(core_v1))
+        self.assertEqual(self._env_value(core_v1, "PYTHON_VERSION"), "3.12")
 
     async def test_requirements_txt_is_injected(self) -> None:
         """requirements_txt must be forwarded as PYTHON_REQUIREMENTS for extra task packages."""
@@ -360,6 +364,42 @@ class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
         provisioner, core_v1 = _make_provisioner()
         await provisioner.start_units(1)
         self.assertIn("--worker-type KUBERNETES", _get_command(core_v1))
+
+    async def test_template_env_vars_are_preserved(self) -> None:
+        """User env vars from pod_template are kept alongside Scaler's injected vars."""
+        template = (
+            "spec:\n"
+            "  containers:\n"
+            "  - name: scaler-worker\n"
+            "    env:\n"
+            "    - name: MY_CUSTOM_VAR\n"
+            "      value: hello\n"
+        )
+        cfg = _make_config(pod_template=template)
+        provisioner, core_v1 = _make_provisioner(config=cfg)
+        await provisioner.start_units(1)
+        env_names = self._env_names(core_v1)
+        self.assertIn("MY_CUSTOM_VAR", env_names)
+        self.assertIn("COMMAND", env_names)
+        self.assertEqual(self._env_value(core_v1, "MY_CUSTOM_VAR"), "hello")
+
+    async def test_template_env_vars_do_not_override_scaler_vars(self) -> None:
+        """Scaler's injected env vars take precedence over template env vars with the same name."""
+        template = (
+            "spec:\n"
+            "  containers:\n"
+            "  - name: scaler-worker\n"
+            "    env:\n"
+            "    - name: COMMAND\n"
+            "      value: should-be-overridden\n"
+            "    - name: MY_VAR\n"
+            "      value: kept\n"
+        )
+        cfg = _make_config(pod_template=template)
+        provisioner, core_v1 = _make_provisioner(config=cfg)
+        await provisioner.start_units(1)
+        self.assertNotEqual(self._env_value(core_v1, "COMMAND"), "should-be-overridden")
+        self.assertEqual(self._env_value(core_v1, "MY_VAR"), "kept")
 
 
 # ---------------------------------------------------------------------------

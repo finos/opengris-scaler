@@ -15,7 +15,7 @@ import kubernetes.client.exceptions
 import kubernetes.config
 import kubernetes.watch
 import yaml
-from kubernetes.client import ApiClient, V1Container, V1EnvVar, V1ObjectMeta, V1Pod, V1PodSpec
+from kubernetes.client import ApiClient, V1Container, V1ObjectMeta, V1Pod, V1PodSpec
 
 from scaler.config.section.kubernetes_worker_manager import KubernetesWorkerManagerConfig
 from scaler.utility.dict_utils import deep_merge
@@ -88,9 +88,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
                     if event_type == "DELETED" and pod_name in self._pods:
                         logger.warning(f"Watch: pod {pod_name!r} was deleted externally, removing from tracking")
-                        self._loop.call_soon_threadsafe(
-                            asyncio.ensure_future, self._handle_external_pod_deletion(pod_name)
-                        )
+                        self._loop.call_soon_threadsafe(self._handle_external_pod_deletion, pod_name)
             except kubernetes.client.exceptions.ApiException as e:
                 if self._watch_stop.is_set():
                     return
@@ -100,10 +98,10 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                     return
                 logger.error(f"Pod watch error (will reconnect): {e}")
 
-    async def _handle_external_pod_deletion(self, pod_name: str) -> None:
+    def _handle_external_pod_deletion(self, pod_name: str) -> None:
         if pod_name in self._pods:
             self._pods.remove(pod_name)
-            await self._capacity_coordinator.request_reconcile()
+            asyncio.ensure_future(self._capacity_coordinator.request_reconcile())
 
     def _stop_pod_watch(self) -> None:
         self._watch_stop.set()
@@ -175,12 +173,12 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         for _ in range(count):
             pod_name = f"scaler-worker-{uuid.uuid4().hex[:12]}"
 
-            env_vars = [V1EnvVar(name="COMMAND", value=command)]
+            scaler_env: List[Dict[str, str]] = [{"name": "COMMAND", "value": command}]
             pwe = config.python_worker_environment
             if pwe.requirements_txt is not None:
-                env_vars.append(V1EnvVar(name="PYTHON_REQUIREMENTS", value=load_file_or_inline(pwe.requirements_txt)))
+                scaler_env.append({"name": "PYTHON_REQUIREMENTS", "value": load_file_or_inline(pwe.requirements_txt)})
             if pwe.python_version is not None:
-                env_vars.append(V1EnvVar(name="PYTHON_VERSION", value=pwe.python_version))
+                scaler_env.append({"name": "PYTHON_VERSION", "value": pwe.python_version})
 
             pod_manifest = V1Pod(
                 metadata=V1ObjectMeta(
@@ -193,7 +191,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                 ),
                 spec=V1PodSpec(
                     restart_policy="Never",
-                    containers=[V1Container(name="scaler-worker", image=config.pod_image, env=env_vars)],
+                    containers=[V1Container(name="scaler-worker", image=config.pod_image)],
                 ),
             )
 
@@ -230,6 +228,11 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                         resources["requests"] = config.resource_requests
                     if config.resource_limits:
                         resources["limits"] = config.resource_limits
+
+                # Merge env vars: Scaler's vars override template vars by name.
+                scaler_env_names = {e["name"] for e in scaler_env}
+                template_env = [e for e in container.get("env", []) if e.get("name") not in scaler_env_names]
+                container["env"] = template_env + scaler_env
 
                 # Invariant: restartPolicy must always be Never.
                 spec["restartPolicy"] = "Never"
