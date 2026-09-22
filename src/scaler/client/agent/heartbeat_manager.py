@@ -26,8 +26,8 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         self._process = psutil.Process() if psutil is not None else None
 
         self._last_scheduler_contact = time.time()
-        self._start_timestamp_ns = 0
-        self._latency_us = 0
+        self._start_timestamp_nanoseconds = 0
+        self._latency_microseconds = 0
         self._connected = False
 
         self._connector_external: Optional[AsyncConnector] = None
@@ -45,7 +45,9 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
             rss = 0
         await self._connector_external.send(
             ClientHeartbeat(
-                resource=Resource(cpu=cpu, rss=rss), latencyMicroseconds=self._latency_us, hostname=get_hostname()
+                resource=Resource(cpu=cpu, rss=rss),
+                latencyMicroseconds=self._latency_microseconds,
+                hostname=get_hostname(),
             ),
             detached=True,
         )
@@ -55,12 +57,12 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
             self._connected = True
 
         self._last_scheduler_contact = time.time()
-        if self._start_timestamp_ns == 0:
+        if self._start_timestamp_nanoseconds == 0:
             # not handling echo if we didn't send out heartbeat
             return
 
-        self._latency_us = int(((time.time_ns() - self._start_timestamp_ns) / 2) // 1_000)
-        self._start_timestamp_ns = 0
+        self._latency_microseconds = int(((time.time_ns() - self._start_timestamp_nanoseconds) / 2) // 1_000)
+        self._start_timestamp_nanoseconds = 0
 
         if self._object_storage_address.done():
             return
@@ -88,9 +90,9 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
                     f"in {self._death_timeout_seconds} seconds"
                 )
 
-        if self._start_timestamp_ns != 0:
+        if self._start_timestamp_nanoseconds != 0:
             # already sent heartbeat, expecting heartbeat echo, so not sending
             return
 
         await self.send_heartbeat()
-        self._start_timestamp_ns = time.time_ns()
+        self._start_timestamp_nanoseconds = time.time_ns()

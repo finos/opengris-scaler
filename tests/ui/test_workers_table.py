@@ -10,7 +10,7 @@ class TestWorkerRow(unittest.TestCase):
         row = worker_row()
         self.assertEqual(row["host"], "box-1")
         self.assertEqual(row["task"], "abcdabcdabcd")
-        self.assertEqual((row["task_age"], row["task_age_s"]), ("7s", 7))
+        self.assertEqual((row["task_age"], row["task_age_seconds"]), ("7s", 7))
 
 
 if __name__ == "__main__":

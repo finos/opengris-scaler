@@ -10,7 +10,7 @@ class WorkerManagerSnapshot:
     worker_manager_id: bytes
     max_task_concurrency: int
     worker_count: int
-    last_seen_s: float  # time.time() epoch seconds of last heartbeat
+    last_seen_at: float  # time.time() epoch seconds of the last heartbeat
     capabilities: Dict[str, int] = dataclasses.field(default_factory=dict)
 
 

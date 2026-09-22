@@ -694,7 +694,7 @@ def _create_manager_snapshot(
         worker_manager_id=worker_manager_id,
         max_task_concurrency=max_task_concurrency,
         worker_count=worker_count,
-        last_seen_s=last_seen if last_seen is not None else time.time(),
+        last_seen_at=last_seen if last_seen is not None else time.time(),
         capabilities=capabilities or {},
     )
 

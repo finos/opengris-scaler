@@ -41,8 +41,8 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
         self._task_manager: Optional["TaskManager"] = None
         self._timeout_manager: Optional[TimeoutManager] = None
 
-        self._start_timestamp_ns = 0
-        self._latency_us = 0
+        self._start_timestamp_nanoseconds = 0
+        self._latency_microseconds = 0
 
         self._object_storage_address: Optional[AddressConfig] = object_storage_address
 
@@ -60,11 +60,11 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
         self._processor_status_provider.set_task_manager(worker_task_manager)
 
     async def on_heartbeat_echo(self, heartbeat: WorkerHeartbeatEcho) -> None:
-        if self._start_timestamp_ns == 0:
+        if self._start_timestamp_nanoseconds == 0:
             return
 
-        self._latency_us = int(((time.time_ns() - self._start_timestamp_ns) / 2) // 1_000)
-        self._start_timestamp_ns = 0
+        self._latency_microseconds = int(((time.time_ns() - self._start_timestamp_nanoseconds) / 2) // 1_000)
+        self._start_timestamp_nanoseconds = 0
         self._timeout_manager.update_last_seen_time()
 
         if self._object_storage_address is None:
@@ -77,7 +77,7 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
         return self._object_storage_address
 
     async def routine(self) -> None:
-        if self._start_timestamp_ns != 0:
+        if self._start_timestamp_nanoseconds != 0:
             return
 
         try:
@@ -96,7 +96,7 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
                 memLimit=mem_limit,
                 queueSize=self._task_queue_size,
                 queuedTasks=self._task_manager.get_queued_size(),
-                latencyMicroseconds=self._latency_us,
+                latencyMicroseconds=self._latency_microseconds,
                 taskLock=not self._task_manager.can_accept_task(),
                 processors=self._processor_status_provider.get_processor_statuses(),
                 capabilities=dict_to_capabilities(self._capabilities),
@@ -104,4 +104,4 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
             ),
             detached=True,
         )
-        self._start_timestamp_ns = time.time_ns()
+        self._start_timestamp_nanoseconds = time.time_ns()

@@ -97,7 +97,7 @@ class WorkerManagerController(Looper, Reporter):
                 {
                     "worker_manager_id": heartbeat.workerManagerID,
                     "identity": source.decode(errors="replace"),
-                    "last_seen_s": min(int(now - last_seen), UINT16_MAX),
+                    "last_seen_seconds": min(int(now - last_seen), UINT16_MAX),
                     "max_task_concurrency": heartbeat.maxTaskConcurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
@@ -127,7 +127,7 @@ class WorkerManagerController(Looper, Reporter):
                 worker_manager_id=manager_id,
                 max_task_concurrency=heartbeat.maxTaskConcurrency,
                 worker_count=worker_count,
-                last_seen_s=last_seen,
+                last_seen_at=last_seen,
                 capabilities=heartbeat.capabilities,
             )
         return snapshots

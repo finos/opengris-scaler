@@ -51,8 +51,8 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         self._timeout_manager: Optional[TimeoutManager] = None
         self._processor_manager: Optional[ProcessorManager] = None
 
-        self._start_timestamp_ns = 0
-        self._latency_us = 0
+        self._start_timestamp_nanoseconds = 0
+        self._latency_microseconds = 0
 
         self._object_storage_address: Optional[AddressConfig] = object_storage_address
 
@@ -71,12 +71,12 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         self._processor_manager = processor_manager
 
     async def on_heartbeat_echo(self, heartbeat: WorkerHeartbeatEcho):
-        if self._start_timestamp_ns == 0:
+        if self._start_timestamp_nanoseconds == 0:
             # not handling echo if we didn't send out heartbeat
             return
 
-        self._latency_us = int(((time.time_ns() - self._start_timestamp_ns) / 2) // 1_000)
-        self._start_timestamp_ns = 0
+        self._latency_microseconds = int(((time.time_ns() - self._start_timestamp_nanoseconds) / 2) // 1_000)
+        self._start_timestamp_nanoseconds = 0
         self._timeout_manager.update_last_seen_time()
 
         if self._object_storage_address is None:
@@ -88,7 +88,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
     async def routine(self):
         processors = self._processor_manager.processors()
 
-        if self._start_timestamp_ns != 0:
+        if self._start_timestamp_nanoseconds != 0:
             # already sent heartbeat, expecting heartbeat echo, so not sending
             return
 
@@ -120,7 +120,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 memLimit=mem_limit,
                 queueSize=self._task_queue_size,
                 queuedTasks=queued_tasks,
-                latencyMicroseconds=self._latency_us,
+                latencyMicroseconds=self._latency_microseconds,
                 taskLock=self._processor_manager.can_accept_task(),
                 processors=[self.__get_processor_status_from_holder(processor) for processor in processors],
                 capabilities=dict_to_capabilities(self._capabilities),
@@ -131,7 +131,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             ),
             detached=True,
         )
-        self._start_timestamp_ns = time.time_ns()
+        self._start_timestamp_nanoseconds = time.time_ns()
 
     def get_object_storage_address(self) -> Optional[AddressConfig]:
         return self._object_storage_address

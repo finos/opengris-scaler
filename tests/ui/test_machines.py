@@ -18,9 +18,9 @@ class TestMachines(unittest.TestCase):
     def test_a_host_was_last_seen_when_its_freshest_worker_was(self) -> None:
         app = make_app(
             {
-                "worker-a": {"host": "box-1", "last_s": 40},
-                "worker-b": {"host": "box-1", "last_s": 3},
-                "worker-c": {"host": "box-2", "last_s": 75},
+                "worker-a": {"host": "box-1", "last_seen_seconds": 40},
+                "worker-b": {"host": "box-1", "last_seen_seconds": 3},
+                "worker-c": {"host": "box-2", "last_seen_seconds": 75},
             }
         )
 
@@ -29,7 +29,7 @@ class TestMachines(unittest.TestCase):
         self.assertEqual(rows["box-2"]["last_seen"], "1m15s")
 
     def test_every_column_has_a_header_and_a_field(self) -> None:
-        row = make_app({"worker-a": {"host": "box-1", "last_s": 1}})._machines_section()["machines"][0]
+        row = make_app({"worker-a": {"host": "box-1", "last_seen_seconds": 1}})._machines_section()["machines"][0]
 
         self.assertEqual(len(headers("machines-table")), len(columns("MACHINE_FIELDS")))
         self.assertEqual([field for field in columns("MACHINE_FIELDS") if field not in row], [])

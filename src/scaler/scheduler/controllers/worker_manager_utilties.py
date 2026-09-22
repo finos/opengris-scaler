@@ -34,7 +34,7 @@ def build_scaling_manager_status(
             capnp.ScalingManagerStatus.WorkerManagerDetail(
                 workerManagerID=d["worker_manager_id"],
                 identity=d["identity"],
-                lastSeenSeconds=d["last_seen_s"],
+                lastSeenSeconds=d["last_seen_seconds"],
                 maxTaskConcurrency=d["max_task_concurrency"],
                 capabilities=d.get("capabilities", ""),
                 pendingWorkers=d.get("pending_workers", 0),

@@ -26,8 +26,8 @@ def make_app(worker_count: int) -> WebUIApp:
             "manager_id": "pod-1",
             "sent": index,
             "lag": f"{worker_count - index}us",
-            "lag_us": worker_count - index,
-            "last_s": index,
+            "lag_microseconds": worker_count - index,
+            "last_seen_seconds": index,
             "last_seen": f"{index}s",
         }
         for index in range(worker_count)
@@ -123,7 +123,7 @@ class TestWorkersSection(unittest.TestCase):
         section = app._workers_section(view, _RenderCache())
 
         # lag renders as "1us".."12us"; sorting the display strings would put "10us" before "2us"
-        self.assertEqual([worker["lag_us"] for worker in section["workers"]][:3], [1, 2, 3])
+        self.assertEqual([worker["lag_microseconds"] for worker in section["workers"]][:3], [1, 2, 3])
 
     def test_two_browsers_get_their_own_page_and_order(self) -> None:
         app = make_app(120)

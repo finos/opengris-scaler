@@ -335,7 +335,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
         manager_snapshots = {
             b"mgr": WorkerManagerSnapshot(
-                worker_manager_id=b"mgr", max_task_concurrency=10, worker_count=10, last_seen_s=0.0, capabilities={}
+                worker_manager_id=b"mgr", max_task_concurrency=10, worker_count=10, last_seen_at=0.0, capabilities={}
             )
         }
 

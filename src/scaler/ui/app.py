@@ -141,12 +141,12 @@ WORKER_SORT = SortSpec(
     numeric=frozenset(
         {"agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended"}
     ),
-    raw={"lag": "lag_us", "last_seen": "last_s", "task_age": "task_age_s"},
+    raw={"lag": "lag_microseconds", "last_seen": "last_seen_seconds", "task_age": "task_age_seconds"},
 )
 TASK_LOG_SORT = SortSpec(
     text=frozenset({"task_id", "function", "client", "worker", "status", "capabilities"}),
     numeric=frozenset({"time"}),
-    raw={"duration": "duration_s", "peak_mem": "peak_bytes", "objects": "object_bytes"},
+    raw={"duration": "duration_seconds", "peak_mem": "peak_bytes", "objects": "object_bytes"},
 )
 # A trail row's time is a clock reading, so it orders by the sequence number it was appended with.
 TASK_EVENTS_SORT = SortSpec(
@@ -1224,15 +1224,15 @@ class WebUIApp:
                 "net_recv": worker_data.netRecvBytes,
                 "task": _current_task_label(worker_data.processorStatuses),
                 "task_age": format_seconds(oldest_task_age),
-                "task_age_s": oldest_task_age,
+                "task_age_seconds": oldest_task_age,
                 "free": worker_data.free,
                 "sent": worker_data.sent,
                 "queued": worker_data.queued,
                 "suspended": worker_data.suspended,
                 "lag": format_microseconds(worker_data.lagMicroseconds),
                 # raw values behind the preformatted columns, so sorting them orders by magnitude
-                "lag_us": worker_data.lagMicroseconds,
-                "last_s": worker_data.lastSeenSeconds,
+                "lag_microseconds": worker_data.lagMicroseconds,
+                "last_seen_seconds": worker_data.lastSeenSeconds,
                 "itl": worker_data.itl,
                 "last_seen": format_seconds(worker_data.lastSeenSeconds),
                 "capabilities": _display_capabilities(set(self._worker_capabilities.get(worker_name, {}).keys())),
@@ -1531,7 +1531,7 @@ class WebUIApp:
         entry["objects"] = format_bytes(state_task.objectBytes) if state_task.objectBytes else "\u2014"
         entry["object_bytes"] = state_task.objectBytes
         entry["duration"] = ""
-        entry["duration_s"] = 0.0
+        entry["duration_seconds"] = 0.0
         entry["peak_mem"] = ""
         entry["peak_bytes"] = 0
 
@@ -1550,7 +1550,7 @@ class WebUIApp:
             try:
                 profile = ProfileResult.deserialize(state_task.metadata)
                 entry["duration"] = f"{profile.duration_s:.2f}s"
-                entry["duration_s"] = profile.duration_s
+                entry["duration_seconds"] = profile.duration_s
                 entry["peak_mem"] = format_bytes(profile.memory_peak) if profile.memory_peak != 0 else "0"
                 entry["peak_bytes"] = profile.memory_peak
                 # back-compute submitted time for a task this GUI never saw start
@@ -1744,7 +1744,7 @@ class WebUIApp:
                     "net_sent": 0,
                     "net_recv": 0,
                     "managers": set(),
-                    "last_s": worker.get("last_s", 0),
+                    "last_seen_seconds": worker.get("last_seen_seconds", 0),
                 },
             )
             entry["workers"] += 1
@@ -1757,7 +1757,7 @@ class WebUIApp:
             entry["sent"] += worker.get("sent", 0)
             entry["managers"].add(worker.get("manager_id", "\u2014"))
             # the host is as fresh as the worker on it that reported last
-            entry["last_s"] = min(entry["last_s"], worker.get("last_s", 0))
+            entry["last_seen_seconds"] = min(entry["last_seen_seconds"], worker.get("last_seen_seconds", 0))
             # host-wide, so take one reading rather than accumulating
             entry["rss_free"] = max(entry["rss_free"], worker.get("rss_free", 0))
             entry["mem_limit"] = max(entry["mem_limit"], worker.get("mem_limit", 0))
@@ -1783,7 +1783,7 @@ class WebUIApp:
                     "sent": entry["sent"],
                     "net_sent": format_bytes(entry["net_sent"]),
                     "net_recv": format_bytes(entry["net_recv"]),
-                    "last_seen": format_seconds(entry["last_s"]),
+                    "last_seen": format_seconds(entry["last_seen_seconds"]),
                 }
             )
         rows.sort(key=lambda row: row["host"])
