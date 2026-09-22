@@ -49,9 +49,9 @@ def make_client(name: bytes, num_task: int = 0) -> ClientManagerStatus.ClientSta
         clientId=name,
         numTask=num_task,
         resource=Resource(cpu=125, rss=2_000_000),
-        latencyUS=1500,
-        lastSeenS=2,
-        connectedS=90,
+        latencyMicroseconds=1500,
+        lastSeenSeconds=2,
+        connectedSeconds=90,
         hostname="box-1",
     )
 

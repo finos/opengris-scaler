@@ -667,7 +667,7 @@ def _create_mock_worker_heartbeat(
         rssFree=500000,
         queueSize=10,
         queuedTasks=queued_tasks,
-        latencyUS=100,
+        latencyMicroseconds=100,
         taskLock=False,
         processors=[],
         capabilities=capabilities or {},

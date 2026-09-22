@@ -139,7 +139,7 @@ class TestScalingManagerStatusRoundTrip(unittest.TestCase):
         # Attribute access (not dict access) must work after round-trip
         self.assertEqual(bytes(d.workerManagerID), b"mgr_a")
         self.assertEqual(d.identity, "host1")
-        self.assertEqual(d.lastSeenS, 5)
+        self.assertEqual(d.lastSeenSeconds, 5)
         self.assertEqual(d.maxTaskConcurrency, 4)
         self.assertEqual(d.capabilities, "gpu")
         self.assertEqual(d.pendingWorkers, 2)

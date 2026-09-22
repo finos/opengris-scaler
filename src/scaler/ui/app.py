@@ -1162,7 +1162,7 @@ class WebUIApp:
             self._worker_managers_data[manager_id] = {
                 "manager_id": manager_id,
                 "identity": detail.identity,
-                "last_seen": format_seconds(detail.lastSeenS),
+                "last_seen": format_seconds(detail.lastSeenSeconds),
                 "max_task_concurrency": detail.maxTaskConcurrency,
                 "worker_count": manager_worker_counts.get(manager_id, 0),
                 "pending_workers": detail.pendingWorkers,
@@ -1229,12 +1229,12 @@ class WebUIApp:
                 "sent": worker_data.sent,
                 "queued": worker_data.queued,
                 "suspended": worker_data.suspended,
-                "lag": format_microseconds(worker_data.lagUS),
+                "lag": format_microseconds(worker_data.lagMicroseconds),
                 # raw values behind the preformatted columns, so sorting them orders by magnitude
-                "lag_us": worker_data.lagUS,
-                "last_s": worker_data.lastS,
+                "lag_us": worker_data.lagMicroseconds,
+                "last_s": worker_data.lastSeenSeconds,
                 "itl": worker_data.itl,
-                "last_seen": format_seconds(worker_data.lastS),
+                "last_seen": format_seconds(worker_data.lastSeenSeconds),
                 "capabilities": _display_capabilities(set(self._worker_capabilities.get(worker_name, {}).keys())),
             }
 
@@ -1373,17 +1373,16 @@ class WebUIApp:
         `pending` counts requests for an object nobody has created yet.
         A client blocks in `get_object` until that happens, so a number here that does not fall is a stalled fetch.
         """
-        held = status.storageTotalBytes
-        unique = status.storageUniqueCount
+        storage = status.storage
         return {
             "tracked_objects": status.numberOfObjects,
-            "objects": status.storageObjectCount,
-            "unique_objects": unique,
-            "size": format_bytes(held),
-            "shared": status.storageObjectCount - unique,
-            "pending": status.storagePendingRequests,
-            "pending_objects": status.storagePendingObjects,
-            "oldest_pending": format_seconds(status.storageOldestPendingS) if status.storagePendingRequests else "0s",
+            "objects": storage.objectCount,
+            "unique_objects": storage.uniqueCount,
+            "size": format_bytes(storage.totalBytes),
+            "shared": storage.objectCount - storage.uniqueCount,
+            "pending": storage.pendingRequests,
+            "pending_objects": storage.pendingObjects,
+            "oldest_pending": format_seconds(storage.oldestPendingSeconds) if storage.pendingRequests else "0s",
         }
 
     def _process_objects(self, state: StateObject) -> None:
@@ -1442,9 +1441,9 @@ class WebUIApp:
                 "failed": totals["failed"],
                 "cpu": format_percentage(client.resource.cpu),
                 "rss": format_bytes(client.resource.rss),
-                "latency": format_microseconds(client.latencyUS),
-                "connected": format_seconds(client.connectedS),
-                "last_seen": format_seconds(client.lastSeenS),
+                "latency": format_microseconds(client.latencyMicroseconds),
+                "connected": format_seconds(client.connectedSeconds),
+                "last_seen": format_seconds(client.lastSeenSeconds),
             }
 
         self._clients_data = clients

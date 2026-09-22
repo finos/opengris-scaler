@@ -153,12 +153,14 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
     def get_status(self) -> ObjectManagerStatus:
         return ObjectManagerStatus(
             numberOfObjects=self._object_tracker.object_count(),
-            storageObjectCount=self._storage_totals.object_count,
-            storageUniqueCount=self._storage_totals.unique_object_count,
-            storageTotalBytes=self._storage_totals.total_bytes,
-            storagePendingRequests=self._storage_totals.pending_request_count,
-            storagePendingObjects=self._storage_totals.pending_object_count,
-            storageOldestPendingS=self._storage_totals.oldest_pending_seconds,
+            storage=ObjectManagerStatus.ObjectStorageStatus(
+                objectCount=self._storage_totals.object_count,
+                uniqueCount=self._storage_totals.unique_object_count,
+                totalBytes=self._storage_totals.total_bytes,
+                pendingRequests=self._storage_totals.pending_request_count,
+                pendingObjects=self._storage_totals.pending_object_count,
+                oldestPendingSeconds=self._storage_totals.oldest_pending_seconds,
+            ),
         )
 
     async def __routine_send_objects_deletions(self):

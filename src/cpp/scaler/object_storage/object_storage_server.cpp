@@ -404,6 +404,20 @@ void ObjectStorageServer::addPendingRequest(
     }
 }
 
+std::vector<ObjectStorageServer::PendingRequest> ObjectStorageServer::removePendingRequests(const ObjectID& objectID)
+{
+    auto it = pendingRequests.find(objectID);
+    if (it == pendingRequests.end()) {
+        return {};
+    }
+
+    auto requests = std::move(it->second);
+    pendingRequests.erase(it);
+    _pendingRequestCount -= requests.size();
+    _pendingObjectsByAge.erase({requests.front().waitingSince, objectID});
+    return requests;
+}
+
 void ObjectStorageServer::clearPendingRequests()
 {
     pendingRequests.clear();
@@ -414,18 +428,9 @@ void ObjectStorageServer::clearPendingRequests()
 void ObjectStorageServer::optionallySendPendingRequests(
     const ObjectID& objectID, std::shared_ptr<const ObjectPayload> objectPtr)
 {
-    auto it = pendingRequests.find(objectID);
-    if (it == pendingRequests.end()) {
-        return;
-    }
-
     // Immediately remove the object's pending requests, or else another coroutine might process them too.
-    auto requests = std::move(it->second);
-    pendingRequests.erase(it);
-    _pendingRequestCount -= requests.size();
-    _pendingObjectsByAge.erase({requests.front().waitingSince, objectID});
+    auto requests = removePendingRequests(objectID);
 
-    std::vector<ObjectStorageServer::SendMessageFuture> res;
     for (auto& request: requests) {
         if (request.requestHeader.requestType == ObjectRequestType::GET_OBJECT) {
             sendGetResponse(request.client, request.requestHeader, objectPtr);
@@ -438,7 +443,6 @@ void ObjectStorageServer::optionallySendPendingRequests(
             optionallySendPendingRequests(request.requestHeader.objectID, objectPtr);
         }
     }
-    return;
 }
 
 };  // namespace object_storage

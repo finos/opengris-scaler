@@ -66,7 +66,7 @@ struct GraphTask {
 
 struct ClientHeartbeat {
     resource @0 :Status.Resource;
-    latencyUS @1 :UInt32;
+    latencyMicroseconds @1 :UInt32;
     hostname @2 :Text;   # machine the client runs on, so the UI can say where a task came from
 }
 
@@ -79,7 +79,7 @@ struct WorkerHeartbeat {
     rssFree @1 :UInt64;
     queueSize @2 :UInt32;
     queuedTasks @3 :UInt32;
-    latencyUS @4 :UInt32;
+    latencyMicroseconds @4 :UInt32;
     taskLock @5 :Bool;
     processors @6 :List(Status.ProcessorStatus);
     capabilities @7 :List(CommonType.TaskCapability);

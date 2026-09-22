@@ -82,9 +82,9 @@ def show_status(status: BaseMessage, screen):
         "object_manager",
         {
             "num_of_objs": status.objectManager.numberOfObjects,
-            "storage_objs": status.objectManager.storageObjectCount,
-            "storage_size": format_bytes(status.objectManager.storageTotalBytes),
-            "storage_wait": status.objectManager.storagePendingRequests,
+            "storage_objs": status.objectManager.storage.objectCount,
+            "storage_size": format_bytes(status.objectManager.storage.totalBytes),
+            "storage_wait": status.objectManager.storage.pendingRequests,
         },
     )
     sent_table = __generate_keyword_data(
@@ -121,8 +121,8 @@ def show_status(status: BaseMessage, screen):
                 "sent": worker.sent,
                 "queued": worker.queued,
                 "suspended": worker.suspended,
-                "lag": worker.lagUS,
-                "last": worker.lastS,
+                "lag": worker.lagMicroseconds,
+                "last": worker.lastSeenSeconds,
                 "ITL": worker.itl,
             }
             for worker in status.workerManager.workers

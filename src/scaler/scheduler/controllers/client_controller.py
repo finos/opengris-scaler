@@ -153,9 +153,9 @@ class VanillaClientController(ClientController, Looper, Reporter):
                         else 0
                     ),
                     resource=connected.heartbeat.resource,
-                    latencyUS=connected.heartbeat.latencyUS,
-                    lastSeenS=min(int(now - connected.last_seen_at), UINT16_MAX),
-                    connectedS=int(now - connected.connected_at),
+                    latencyMicroseconds=connected.heartbeat.latencyMicroseconds,
+                    lastSeenSeconds=min(int(now - connected.last_seen_at), UINT16_MAX),
+                    connectedSeconds=int(now - connected.connected_at),
                     hostname=connected.heartbeat.hostname,
                 )
                 for client_id, connected in self._connected_clients.items()

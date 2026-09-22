@@ -77,22 +77,25 @@ class Resource(CapnpStruct):
     rss: int
 
 class ObjectManagerStatus(CapnpStruct):
+    class ObjectStorageStatus(CapnpStruct):
+        objectCount: int
+        uniqueCount: int
+        totalBytes: int
+        pendingRequests: int
+        pendingObjects: int
+        oldestPendingSeconds: int
+
     numberOfObjects: int
-    storageObjectCount: int
-    storageUniqueCount: int
-    storageTotalBytes: int
-    storagePendingRequests: int
-    storagePendingObjects: int
-    storageOldestPendingS: int
+    storage: ObjectStorageStatus
 
 class ClientManagerStatus(CapnpStruct):
     class ClientStatus(CapnpStruct):
         clientId: ClientID
         numTask: int
         resource: Resource
-        latencyUS: int
-        lastSeenS: int
-        connectedS: int
+        latencyMicroseconds: int
+        lastSeenSeconds: int
+        connectedSeconds: int
         hostname: str
 
     clients: Any
@@ -122,8 +125,8 @@ class WorkerStatus(CapnpStruct):
     sent: int
     queued: int
     suspended: int
-    lagUS: int
-    lastS: int
+    lagMicroseconds: int
+    lastSeenSeconds: int
     itl: str
     processorStatuses: Any
     hostname: str
@@ -141,7 +144,7 @@ class ScalingManagerStatus(CapnpStruct):
     class WorkerManagerDetail(CapnpStruct):
         workerManagerID: bytes
         identity: str
-        lastSeenS: int
+        lastSeenSeconds: int
         maxTaskConcurrency: int
         capabilities: str
         pendingWorkers: int
@@ -216,7 +219,7 @@ class GraphTask(BaseMessage):
 
 class ClientHeartbeat(BaseMessage):
     resource: Resource
-    latencyUS: int
+    latencyMicroseconds: int
     hostname: str
 
 class ClientHeartbeatEcho(BaseMessage):
@@ -227,7 +230,7 @@ class WorkerHeartbeat(BaseMessage):
     rssFree: int
     queueSize: int
     queuedTasks: int
-    latencyUS: int
+    latencyMicroseconds: int
     taskLock: bool
     processors: Any
     capabilities: Any

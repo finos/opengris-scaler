@@ -120,7 +120,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 memLimit=mem_limit,
                 queueSize=self._task_queue_size,
                 queuedTasks=queued_tasks,
-                latencyUS=self._latency_us,
+                latencyMicroseconds=self._latency_us,
                 taskLock=self._processor_manager.can_accept_task(),
                 processors=[self.__get_processor_status_from_holder(processor) for processor in processors],
                 capabilities=dict_to_capabilities(self._capabilities),

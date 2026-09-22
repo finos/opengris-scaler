@@ -73,12 +73,14 @@ class TestStorageCard(unittest.TestCase):
             make_status(
                 ObjectManagerStatus(
                     numberOfObjects=4,
-                    storageObjectCount=10,
-                    storageUniqueCount=7,
-                    storageTotalBytes=4096,
-                    storagePendingRequests=2,
-                    storagePendingObjects=1,
-                    storageOldestPendingS=42,
+                    storage=ObjectManagerStatus.ObjectStorageStatus(
+                        objectCount=10,
+                        uniqueCount=7,
+                        totalBytes=4096,
+                        pendingRequests=2,
+                        pendingObjects=1,
+                        oldestPendingSeconds=42,
+                    ),
                 )
             )
         )

@@ -44,7 +44,9 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
             cpu = 0
             rss = 0
         await self._connector_external.send(
-            ClientHeartbeat(resource=Resource(cpu=cpu, rss=rss), latencyUS=self._latency_us, hostname=get_hostname()),
+            ClientHeartbeat(
+                resource=Resource(cpu=cpu, rss=rss), latencyMicroseconds=self._latency_us, hostname=get_hostname()
+            ),
             detached=True,
         )
 

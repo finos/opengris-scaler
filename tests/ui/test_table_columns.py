@@ -77,8 +77,8 @@ def worker_row() -> Dict:
                     sent=3,
                     queued=4,
                     suspended=0,
-                    lagUS=500,
-                    lastS=1,
+                    lagMicroseconds=500,
+                    lastSeenSeconds=1,
                     itl=" ",
                     processorStatuses=[
                         ProcessorStatus(

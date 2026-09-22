@@ -107,6 +107,9 @@ private:
     void addPendingRequest(
         const ObjectID& objectID, std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
 
+    // Returns the object's pending requests, empty if it has none, and forgets them.
+    std::vector<PendingRequest> removePendingRequests(const ObjectID& objectID);
+
     void clearPendingRequests();
 
     template <ObjectStorageMessage T>

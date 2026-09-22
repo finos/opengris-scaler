@@ -13,12 +13,16 @@ struct ObjectManagerStatus {
 
     # What the object storage server itself reports, from its infoGetTotal request. All zero until the
     # first answer arrives.
-    storageObjectCount @1 :UInt64;   # object IDs the server holds
-    storageUniqueCount @2 :UInt64;   # distinct payloads behind them
-    storageTotalBytes @3 :UInt64;    # bytes those payloads occupy
-    storagePendingRequests @4 :UInt64;  # requests waiting for an object that does not exist yet
-    storagePendingObjects @5 :UInt64;   # distinct objects those requests wait for
-    storageOldestPendingS @6 :UInt64;   # how long the oldest of them has waited
+    storage @1 :ObjectStorageStatus;
+
+    struct ObjectStorageStatus {
+        objectCount @0 :UInt64;           # object IDs the server holds
+        uniqueCount @1 :UInt64;           # distinct payloads behind them
+        totalBytes @2 :UInt64;            # bytes those payloads occupy
+        pendingRequests @3 :UInt64;       # requests waiting for an object that does not exist yet
+        pendingObjects @4 :UInt64;        # distinct objects those requests wait for
+        oldestPendingSeconds @5 :UInt64;  # how long the oldest of them has waited
+    }
 }
 
 struct ClientManagerStatus {
@@ -27,11 +31,11 @@ struct ClientManagerStatus {
     struct ClientStatus {
         clientId @0 :Data;
         numTask @1 :UInt32;
-        resource @2 :Resource;   # the client process itself, from its own heartbeat
-        latencyUS @3 :UInt32;    # round trip the client last measured to the scheduler
-        lastSeenS @4 :UInt16;    # seconds since that heartbeat arrived
-        connectedS @5 :UInt32;   # seconds since the client's first heartbeat
-        hostname @6 :Text;       # machine the client runs on
+        resource @2 :Resource;           # the client process itself, from its own heartbeat
+        latencyMicroseconds @3 :UInt32;  # round trip the client last measured to the scheduler
+        lastSeenSeconds @4 :UInt16;      # seconds since that heartbeat arrived
+        connectedSeconds @5 :UInt32;     # seconds since the client's first heartbeat
+        hostname @6 :Text;               # machine the client runs on
     }
 }
 
@@ -63,8 +67,8 @@ struct WorkerStatus {
     sent @4 :UInt32;
     queued @5 :UInt32;
     suspended @6: UInt8;
-    lagUS @7 :UInt64;
-    lastS @8 :UInt16;
+    lagMicroseconds @7 :UInt64;
+    lastSeenSeconds @8 :UInt16;
     itl @9 :Text;
     processorStatuses @10 :List(ProcessorStatus);
     hostname @12 :Text;          # machine this worker runs on, so the UI can group by host
@@ -88,7 +92,7 @@ struct ScalingManagerStatus {
     struct WorkerManagerDetail {
         workerManagerID @0 :Data;
         identity @1 :Text;
-        lastSeenS @2 :UInt16;
+        lastSeenSeconds @2 :UInt16;
         maxTaskConcurrency @3 :UInt32;
         capabilities @4 :Text;
         # Workers the scheduler has requested but that have not yet connected.
