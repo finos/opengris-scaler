@@ -15,14 +15,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
+from scaler.config.defaults import MAX_VIEW_REQUEST_BYTES, STREAM_KEEPALIVE_SECONDS
 from scaler.ui.app import STATIC_DIR, BrowserView, WebUIApp
 
 logger = logging.getLogger(__name__)
-
-# How long a stream waits for a payload before writing a comment line, so a proxy or a NAT leaves it open.
-STREAM_KEEPALIVE_SECONDS = 15.0
-
-MAX_VIEW_REQUEST_BYTES = 64 * 1024
 
 
 class WebGUIRequestHandler(BaseHTTPRequestHandler):

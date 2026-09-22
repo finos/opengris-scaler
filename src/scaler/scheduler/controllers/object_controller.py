@@ -4,6 +4,7 @@ import logging
 from asyncio import Queue
 from typing import List, Optional, Set
 
+from scaler.config.defaults import STORAGE_TOTALS_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher, ObjectStorageTotals
 from scaler.protocol.capnp import ObjectInstruction, ObjectManagerStatus, ObjectMetadata
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
@@ -14,9 +15,6 @@ from scaler.utility.identifiers import ClientID, ObjectID
 from scaler.utility.mixins import Looper, Reporter
 
 logger = logging.getLogger(__name__)
-
-# How long to wait for the storage server to answer what it holds; unbounded would wedge this routine.
-STORAGE_TOTALS_TIMEOUT_SECONDS = 5.0
 
 
 @dataclasses.dataclass

@@ -13,6 +13,12 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Callable, Collection, Deque, Dict, FrozenSet, Iterable, List, Mapping, Optional, Set, Tuple
 
+from scaler.config.defaults import (
+    DEFAULT_STREAM_WINDOW_MINUTES,
+    MEMORY_CHART_MINIMUM_BYTES,
+    OBJECT_TAG_OFFSET,
+    TASK_ID_DISPLAY_LENGTH,
+)
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.mixins import SyncSubscriber
 from scaler.io.network_backends import get_network_backend_from_env
@@ -59,19 +65,8 @@ SLIDING_WINDOW_OPTIONS = {
     30: datetime.timedelta(minutes=30),
 }
 
-DEFAULT_STREAM_WINDOW_MINUTES = 5
-
 # The name Scaler generates for an unnamed object: its kind, then a repr of its id.
 GENERATED_OBJECT_NAME = re.compile(r"^<(\w+) ObjectID\(.*\)>$")
-
-# An object ID is an owner hash then a unique tag, so the tag is the half that tells two of them apart.
-OBJECT_TAG_OFFSET = 16
-
-# Enough of an ID to pick one out of a page, short enough that a row of them still reads.
-TASK_ID_DISPLAY_LENGTH = 12
-
-# The memory chart's axis floor, so an idle cluster is a flat line rather than noise filling the plot.
-MEMORY_CHART_MINIMUM_BYTES = 1024**3
 
 # Samples are taken a scheduler report apart, so a tenth of a second places each one to well under a pixel.
 MEMORY_SAMPLE_TIME_DECIMALS = 1
