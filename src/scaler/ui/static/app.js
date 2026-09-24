@@ -737,16 +737,16 @@ function renderWorkers() {
         updateWorkerRow(row, pageRows[i]);
         workersBody.appendChild(row);
     }
-    updateWorkersCountBadge();
+    updateWorkersCount();
     renderPagers("workers-pager", workersPage, workersPages, workersTotal, function(p) {
         workersPage = p;
         sendView({ workers_page: p });
     });
 }
 
-// The badge counts the whole fleet, of which this browser holds one page.
-function updateWorkersCountBadge() {
-    workersCount.textContent = workersTotal;
+// The count covers the whole fleet, of which this browser holds one page.
+function updateWorkersCount() {
+    workersCount.textContent = "(" + workersTotal + ")";
 }
 
 // Sorting runs on the server, so a click just sets the indicator and asks for page 0 of the new order.
@@ -903,14 +903,14 @@ function statusClass(status) {
 function updateTaskLog(rows) {
     taskLogData = rows;
     if (activeTab === "tasklist") renderTaskLog();
-    else updateTaskLogBadge();  // the badge (server total) stays current even while the tab is hidden
+    else updateTaskListCount();  // the count (server total) stays current even while the tab is hidden
 }
 
 function renderTaskLog() {
     if (holdingStill()) return;
     tasklogBody.innerHTML = "";
     for (var i = 0; i < taskLogData.length; i++) tasklogBody.appendChild(makeTaskLogRow(taskLogData[i]));
-    updateTaskLogBadge();
+    updateTaskListCount();
     renderTaskLogFilter();
     renderPagers("tasklog-pager", taskLogPage, taskLogPages, taskLogMatched, function(p) {
         taskLogPage = p;
@@ -971,11 +971,11 @@ function makeTaskLogRow(e) {
     return tr;
 }
 
-// Badge counts every completed task, and once the server drops the oldest, "60123 (holding 50000)".
-function updateTaskLogBadge() {
+// Counts every completed task, and once the server drops the oldest, "(60123, holding 50000)".
+function updateTaskListCount() {
     tasklogCount.textContent = taskLogTotal > taskLogHeld
-        ? taskLogTotal + " (holding " + taskLogHeld + ")"
-        : taskLogTotal;
+        ? "(" + taskLogTotal + ", holding " + taskLogHeld + ")"
+        : "(" + taskLogTotal + ")";
 }
 
 // -- Task Stream (Canvas) --

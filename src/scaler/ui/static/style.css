@@ -122,6 +122,7 @@ body {
 .card h3 {
     font-size: 15px;
     font-weight: 600;
+    line-height: 28px; /* a pager's height, so a title sits the same with or without controls beside it */
     margin-bottom: 12px;
     color: var(--text);
 }
@@ -184,12 +185,12 @@ th.sortable {
 }
 
 /* Marks anything that carries a tooltip, so the explanation is findable without taking up room. */
-th[title], h2[title], h3[title], .metric-label[title], .worker-grid-head > [title] {
+th[title], h3[title], .metric-label[title], .worker-grid-head > [title] {
     text-decoration: underline dotted var(--text-muted);
     text-underline-offset: 3px;
 }
 
-th[title]:not(.sortable), h2[title], h3[title], .metric-label[title], .worker-grid-head > [title] {
+th[title]:not(.sortable), h3[title], .metric-label[title], .worker-grid-head > [title] {
     cursor: help;
 }
 
@@ -302,21 +303,10 @@ th.sort-desc::after {
     color: var(--accent);
 }
 
-/* Badge */
-.badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: 10px;
-    background: var(--accent);
-    color: white;
-    font-size: 11px;
-    font-weight: 600;
-    vertical-align: middle;
-    margin-left: 6px;
+/* Counts and filter notes beside a title */
+.muted {
+    color: var(--text-muted);
+    font-weight: 500;
 }
 
 /* Legend */
@@ -609,12 +599,12 @@ th.sort-desc::after {
 .toggle-btn {
     flex: 1;
     white-space: nowrap;
-    padding: 6px 14px;
+    padding: 4px 12px;
     border: none;
     border-radius: 4px;
     background: transparent;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     font-family: var(--font);
@@ -631,11 +621,12 @@ th.sort-desc::after {
     box-shadow: var(--shadow);
 }
 
-/* Card header row (for inline buttons) */
+/* A card's title, with the controls for what the card shows on the same row: filters, toggles, the pager */
 .card-header-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
     margin-bottom: 12px;
 }
 
@@ -765,9 +756,9 @@ body.fit-page #memory-card .memory-container {
 .pager:empty {
     display: none;
 }
-/* the copy above the content pads below itself instead of above, so it hugs the heading */
+/* the copy above the content sits in the title row, which spaces it */
 .pager-top {
-    padding: 0 4px 8px;
+    padding: 0;
 }
 .pager-btn {
     font-family: var(--font);

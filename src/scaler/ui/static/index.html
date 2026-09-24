@@ -107,8 +107,12 @@
         </div>
 
         <div class="card">
-            <h3 title="Click a worker for its tasks, or a host for the workers on that host">Workers <span class="badge" id="workers-count" title="Workers in the whole fleet; the table below holds one page of them">0</span></h3>
-            <div class="pager pager-top" id="workers-pager-top"></div>
+            <div class="card-header-row">
+                <h3 title="Click a worker for its tasks, or a host for the workers on that host">Workers <span class="muted" id="workers-count" title="Workers in the whole fleet; the table below holds one page of them"></span></h3>
+                <div class="inline-controls">
+                    <div class="pager pager-top" id="workers-pager-top"></div>
+                </div>
+            </div>
             <div class="table-wrap">
                 <table class="data-table" id="workers-table">
                     <thead>
@@ -140,17 +144,17 @@
         </div>
     </div>
 
-    <!-- Tab: Task Log -->
+    <!-- Tab: Task List -->
     <div class="tab-panel" id="panel-tasklist">
         <div class="card">
             <div class="card-header-row">
-                <h3 title="One row per task, rewritten in place as the task moves. Click a client, worker or status to show only the tasks sharing it.">Task List <span class="badge" id="tasklog-count" title="Tasks finished since this monitor started; the list also holds the ones still running">0</span></h3>
+                <h3 title="One row per task, rewritten in place as the task moves. Click a client, worker or status to show only the tasks sharing it.">Task List <span class="muted" id="tasklog-count" title="Tasks finished since this monitor started; the list also holds the ones still running"></span></h3>
                 <div class="inline-controls">
                     <span class="muted" id="tasklog-filter-label"></span>
                     <button class="fit-page-btn" id="tasklog-clear" style="display:none">Show all</button>
+                    <div class="pager pager-top" id="tasklog-pager-top"></div>
                 </div>
             </div>
-            <div class="pager pager-top" id="tasklog-pager-top"></div>
             <div class="table-wrap">
                 <table class="data-table" id="tasklog-table">
                     <thead>
@@ -183,9 +187,9 @@
                 <div class="inline-controls">
                     <span class="muted" id="taskevents-filter-label"></span>
                     <button class="fit-page-btn" id="taskevents-clear" style="display:none">Show all</button>
+                    <div class="pager pager-top" id="taskevents-pager-top"></div>
                 </div>
             </div>
-            <div class="pager pager-top" id="taskevents-pager-top"></div>
             <div class="table-wrap">
                 <table class="data-table" id="taskevents-table">
                     <thead>
@@ -213,6 +217,7 @@
             <div class="card-header-row">
                 <h3 title="One row per worker, one bar per task it actually ran. A bar outlined in yellow is still running. Click a worker's name for its tasks.">Worker Task Stream</h3>
                 <div class="inline-controls">
+                    <div class="pager pager-top" id="stream-pager-top"></div>
                     <div class="toggle-group" id="window-toggle" title="Sliding window length">
                         <button class="toggle-btn active" data-value="5">5 min</button>
                         <button class="toggle-btn" data-value="10">10 min</button>
@@ -222,7 +227,6 @@
                 </div>
             </div>
             <div class="legend" id="stream-legend"></div>
-            <div class="pager pager-top" id="stream-pager-top"></div>
             <div class="stream-container" id="stream-container">
                 <canvas id="stream-canvas"></canvas>
             </div>
@@ -261,9 +265,9 @@
                 <div class="inline-controls">
                     <span class="muted" id="workerdetails-filter-label"></span>
                     <button class="fit-page-btn" id="workerdetails-clear" style="display:none">Show all</button>
+                    <div class="pager pager-top" id="workerdetails-pager-top"></div>
                 </div>
             </div>
-            <div class="pager pager-top" id="workerdetails-pager-top"></div>
             <div class="table-wrap">
                 <div class="worker-grid">
                     <div class="worker-row worker-grid-head">
@@ -283,8 +287,8 @@
     <!-- Tab: Machines -->
     <div class="tab-panel" id="panel-machines">
         <div class="card">
-            <div class="card-head">
-                <h2 title="Workers grouped by the host they run on: a box running 64 workers is one row. Click a machine to show its workers.">Machines <span class="muted" id="machines-total"></span></h2>
+            <div class="card-header-row">
+                <h3 title="Workers grouped by the host they run on: a box running 64 workers is one row. Click a machine to show its workers.">Machines <span class="muted" id="machines-total"></span></h3>
             </div>
             <div class="table-wrap">
                 <table class="data-table" id="machines-table">
@@ -315,8 +319,8 @@
     <!-- Tab: Clients -->
     <div class="tab-panel" id="panel-clients">
         <div class="card">
-            <div class="card-head">
-                <h2 title="Every client the scheduler currently holds a heartbeat from. Click a client to show its tasks.">Clients <span class="muted" id="clients-total"></span></h2>
+            <div class="card-header-row">
+                <h3 title="Every client the scheduler currently holds a heartbeat from. Click a client to show its tasks.">Clients <span class="muted" id="clients-total"></span></h3>
             </div>
             <div class="table-wrap">
                 <table class="data-table" id="clients-table">
@@ -343,11 +347,13 @@
     <!-- Tab: Objects -->
     <div class="tab-panel" id="panel-objects">
         <div class="card">
-            <div class="card-head">
-                <h2 title="The biggest objects the scheduler tracks, of everything the store holds; objects within a factor of two of the smallest listed are interchangeable, so some of them are left out">Objects <span class="muted" id="objects-total"></span></h2>
+            <div class="card-header-row">
+                <h3 title="The biggest objects the scheduler tracks, of everything the store holds; objects within a factor of two of the smallest listed are interchangeable, so some of them are left out">Objects <span class="muted" id="objects-total"></span></h3>
+                <div class="inline-controls">
+                    <div class="pager pager-top" id="objects-pager-top"></div>
+                </div>
             </div>
             <div class="table-wrap">
-                <div class="pager pager-top" id="objects-pager-top"></div>
                 <table class="data-table" id="objects-table">
                     <thead>
                         <tr>
