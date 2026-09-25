@@ -1,6 +1,6 @@
 import abc
 from concurrent.futures import Future
-from typing import Any, Coroutine, TypeVar
+from typing import Any, Coroutine, Optional, TypeVar
 
 from scaler.io.mixins import AsyncObjectStorageConnector, SyncConnector
 from scaler.protocol.capnp import (
@@ -112,7 +112,7 @@ class FutureManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def cancel_all_futures(self):
+    def cancel_all_futures(self, timeout_seconds: Optional[float] = None):
         raise NotImplementedError()
 
     @abc.abstractmethod

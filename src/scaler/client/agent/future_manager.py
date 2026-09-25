@@ -1,7 +1,9 @@
 import logging
 import sys
 import threading
+import time
 from concurrent.futures import Future, InvalidStateError
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Dict, Optional
 
 from scaler.client.agent.mixins import FutureManager
@@ -33,7 +35,12 @@ class ClientFutureManager(FutureManager):
             future.set_running_or_notify_cancel()
             self._task_id_to_future[future.task_id] = future
 
-    def cancel_all_futures(self):
+    def cancel_all_futures(self, timeout_seconds: Optional[float] = None):
+        """Cancel every outstanding future, waiting at most `timeout_seconds` in total for the confirms.
+
+        A cancel the scheduler never answers would otherwise block a leaving client forever.
+        """
+
         with self._lock:
             futures_to_cancel = list(self._task_id_to_future.values())
 
@@ -41,9 +48,15 @@ class ClientFutureManager(FutureManager):
         # `cancel()` is blocking, and requires the manager to process result and cancel confirm messages.
 
         logger.info(f"canceling {len(futures_to_cancel)} task(s)")
+        deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
+        unconfirmed_count = 0
+
         for future in futures_to_cancel:
             try:
-                future.cancel()
+                future.cancel(timeout=None if deadline is None else max(0.0, deadline - time.monotonic()))
+            except FutureTimeoutError:
+                # once the budget is spent every remaining cancel times out at once, so count instead of logging
+                unconfirmed_count += 1
             except Exception:
                 logger.exception("failed to cancel future during disconnect")
 
@@ -55,6 +68,9 @@ class ClientFutureManager(FutureManager):
             # collapse to CANCELLED so callers observing the future see a consistent state.
             if not future.cancelled():
                 future.force_set_canceled()
+
+        if unconfirmed_count > 0:
+            logger.warning(f"{unconfirmed_count} task(s) were not confirmed as canceled before disconnecting")
 
     def set_all_futures_with_exception(self, exception: Exception):
         with self._lock:
