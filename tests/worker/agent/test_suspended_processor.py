@@ -9,12 +9,13 @@ import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.defaults import DEFAULT_HEARTBEAT_INTERVAL_SECONDS
-from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 RESULT_TIMEOUT_SECONDS = 60
+
+N_PROCESSOR_RETRIES = 3
 
 
 def parent_task(client: Client, parent_pid_path: str, child_started_path: str, child_duration_seconds: float) -> str:
@@ -43,7 +44,9 @@ class TestDyingSuspendedProcessor(unittest.TestCase):
         logging_test_name(self)
 
         self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=1, event_loop="builtin")
+        self.cluster = SchedulerClusterCombo(
+            address=self.address, n_workers=1, event_loop="builtin", processor_death_retries=N_PROCESSOR_RETRIES
+        )
         self.directory = tempfile.mkdtemp(prefix="scaler_suspended_processor_")
 
     def tearDown(self) -> None:
@@ -73,8 +76,8 @@ class TestDyingSuspendedProcessor(unittest.TestCase):
             # Kill the suspended process
             os.kill(parent_pid, signal.SIGKILL)  # type: ignore[attr-defined, unused-ignore]
 
-            with self.assertRaises(ProcessorDiedError):
-                future.result(timeout=RESULT_TIMEOUT_SECONDS)
+            # the scheduler runs a task whose processor died again, so the parent starts over and finishes
+            self.assertEqual(future.result(timeout=RESULT_TIMEOUT_SECONDS), "child done")
 
             # The worker owning the killed processor must still be able to run tasks.
             self.assertEqual(client.submit(square, 6).result(timeout=RESULT_TIMEOUT_SECONDS), 36)

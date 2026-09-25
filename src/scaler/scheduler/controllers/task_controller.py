@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import dataclasses
 import logging
 import sys
 from collections import deque
@@ -67,7 +68,9 @@ DispatchTargetStates = Literal[TaskState.inactive, TaskState.running]
 HasCapacityTargetStates = Literal[TaskState.running]
 TaskCancelTargetStates = Literal[TaskState.canceled, TaskState.canceling, TaskState.canceledNotFound]
 BalanceCancelTargetStates = Literal[TaskState.balanceCanceling]
-TaskResultTargetStates = Literal[TaskState.success, TaskState.failed, TaskState.failedWorkerDied]
+TaskResultTargetStates = Literal[
+    TaskState.success, TaskState.failed, TaskState.failedWorkerDied, TaskState.inactive, TaskState.running
+]
 CancelConfirmCanceledTargetStates = Literal[TaskState.canceled, TaskState.inactive, TaskState.running]
 CancelConfirmFailedTargetStates = Literal[TaskState.running]
 CancelConfirmNotFoundTargetStates = Literal[TaskState.canceledNotFound, TaskState.inactive, TaskState.running]
@@ -96,6 +99,14 @@ def task_result_target(result_type: TaskResultType) -> TaskResultTargetStates:
             assert_never(result_type)
 
 
+@dataclasses.dataclass
+class _TaskHolder:
+    task: Task
+
+    # how many times the task has been run again after its processor died, bounded by processor_death_retries
+    processor_death_retries: int = 0
+
+
 class VanillaTaskController(TaskController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController):
         self._config_controller = config_controller
@@ -109,7 +120,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
         self._graph_controller: Optional[GraphTaskController] = None
 
-        self._task_id_to_task: Dict[TaskID, Task] = dict()
+        self._task_id_to_holder: Dict[TaskID, _TaskHolder] = dict()
         # Live tasks naming each object, counted as tasks arrive and leave: a status report reads it per object.
         self._object_task_counts: Dict[ObjectID, int] = dict()
         self._task_state_manager: TaskStateManager = TaskStateManager(debug=True)
@@ -142,6 +153,9 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     def get_task_count(self, object_id: ObjectID) -> int:
         """How many live tasks name this object as their function or as an argument."""
         return self._object_task_counts.get(object_id, 0)
+
+    def get_tasks(self) -> Dict[TaskID, Task]:
+        return {task_id: holder.task for task_id, holder in self._task_id_to_holder.items()}
 
     async def on_task_new(self, task: Task):
         task.capabilities = capabilities_to_dict(task.capabilities)
@@ -521,7 +535,15 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             case TaskState.running | TaskState.balanceCanceling:
                 target = task_result_target(TaskResultType(event.task_result.resultType.value))
                 if target == TaskState.failedWorkerDied:
-                    logger.warning(f"{event.task_id!r}: reporting failedWorkerDied to the client")
+                    holder = self._task_id_to_holder[event.task_id]
+                    retries = holder.processor_death_retries
+                    if retries < self._config_controller.get_config("processor_death_retries"):
+                        return await self.__run_again_after_processor_death(holder, event)
+
+                    logger.warning(
+                        f"{event.task_id!r}: processor died after {retries} retries, reporting it to the client"
+                    )
+
                 await self.__send_task_result_to_client(event.task_result)
                 return target
             case (
@@ -644,10 +666,30 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             case _:
                 assert_never(source)
 
+    async def __run_again_after_processor_death(
+        self, holder: _TaskHolder, event: TaskResultReceived
+    ) -> DispatchTargetStates:
+        """Release the worker whose processor died under the task, drop the error it stored, and schedule it again."""
+
+        holder.processor_death_retries += 1
+        logger.warning(
+            f"{event.task_id!r}: processor died on {event.worker_id!r}, running it again "
+            f"(retry {holder.processor_death_retries})"
+        )
+
+        self._object_controller.on_del_objects(
+            holder.task.source, {ObjectID(object_id) for object_id in event.task_result.results}
+        )
+
+        await self._worker_controller.on_task_done(event.task_id)
+        return await self.__acquire_and_dispatch(event.task_id)
+
     async def __acquire_and_dispatch(self, task_id: TaskID) -> DispatchTargetStates:
         """Look for a worker for a task that has none, and send the task to it if one is free."""
 
-        task = self._task_id_to_task[task_id]
+        task = self.__get_task(task_id)
+        if task is None:
+            raise KeyError(f"{task_id!r}: cannot dispatch a task the scheduler no longer holds")
 
         worker_id = self._worker_controller.acquire_worker(task)
         if not worker_id.is_valid():
@@ -659,7 +701,10 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         return TaskState.running
 
     async def __send_task_to_worker(self, worker_id: WorkerID, task_id: TaskID) -> None:
-        task = self._task_id_to_task[task_id]
+        task = self.__get_task(task_id)
+        if task is None:
+            raise KeyError(f"{task_id!r}: cannot send a task the scheduler no longer holds")
+
         await self._binder.send(worker_id, task, detached=True)
 
     async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel) -> bool:
@@ -710,7 +755,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     ) -> None:
         """Tell the monitor the state a task is in, and the name of the event that moved it there."""
         worker = self._worker_controller.get_worker_by_task_id(task_id)
-        task = self._task_id_to_task.get(task_id)
+        task = self.__get_task(task_id)
         await self._binder_monitor.send(
             StateTask(
                 taskId=task_id,
@@ -730,9 +775,14 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         """The profile a worker sends with a result, which the monitor reads duration and memory from."""
         return event.task_result.metadata if isinstance(event, TaskResultReceived) else b""
 
+    def __get_task(self, task_id: TaskID) -> Optional[Task]:
+        """The task the scheduler holds under this id, None if it is already gone."""
+        holder = self._task_id_to_holder.get(task_id)
+        return holder.task if holder is not None else None
+
     def __task_object_bytes(self, task_id: TaskID) -> int:
         """Payload bytes a task's function and arguments move, 0 if the task is already gone."""
-        task = self._task_id_to_task.get(task_id)
+        task = self.__get_task(task_id)
         if task is None or self._object_controller is None:
             return 0
 
@@ -740,16 +790,16 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
     def __hold_task(self, task: Task) -> None:
         """Keep a task and count it against the objects it names, which is what a status report reads."""
-        self._task_id_to_task[task.taskId] = task
+        self._task_id_to_holder[task.taskId] = _TaskHolder(task=task)
         for object_id in task_object_ids(task):
             self._object_task_counts[object_id] = self._object_task_counts.get(object_id, 0) + 1
 
     def __release_task(self, task_id: TaskID) -> None:
-        task = self._task_id_to_task.pop(task_id, None)
-        if task is None:
+        holder = self._task_id_to_holder.pop(task_id, None)
+        if holder is None:
             return
 
-        for object_id in task_object_ids(task):
+        for object_id in task_object_ids(holder.task):
             remaining = self._object_task_counts[object_id] - 1
             if remaining:
                 self._object_task_counts[object_id] = remaining
@@ -771,7 +821,11 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
         ready_to_assign = list()
         while len(self._unassigned) > 0:
-            worker_id = self._worker_controller.acquire_worker(self._task_id_to_task[self._unassigned[0]])
+            task = self.__get_task(self._unassigned[0])
+            if task is None:
+                raise KeyError(f"{self._unassigned[0]!r}: unassigned task the scheduler no longer holds")
+
+            worker_id = self._worker_controller.acquire_worker(task)
             if not worker_id.is_valid():
                 break
 

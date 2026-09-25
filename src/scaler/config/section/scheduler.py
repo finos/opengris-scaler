@@ -106,6 +106,14 @@ class SchedulerConfig(ConfigClass):
             help="exact number of repeated load balance advices when trigger load balance operation in scheduler",
         ),
     )
+    processor_death_retries: int = dataclasses.field(
+        default=defaults.DEFAULT_PROCESSOR_DEATH_RETRIES,
+        metadata=dict(
+            short="-pdr",
+            help="number of times a task whose processor died is run again before it fails with ProcessorDiedError; "
+            "0 fails it on the first death",
+        ),
+    )
     event_loop: str = dataclasses.field(
         default="builtin",
         metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select the event loop type"),
@@ -132,5 +140,7 @@ class SchedulerConfig(ConfigClass):
             raise ValueError("load_balance_seconds must be non-zero (use a negative value to disable balancing).")
         if self.load_balance_trigger_times <= 0:
             raise ValueError("load_balance_trigger_times must be a positive integer.")
+        if self.processor_death_retries < 0:
+            raise ValueError("processor_death_retries must be non-negative.")
         if self.status_report_interval_seconds <= 0:
             raise ValueError("status_report_interval_seconds must be positive.")

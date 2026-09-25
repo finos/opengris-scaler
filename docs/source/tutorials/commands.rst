@@ -264,6 +264,10 @@ Scheduler arguments
      - No
      - ``2``
      - Consecutive identical balance advisories required before rebalance is triggered.
+   * - ``-pdr``, ``--processor-death-retries``
+     - No
+     - ``0``
+     - Times a task whose processor died is run again before it fails with ``ProcessorDiedError`` (``0`` fails it on the first death).
    * - ``-el``, ``--event-loop``
      - No
      - ``builtin``

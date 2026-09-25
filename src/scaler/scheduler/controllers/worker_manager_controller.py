@@ -133,7 +133,7 @@ class WorkerManagerController(Looper, Reporter):
         return snapshots
 
     def _build_snapshot(self) -> InformationSnapshot:
-        tasks = self._task_controller._task_id_to_task  # type: ignore # noqa
+        tasks = self._task_controller.get_tasks()
         workers = {
             worker_id: worker_heartbeat
             for worker_id, (

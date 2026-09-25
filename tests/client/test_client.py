@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import os
 import random
+import signal
 import sys
 import tempfile
 import time
@@ -15,7 +16,7 @@ from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.types.worker import WorkerCapabilities
-from scaler.utility.exceptions import DisconnectedError, MissingObjects, ProcessorDiedError
+from scaler.utility.exceptions import DisconnectedError, MissingObjects, WorkerDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.preload import PreloadSpecError, _parse_preload_spec, execute_preload
@@ -247,13 +248,47 @@ class TestClient(unittest.TestCase):
             client.disconnect()
 
     def test_processor_died(self):
+        """A task that kills its processor every time fails once the scheduler has spent its retries on it."""
+
         def func():
             time.sleep(1)
             os._exit(1)  # noqa
 
         with Client(self.address) as client:
-            with self.assertRaises(ProcessorDiedError):
+            with self.assertRaises(WorkerDiedError):
                 client.submit(func).result()
+
+    @unittest.skipIf(sys.platform == "win32", "sends SIGKILL to a processor")
+    def test_a_task_whose_processor_is_killed_runs_again(self):
+        """With retries enabled, a processor killed under a task, as an OOM kill does, is not the task failing."""
+
+        N_PROCESSOR_RETRIES = 3
+
+        def report_pid_then_sleep(path: str, seconds: float) -> int:
+            with open(path, "w") as file:
+                file.write(str(os.getpid()))
+            time.sleep(seconds)
+            return os.getpid()
+
+        pid_path = os.path.join(tempfile.mkdtemp(prefix="scaler_killed_processor_"), "pid")
+
+        combo = SchedulerClusterCombo(
+            n_workers=self._workers, event_loop="builtin", processor_death_retries=N_PROCESSOR_RETRIES
+        )
+
+        try:
+            with Client(combo.get_address()) as client:
+                future = client.submit(report_pid_then_sleep, pid_path, 3)
+
+                deadline = time.monotonic() + 30
+                while not os.path.exists(pid_path) and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                killed_pid = int(open(pid_path).read())
+                os.kill(killed_pid, signal.SIGKILL)  # type: ignore[attr-defined, unused-ignore]
+
+                self.assertNotEqual(future.result(timeout=60), killed_pid)
+        finally:
+            combo.shutdown()
 
     def test_non_hashable_client(self):
         def func(a):
