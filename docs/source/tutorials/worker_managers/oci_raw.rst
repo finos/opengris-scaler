@@ -9,8 +9,8 @@ Prerequisites
 * An OCI account with a tenancy
 * `OCI CLI <https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm>`_ installed and configured (``oci setup config``)
 * Python packages: ``pip install opengris-scaler[oci]``
-* A VCN with at least one subnet reachable from the machine running the scheduler
-* An OCIR repository and a container image pushed to it (see `Build the Worker Image`_ below)
+* A VCN with at least one subnet reachable from the machine running the scheduler, or the provisioner below to create one
+* An OCIR repository and a container image pushed to it (see `Build the Worker Image`_ below), or the provisioner below to create them
 
 Quick Start
 -----------
@@ -30,7 +30,33 @@ Create a virtual environment and install Scaler with OCI extras:
    source .venv/bin/activate
    pip install opengris-scaler[oci]
 
-Gather your OCI resource identifiers:
+Provision the network, OCIR repository, and worker image, then copy the printed keys into ``config.toml``:
+
+.. code-block:: bash
+
+   # Log in to OCIR first, with an auth token from OCI Console -> My profile -> Auth tokens
+   docker login <region>.ocir.io -u <tenancy-namespace>/<username>
+
+   python -m scaler.worker_manager_adapter.oci_raw.utility.provisioner provision \
+       --compartment-id <COMPARTMENT_ID> \
+       --region <region>
+
+The provisioner creates, all named after ``--prefix`` (default: ``scaler``):
+
+* A VCN (``10.0.0.0/16``) with an internet gateway and a public subnet (``10.0.0.0/24``)
+* A security list that allows all outbound traffic and inbound traffic only from inside the VCN
+* A private OCIR repository holding the image built from ``Dockerfile.container_instance``
+* An IAM policy that lets container instances in the compartment pull from the repository
+
+Rerunning ``provision`` reuses existing resources. Delete them all with:
+
+.. code-block:: bash
+
+   python -m scaler.worker_manager_adapter.oci_raw.utility.provisioner cleanup \
+       --compartment-id <COMPARTMENT_ID> \
+       --region <region>
+
+To use existing resources instead, gather their identifiers:
 
 .. code-block:: bash
 
@@ -128,7 +154,7 @@ Build the Worker Image
 
 A ``Dockerfile`` is provided at ``src/scaler/worker_manager_adapter/oci_raw/utility/Dockerfile.container_instance``. It uses a minimal Debian base with ``uv`` for fast, wheel-based installs. The Scaler package and your task dependencies are installed at container startup via ``requirements_txt``, so the base image only needs ``uv`` and Bash.
 
-Build and push to your OCIR repository from the repository root:
+The provisioner builds and pushes it. To do it by hand, from the repository root:
 
 .. code-block:: bash
 
@@ -138,7 +164,7 @@ Build and push to your OCIR repository from the repository root:
    # Build and push
    docker build \
        -f src/scaler/worker_manager_adapter/oci_raw/utility/Dockerfile.container_instance \
-       -t us-ashburn-1.ocir.io/<namespace>/<repo>:latest .
+       -t us-ashburn-1.ocir.io/<namespace>/<repo>:latest src
    docker push us-ashburn-1.ocir.io/<namespace>/<repo>:latest
 
 .. note::
