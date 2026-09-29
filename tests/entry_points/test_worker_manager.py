@@ -4,6 +4,7 @@ import unittest
 from typing import Optional
 from unittest.mock import mock_open, patch
 
+from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
@@ -784,6 +785,7 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_IMAGE_ARGV
         )
         self.assertEqual(config.instance_type, "t2.micro")
+        self.assertEqual(config.network_backend, defaults.SCALER_NETWORK_BACKEND)
 
     def test_orb_aws_ec2_missing_aws_region_raises(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
