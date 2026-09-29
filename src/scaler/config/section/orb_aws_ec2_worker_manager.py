@@ -1,6 +1,7 @@
 import dataclasses
 from typing import ClassVar, Dict, List, Optional
 
+from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
@@ -87,5 +88,6 @@ class ORBAWSEC2WorkerManagerConfig(ConfigClass):
         metadata=dict(help="If set, dump config and template kwargs as JSON files to this directory for debugging"),
     )
     network_backend: NetworkBackendType = dataclasses.field(
-        default=NetworkBackendType.zmq, metadata=dict(help="Network backend for worker communication (zmq or ymq)")
+        default=defaults.SCALER_NETWORK_BACKEND,
+        metadata=dict(help="Network backend for worker communication (zmq or ymq)"),
     )
