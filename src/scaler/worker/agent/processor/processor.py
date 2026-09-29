@@ -116,6 +116,10 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         """Returns the scheduler address this processor's worker is connected to."""
         return self._scheduler_address
 
+    def object_storage_address(self) -> AddressConfig:
+        """Returns the object storage address this processor connects to."""
+        return self._object_storage_address
+
     def current_task(self) -> Optional[Task]:
         return self._current_task
 

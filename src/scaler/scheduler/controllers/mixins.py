@@ -1,10 +1,10 @@
 import abc
+import dataclasses
 from typing import Any, Dict, List, Optional, Set
 
 from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeat,
-    DisconnectRequest,
     GraphTask,
     InformationRequest,
     ObjectInstruction,
@@ -14,6 +14,7 @@ from scaler.protocol.capnp import (
     TaskCancel,
     TaskCancelConfirm,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
@@ -34,6 +35,17 @@ class ConfigController(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
 
+@dataclasses.dataclass(frozen=True)
+class ObjectDetail:
+    """One object the scheduler tracks, as the monitor stream reports it."""
+
+    object_id: ObjectID
+    name: bytes
+    content_type: ObjectMetadata.ObjectContentType
+    size: int
+    creator: ClientID
+
+
 class ObjectController(Reporter):
     @abc.abstractmethod
     async def on_object_instruction(self, source: bytes, request: ObjectInstruction):
@@ -46,6 +58,7 @@ class ObjectController(Reporter):
         object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
+        object_size: int,
     ):
         raise NotImplementedError()
 
@@ -55,6 +68,18 @@ class ObjectController(Reporter):
 
     @abc.abstractmethod
     def clean_client(self, client_id: ClientID):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_object_size(self, object_id: ObjectID) -> int:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_largest_objects(self, limit: int) -> List[ObjectDetail]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def object_count(self) -> int:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -138,6 +163,10 @@ class TaskController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def get_task_count(self, object_id: ObjectID) -> int:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     async def on_task_cancel(self, client_id: ClientID, task_cancel: TaskCancel):
         raise NotImplementedError()
 
@@ -146,11 +175,11 @@ class TaskController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
+    async def on_task_cancel_confirm(self, worker_id: WorkerID, task_cancel_confirm: TaskCancelConfirm):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_result(self, result: TaskResult):
+    async def on_task_result(self, worker_id: WorkerID, result: TaskResult):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -191,7 +220,7 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
+    async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification):
         raise NotImplementedError()
 
     @abc.abstractmethod

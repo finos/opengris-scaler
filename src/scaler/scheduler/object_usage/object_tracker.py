@@ -1,5 +1,6 @@
 import abc
-from typing import Callable, Dict, Generator, Generic, Optional, Set, Tuple, TypeVar
+import itertools
+from typing import Callable, Dict, Generator, Generic, List, Optional, Set, Tuple, TypeVar
 
 from scaler.utility.many_to_many_dict import ManyToManyDict
 
@@ -10,6 +11,10 @@ ObjectKeyType = TypeVar("ObjectKeyType")
 class ObjectUsage(Generic[ObjectKeyType], metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def get_object_key(self) -> ObjectKeyType:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_object_size(self) -> int:
         raise NotImplementedError()
 
 
@@ -24,12 +29,28 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
         self._current_blocks: Set[BlockType] = set()
         self._object_key_to_block: ManyToManyDict[ObjectKeyType, BlockType] = ManyToManyDict()
         self._object_key_to_object: Dict[ObjectKeyType, ObjectType] = dict()
+        # Objects by size class, the size's bit length, so `largest` reads the big ones without sorting the store.
+        self._objects_by_size_class: Dict[int, Dict[ObjectKeyType, ObjectType]] = dict()
 
     def object_count(self):
         return len(self._object_key_to_object)
 
-    def items(self):
-        return self._object_key_to_object.items()
+    def largest(self, limit: int) -> List[ObjectType]:
+        """The `limit` biggest objects, biggest first, taken a size class at a time.
+
+        Every object at least twice the size of the smallest one returned is in the list, and the class the list
+        ends in can be partial. The cost is the number of classes plus the limit, never the whole store.
+        """
+        largest: List[ObjectType] = []
+        for size_class in sorted(self._objects_by_size_class, reverse=True):
+            if len(largest) >= limit:
+                break
+
+            members = self._objects_by_size_class[size_class].values()
+            largest.extend(itertools.islice(members, limit - len(largest)))
+
+        largest.sort(key=lambda obj: obj.get_object_size(), reverse=True)
+        return largest
 
     def get_all_object_keys(self) -> Set[ObjectKeyType]:
         return set(self._object_key_to_object.keys())
@@ -41,7 +62,13 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
         return self._object_key_to_object[key]
 
     def add_object(self, obj: ObjectType):
-        self._object_key_to_object[obj.get_object_key()] = obj
+        key = obj.get_object_key()
+        replaced = self._object_key_to_object.get(key)
+        if replaced is not None:
+            self.__forget_size_class(replaced)
+
+        self._object_key_to_object[key] = obj
+        self._objects_by_size_class.setdefault(obj.get_object_size().bit_length(), dict())[key] = obj
 
     def get_object_block_pairs(self, blocks: Set[BlockType]) -> Generator[Tuple[ObjectKeyType, BlockType], None, None]:
         for block in blocks:
@@ -128,4 +155,13 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
         if self._object_key_to_block.has_left_key(object_key):
             return None
 
-        return self._object_key_to_object.pop(object_key)
+        obj = self._object_key_to_object.pop(object_key)
+        self.__forget_size_class(obj)
+        return obj
+
+    def __forget_size_class(self, obj: ObjectType) -> None:
+        size_class = obj.get_object_size().bit_length()
+        members = self._objects_by_size_class[size_class]
+        members.pop(obj.get_object_key())
+        if not members:
+            self._objects_by_size_class.pop(size_class)

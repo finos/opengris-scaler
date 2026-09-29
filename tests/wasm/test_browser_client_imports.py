@@ -71,9 +71,9 @@ class BrowserClientImportTests(unittest.TestCase):
         self.assertEqual(resource.cpu, 42)
         self.assertEqual(resource.rss, 1024)
 
-        heartbeat = capnp_mod.ClientHeartbeat(resource=resource, latencyUS=7)
+        heartbeat = capnp_mod.ClientHeartbeat(resource=resource, latencyMicroseconds=7)
         self.assertEqual(heartbeat.resource.cpu, 42)
-        self.assertEqual(heartbeat.latencyUS, 7)
+        self.assertEqual(heartbeat.latencyMicroseconds, 7)
 
 
 if __name__ == "__main__":

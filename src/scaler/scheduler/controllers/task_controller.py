@@ -3,7 +3,7 @@ import contextlib
 import logging
 import sys
 from collections import deque
-from typing import AsyncGenerator, Deque, Dict, List, Literal, Optional, Tuple
+from typing import AsyncGenerator, Deque, Dict, List, Literal, Optional, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
 from scaler.protocol.capnp import (
@@ -28,6 +28,7 @@ from scaler.scheduler.controllers.mixins import (
     WorkerController,
 )
 from scaler.scheduler.task.task_event import (
+    WORKER_REPORTED_TASK_EVENTS,
     BalanceCancelRequested,
     CancelConfirmCanceled,
     CancelConfirmFailed,
@@ -37,6 +38,7 @@ from scaler.scheduler.task.task_event import (
     TaskEvent,
     TaskResultReceived,
     WorkerDisconnected,
+    WorkerReportedTaskEvent,
 )
 from scaler.scheduler.task.task_state_machine import TERMINAL_TASK_STATES, TaskStateMachine
 from scaler.scheduler.task.task_state_manager import TaskStateManager
@@ -51,6 +53,7 @@ else:
     from typing_extensions import assert_never
 
 logger = logging.getLogger(__name__)
+
 
 # A transition holds its machine's lock for a few sends and no I/O waits, so this is not a tuning knob balancing
 # throughput against latency: it is the point past which the only remaining explanation is a deadlock. It sits well
@@ -67,8 +70,18 @@ BalanceCancelTargetStates = Literal[TaskState.balanceCanceling]
 TaskResultTargetStates = Literal[TaskState.success, TaskState.failed, TaskState.failedWorkerDied]
 CancelConfirmCanceledTargetStates = Literal[TaskState.canceled, TaskState.inactive, TaskState.running]
 CancelConfirmFailedTargetStates = Literal[TaskState.running]
-CancelConfirmNotFoundTargetStates = Literal[TaskState.canceledNotFound]
+CancelConfirmNotFoundTargetStates = Literal[TaskState.canceledNotFound, TaskState.inactive, TaskState.running]
 DisconnectTargetStates = Literal[TaskState.inactive, TaskState.running, TaskState.canceled]
+
+
+def task_object_ids(task: Task) -> Set[ObjectID]:
+    """The objects a task names: its function and every argument that is one, each named once."""
+    arguments = (
+        ObjectID(argument.data)
+        for argument in task.functionArgs
+        if argument.type == Task.Argument.ArgumentType.objectID
+    )
+    return {task.funcObjectId, *arguments}
 
 
 def task_result_target(result_type: TaskResultType) -> TaskResultTargetStates:
@@ -97,9 +110,11 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._graph_controller: Optional[GraphTaskController] = None
 
         self._task_id_to_task: Dict[TaskID, Task] = dict()
+        # Live tasks naming each object, counted as tasks arrive and leave: a status report reads it per object.
+        self._object_task_counts: Dict[ObjectID, int] = dict()
         self._task_state_manager: TaskStateManager = TaskStateManager(debug=True)
 
-        self._unassigned: Deque[TaskID] = deque()  # type: ignore[misc]
+        self._unassigned: Deque[TaskID] = deque()
 
     def register(
         self,
@@ -124,6 +139,10 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         # TODO: we don't need loop task anymore, but I will leave this routine API here in case we need in the future
         pass
 
+    def get_task_count(self, object_id: ObjectID) -> int:
+        """How many live tasks name this object as their function or as an argument."""
+        return self._object_task_counts.get(object_id, 0)
+
     async def on_task_new(self, task: Task):
         task.capabilities = capabilities_to_dict(task.capabilities)
         if self._task_state_manager.get_state_machine(task.taskId) is not None:
@@ -137,15 +156,13 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._task_state_manager.add_state_machine(task.taskId)
 
         self._client_controller.on_task_begin(task.source, task.taskId)
-        self._task_id_to_task[task.taskId] = task
+        self.__hold_task(task)
 
         worker_id = self._worker_controller.acquire_worker(task)
         if not worker_id.is_valid():
             # put task on hold until a worker is added or a task is finished/canceled (means have capacity)
             self._unassigned.append(task.taskId)
-            await self.__send_monitor(
-                task.taskId, TaskState.inactive, self._object_controller.get_object_name(task.funcObjectId)
-            )
+            await self.__send_monitor(task.taskId, TaskState.inactive, event_name="")
             return
 
         await self.__route(HasCapacity(task_id=task.taskId, worker_id=worker_id))
@@ -171,25 +188,31 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def on_task_balance_cancel(self, task_id: TaskID):
         await self.__route(BalanceCancelRequested(task_id=task_id))
 
-    async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
+    async def on_task_cancel_confirm(self, worker_id: WorkerID, task_cancel_confirm: TaskCancelConfirm):
         task_id = task_cancel_confirm.taskId
         cancel_confirm_type = TaskCancelConfirmType(task_cancel_confirm.cancelConfirmType.value)
 
         event: TaskEvent
         match cancel_confirm_type:
             case TaskCancelConfirmType.canceled:
-                event = CancelConfirmCanceled(task_id=task_id, task_cancel_confirm=task_cancel_confirm)
+                event = CancelConfirmCanceled(
+                    task_id=task_id, worker_id=worker_id, task_cancel_confirm=task_cancel_confirm
+                )
             case TaskCancelConfirmType.cancelFailed:
-                event = CancelConfirmFailed(task_id=task_id, task_cancel_confirm=task_cancel_confirm)
+                event = CancelConfirmFailed(
+                    task_id=task_id, worker_id=worker_id, task_cancel_confirm=task_cancel_confirm
+                )
             case TaskCancelConfirmType.cancelNotFound:
-                event = CancelConfirmNotFound(task_id=task_id, task_cancel_confirm=task_cancel_confirm)
+                event = CancelConfirmNotFound(
+                    task_id=task_id, worker_id=worker_id, task_cancel_confirm=task_cancel_confirm
+                )
             case _:
-                raise ValueError(f"unknown TaskCancelConfirmType: {task_cancel_confirm.cancelConfirmType}")
+                assert_never(cancel_confirm_type)
 
         await self.__route(event)
 
-    async def on_task_result(self, task_result: TaskResult):
-        await self.__route(TaskResultReceived(task_id=task_result.taskId, task_result=task_result))
+    async def on_task_result(self, worker_id: WorkerID, task_result: TaskResult):
+        await self.__route(TaskResultReceived(task_id=task_result.taskId, worker_id=worker_id, task_result=task_result))
 
     async def on_worker_connect(self, worker_id: WorkerID):
         await self.__retry_unassignable()
@@ -259,6 +282,9 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
             source = state_machine.current_state()  # read inside the lock, never before it
 
+            if isinstance(event, WORKER_REPORTED_TASK_EVENTS) and not self.__is_task_owned_by_worker(event):
+                return
+
             target: Optional[TaskState]
             try:
                 match event:
@@ -280,6 +306,12 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                         target = await self.__on_worker_disconnect(source, event)
                     case _:
                         assert_never(event)
+
+                # inside the try, so a monitor send that fails faults the task like any other step of the transition
+                if target is not None:
+                    await self.__send_monitor(
+                        event.task_id, target, type(event).__name__, self.__result_metadata(event)
+                    )
             except Exception:
                 # the exception is not re-raised: __route runs from both timer loops and message handlers, and an
                 # exception that escapes either one propagates through asyncio.gather and stops the scheduler
@@ -298,7 +330,32 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
             if target in TERMINAL_TASK_STATES:
                 self._task_state_manager.remove_state_machine(event.task_id)
-                self._task_id_to_task.pop(event.task_id, None)
+                self.__release_task(event.task_id)
+
+    def __is_task_owned_by_worker(self, event: WorkerReportedTaskEvent) -> bool:
+        """Answer whether the worker that reported on a task is the worker that holds it.
+
+        A worker the scheduler declared dead is not necessarily dead: it can keep running the task and report on it
+        long after the task was rerouted. Acting on such a report tells the client an outcome for a task that is
+        still running elsewhere, and releases the capacity of the worker that now holds it.
+
+        Only a different, valid holder disproves ownership. An assignment can also be cleared without this machine's
+        lock: ``remove_worker`` drops the assignments of every task a dead worker held, and it runs from the
+        heartbeat timer, before the ``WorkerDisconnected`` it raises reaches the router. An unheld task therefore
+        proves nothing about the sender and counts as owned, and the state machine settles it instead: it refuses
+        every worker-reported event from ``inactive``, and wherever it accepts one the sender is the only worker
+        that claims the task at all.
+        """
+
+        holder = self._worker_controller.get_worker_by_task_id(event.task_id)
+        if not holder.is_valid() or holder == event.worker_id:
+            return True
+
+        logger.warning(
+            f"{event.task_id!r}: dropping {type(event).__name__} from {event.worker_id!r}, the task is held by "
+            f"{holder!r}"
+        )
+        return False
 
     async def __fail_task_to_client(self, event: TaskEvent, source: TaskState) -> None:
         """Fail a task whose state machine action raised.
@@ -323,7 +380,12 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._task_state_manager.commit(event.task_id, type(event), TaskState.failed)
         self._task_state_manager.remove_state_machine(event.task_id)
 
-        self._task_id_to_task.pop(event.task_id, None)
+        try:
+            await self.__send_monitor(event.task_id, TaskState.failed, type(event).__name__)
+        except Exception:
+            logger.exception(f"{event.task_id!r}: could not report the faulted task to the monitor")
+
+        self.__release_task(event.task_id)
         if event.task_id in self._unassigned:
             # the payload is gone, so an id left in the queue would raise in __acquire_workers on every later drain
             self._unassigned.remove(event.task_id)
@@ -350,14 +412,13 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         )
         await self._connector_storage.set_object(object_id, payload)
         self._object_controller.on_add_object(
-            client, object_id, ObjectMetadata.ObjectContentType.object, b"<scheduler error>"
+            client, object_id, ObjectMetadata.ObjectContentType.object, b"<scheduler error>", len(payload)
         )
 
         task_result = TaskResult(
             taskId=event.task_id, resultType=TaskResultType.failed, metadata=b"", results=[object_id]
         )
         await self._binder.send(client, task_result, detached=True)
-        await self.__send_monitor(event.task_id, TaskState.failed, b"")
 
         if self._graph_controller.is_graph_subtask(event.task_id):
             await self._graph_controller.on_graph_sub_task_result(task_result)
@@ -392,20 +453,18 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                     await self._worker_controller.on_task_done(event.task_id)
 
                 await self.__send_task_cancel_confirm_to_client(
-                    TaskCancelConfirm(taskId=event.task_id, cancelConfirmType=TaskCancelConfirmType.canceled),
-                    TaskState.canceled,
+                    TaskCancelConfirm(taskId=event.task_id, cancelConfirmType=TaskCancelConfirmType.canceled)
                 )
                 return TaskState.canceled
             case TaskState.running:
                 # in case the task being canceled has no task in the scheduler, so we know which client to confirm to
                 self._client_controller.on_task_begin(event.client_id, event.task_id)
 
-                if await self.__send_task_cancel_to_worker(event.task_cancel, TaskState.canceling):
+                if await self.__send_task_cancel_to_worker(event.task_cancel):
                     return TaskState.canceling
 
                 await self.__send_task_cancel_confirm_to_client(
-                    TaskCancelConfirm(taskId=event.task_id, cancelConfirmType=TaskCancelConfirmType.cancelNotFound),
-                    TaskState.canceledNotFound,
+                    TaskCancelConfirm(taskId=event.task_id, cancelConfirmType=TaskCancelConfirmType.cancelNotFound)
                 )
                 return TaskState.canceledNotFound
             case TaskState.balanceCanceling:
@@ -431,12 +490,17 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         match source:
             case TaskState.running:
                 task_cancel = TaskCancel(taskId=event.task_id, flags=TaskCancel.TaskCancelFlags(force=False))
-                # FIXME: when no worker holds the task, the balance cannot complete and the task is stranded here with
-                # no cancel in flight and no exit path. this preserves the behavior of the transition table, which
-                # rejected the cancelNotFound that this case used to raise. the recovery is a behavior change, either
-                # terminate the task towards the client or reschedule it, so it needs its own review
-                await self.__send_task_cancel_to_worker(task_cancel, TaskState.balanceCanceling)
-                return TaskState.balanceCanceling
+                if await self.__send_task_cancel_to_worker(task_cancel):
+                    return TaskState.balanceCanceling
+
+                # no worker holds the task, so no cancel is in flight and no confirm can ever arrive. this is the
+                # same stale advice as the arms below, reached from the scheduler side: remove_worker drops every
+                # task mapping of a departing worker at once and only then drains the tasks one await at a time, so
+                # a task can still read running here with its WorkerDisconnected event already queued behind us.
+                # placing it again would race that event into a second dispatch, running the task on two workers and
+                # leaking the queue slot of the first. leave the task running and let the queued event reroute it
+                logger.warning(f"{event.task_id!r}: balance cancel found no worker holding the task, dropping it")
+                return None
             case (
                 TaskState.inactive
                 | TaskState.canceling
@@ -458,7 +522,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 target = task_result_target(TaskResultType(event.task_result.resultType.value))
                 if target == TaskState.failedWorkerDied:
                     logger.warning(f"{event.task_id!r}: reporting failedWorkerDied to the client")
-                await self.__send_task_result_to_client(event.task_result, target)
+                await self.__send_task_result_to_client(event.task_result)
                 return target
             case (
                 TaskState.inactive
@@ -480,7 +544,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         match source:
             case TaskState.canceling:
                 await self._worker_controller.on_task_done(event.task_id)
-                await self.__send_task_cancel_confirm_to_client(event.task_cancel_confirm, TaskState.canceled)
+                await self.__send_task_cancel_confirm_to_client(event.task_cancel_confirm)
                 return TaskState.canceled
             case TaskState.balanceCanceling:
                 # the worker released the task, deregister it from that worker and reschedule it
@@ -528,14 +592,19 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             case TaskState.canceling:
                 # the worker does not hold the task, but the scheduler still maps it to that worker
                 await self._worker_controller.on_task_done(event.task_id)
-                await self.__send_task_cancel_confirm_to_client(event.task_cancel_confirm, TaskState.canceledNotFound)
+                await self.__send_task_cancel_confirm_to_client(event.task_cancel_confirm)
                 return TaskState.canceledNotFound
             case TaskState.balanceCanceling:
-                # FIXME: strands the task, it has no worker, no cancel in flight and no exit path. this preserves the
-                # behavior of the transition table, which never accepted this transition from balanceCanceling. the
-                # recovery is a behavior change, either terminate the task towards the client or reschedule it, so it
-                # needs its own review
-                return None
+                # the worker does not hold the task, but the scheduler still maps it there. nobody asked the client
+                # for this cancel, so the task must not be terminated: release the stale mapping and place it again,
+                # which is what a balance cancel confirmed as canceled already does
+                worker = self._worker_controller.get_worker_by_task_id(event.task_id)
+                logger.error(
+                    f"{event.task_id!r}: {worker!r} answered a balance cancel with cancelNotFound, the scheduler "
+                    f"mapping is stale, releasing it and placing the task again"
+                )
+                await self._worker_controller.on_task_done(event.task_id)
+                return await self.__acquire_and_dispatch(event.task_id)
             case (
                 TaskState.inactive
                 | TaskState.running
@@ -559,8 +628,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             case TaskState.canceling:
                 # remove_worker already released the capacity, so there is no on_task_done here
                 await self.__send_task_cancel_confirm_to_client(
-                    TaskCancelConfirm(taskId=event.task_id, cancelConfirmType=TaskCancelConfirmType.canceled),
-                    TaskState.canceled,
+                    TaskCancelConfirm(taskId=event.task_id, cancelConfirmType=TaskCancelConfirmType.canceled)
                 )
                 return TaskState.canceled
             case (
@@ -580,13 +648,11 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         """Look for a worker for a task that has none, and send the task to it if one is free."""
 
         task = self._task_id_to_task[task_id]
-        function_name = self._object_controller.get_object_name(task.funcObjectId)
 
         worker_id = self._worker_controller.acquire_worker(task)
         if not worker_id.is_valid():
             # put task on hold until a worker is added or a task is finished/canceled (means have capacity)
             self._unassigned.append(task_id)
-            await self.__send_monitor(task_id, TaskState.inactive, function_name)
             return TaskState.inactive
 
         await self.__send_task_to_worker(worker_id, task_id)
@@ -595,11 +661,8 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def __send_task_to_worker(self, worker_id: WorkerID, task_id: TaskID) -> None:
         task = self._task_id_to_task[task_id]
         await self._binder.send(worker_id, task, detached=True)
-        await self.__send_monitor(
-            task_id, TaskState.running, self._object_controller.get_object_name(task.funcObjectId)
-        )
 
-    async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel, task_state: TaskState) -> bool:
+    async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel) -> bool:
         """Send a cancel to the worker that holds the task, return False if no worker holds it anymore."""
 
         worker = await self._worker_controller.on_task_cancel(task_cancel)
@@ -609,10 +672,9 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             return False
 
         await self._binder.send(worker, task_cancel, detached=True)
-        await self.__send_monitor(task_cancel.taskId, task_state, b"")
         return True
 
-    async def __send_task_result_to_client(self, task_result: TaskResult, task_state: TaskState) -> None:
+    async def __send_task_result_to_client(self, task_result: TaskResult) -> None:
         await self._worker_controller.on_task_done(task_result.taskId)
         client = self._client_controller.on_task_finish(task_result.taskId)
         if client is None:
@@ -623,20 +685,12 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         else:
             await self._binder.send(client, task_result, detached=True)
 
-        func_name = b""
-        task = self._task_id_to_task.get(task_result.taskId)
-        if task:
-            func_name = self._object_controller.get_object_name(task.funcObjectId)
-        await self.__send_monitor(task_result.taskId, task_state, func_name, task_result.metadata)
-
         if self._graph_controller.is_graph_subtask(task_result.taskId):
             await self._graph_controller.on_graph_sub_task_result(task_result)
 
         await self.__retry_unassignable()
 
-    async def __send_task_cancel_confirm_to_client(
-        self, task_cancel_confirm: TaskCancelConfirm, task_state: TaskState
-    ) -> None:
+    async def __send_task_cancel_confirm_to_client(self, task_cancel_confirm: TaskCancelConfirm) -> None:
         client = self._client_controller.on_task_finish(task_cancel_confirm.taskId)
         if client is None:
             logger.warning(
@@ -645,7 +699,6 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             )
         else:
             await self._binder.send(client, task_cancel_confirm, detached=True)
-        await self.__send_monitor(task_cancel_confirm.taskId, task_state, b"")
 
         if self._graph_controller.is_graph_subtask(task_cancel_confirm.taskId):
             await self._graph_controller.on_graph_sub_task_cancel_confirm(task_cancel_confirm)
@@ -653,20 +706,55 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         await self.__retry_unassignable()
 
     async def __send_monitor(
-        self, task_id: TaskID, task_state: TaskState, function_name: bytes, metadata: bytes = b""
+        self, task_id: TaskID, task_state: TaskState, event_name: str, metadata: bytes = b""
     ) -> None:
+        """Tell the monitor the state a task is in, and the name of the event that moved it there."""
         worker = self._worker_controller.get_worker_by_task_id(task_id)
-        capabilities = self._task_id_to_task[task_id].capabilities if task_id in self._task_id_to_task else []
+        task = self._task_id_to_task.get(task_id)
         await self._binder_monitor.send(
             StateTask(
                 taskId=task_id,
-                functionName=function_name,
+                functionName=self._object_controller.get_object_name(task.funcObjectId) if task is not None else b"",
                 state=task_state,
                 worker=worker,
-                capabilities=dict_to_capabilities(capabilities),
+                capabilities=dict_to_capabilities(task.capabilities if task is not None else []),
                 metadata=metadata,
+                objectBytes=self.__task_object_bytes(task_id),
+                client=task.source if task is not None else ClientID(b""),
+                event=event_name,
             )
         )
+
+    @staticmethod
+    def __result_metadata(event: TaskEvent) -> bytes:
+        """The profile a worker sends with a result, which the monitor reads duration and memory from."""
+        return event.task_result.metadata if isinstance(event, TaskResultReceived) else b""
+
+    def __task_object_bytes(self, task_id: TaskID) -> int:
+        """Payload bytes a task's function and arguments move, 0 if the task is already gone."""
+        task = self._task_id_to_task.get(task_id)
+        if task is None or self._object_controller is None:
+            return 0
+
+        return sum(self._object_controller.get_object_size(object_id) for object_id in task_object_ids(task))
+
+    def __hold_task(self, task: Task) -> None:
+        """Keep a task and count it against the objects it names, which is what a status report reads."""
+        self._task_id_to_task[task.taskId] = task
+        for object_id in task_object_ids(task):
+            self._object_task_counts[object_id] = self._object_task_counts.get(object_id, 0) + 1
+
+    def __release_task(self, task_id: TaskID) -> None:
+        task = self._task_id_to_task.pop(task_id, None)
+        if task is None:
+            return
+
+        for object_id in task_object_ids(task):
+            remaining = self._object_task_counts[object_id] - 1
+            if remaining:
+                self._object_task_counts[object_id] = remaining
+            else:
+                self._object_task_counts.pop(object_id)
 
     async def __retry_unassignable(self):
         futures = [

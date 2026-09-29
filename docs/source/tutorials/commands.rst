@@ -68,8 +68,7 @@ sections as separate processes.
 - ``[object_storage_server]`` starts the object storage server.
 - ``[[worker_manager]]`` starts one worker manager per table entry.
 - ``object_storage_address`` is required in ``[scheduler]`` and points to the object storage server.
-- ``advertised_object_storage_address`` is optional and lets scheduler advertise a
-  different public object storage endpoint to clients/workers.
+- ``advertised_object_storage_address`` is optional, see :ref:`object-storage-addresses`.
 
 .. code-block:: bash
 
@@ -277,6 +276,12 @@ Scheduler arguments
      - No
      - ``1``
      - Interval between status reports the scheduler publishes to monitors (``scaler_top``/``scaler_gui``).
+   * - ``-orl``, ``--object-report-limit``
+     - No
+     - ``500``
+     - Biggest objects each status report carries, which is how many the web GUI can page through. They
+       are taken by size class, so the smallest size in the list is reached part way, and everything at
+       least twice that size is listed. Each one costs the report about 240 bytes.
 
 .. list-table:: Policy options
    :header-rows: 1
@@ -337,6 +342,30 @@ When ``--protected`` is enabled, client shutdown requests cannot stop the schedu
 .. code-block:: bash
 
     scaler_scheduler tcp://127.0.0.1:8516 --object-storage-address tcp://127.0.0.1:8517 --protected
+
+.. _object-storage-addresses:
+
+Object storage addresses
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Each participant connects to the object storage server on the address configured for it. These differ
+when a load balancer fronts the server.
+
+- ``[scheduler] object_storage_address``: the address the scheduler connects on.
+- ``[scheduler] advertised_object_storage_address``: the address clients outside the cluster connect on.
+- ``[[worker_manager]] object_storage_address``: the address its workers connect on, otherwise the advertised address.
+- ``Client(object_storage_address=...)``: the address one client connects on, otherwise the advertised address.
+- A client opened inside a worker connects on its worker's address, unless it is given either address.
+
+.. code-block:: toml
+
+    [scheduler]
+    object_storage_address = "tcp://scaler-object-storage:6379"
+    advertised_object_storage_address = "tcp://scaler.example.com:6379"
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    object_storage_address = "tcp://scaler-object-storage:6379"
 
 Event loop selection
 ^^^^^^^^^^^^^^^^^^^^
@@ -1024,8 +1053,9 @@ UI arguments
      - Interval between updates the web GUI pushes to connected browsers.
    * - ``-tl``, ``--task-log-max-size``
      - No
-     - ``500``
-     - Maximum completed tasks kept and shown in the task log.
+     - ``50000``
+     - Completed tasks and task-log events the GUI keeps. It pages through them server-side, so this
+       bounds memory rather than what you can browse.
    * - ``-sri``, ``--status-report-interval-seconds``
      - No
      - ``1``

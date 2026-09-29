@@ -14,12 +14,19 @@ What the example does:
 
 This pattern is useful to demonstrate nested execution, but recursion creates many small tasks and can be expensive.
 
-Nested client scheduler address
--------------------------------
+Nested client addresses
+-----------------------
 
-When creating a nested ``Client`` from inside a task, the ``address`` argument is optional.
-If omitted, the client can detect and use the scheduler address from the worker context.
-This is useful in environments where external and worker-visible scheduler addresses differ (for example behind NAT/firewalls).
+A nested ``Client`` given neither address takes both from the worker context.
+
+- ``address``: the scheduler address its worker is connected to.
+- ``object_storage_address``: the address its worker reaches object storage on.
+
+Pass ``address`` to reach another scheduler. Object storage is then the address that scheduler
+advertises. Pass ``object_storage_address`` to set it directly.
+
+This matters where the addresses a worker uses differ from the ones outside the cluster, for example
+behind NAT or a load balancer. See :ref:`object-storage-addresses`.
 
 .. code:: python
 
@@ -27,7 +34,7 @@ This is useful in environments where external and worker-visible scheduler addre
 
 
     def nested_task():
-        # Automatically uses worker-visible scheduler address
+        # Takes the scheduler and object storage addresses from the worker
         with Client() as client:
             result = client.submit(lambda x: x * 2, 5).result()
         return result

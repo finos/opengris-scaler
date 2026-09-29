@@ -124,7 +124,7 @@ class TestScalingManagerStatusRoundTrip(unittest.TestCase):
             {
                 "worker_manager_id": b"mgr_a",
                 "identity": "host1",
-                "last_seen_s": 5,
+                "last_seen_seconds": 5,
                 "max_task_concurrency": 4,
                 "capabilities": "gpu",
                 "pending_workers": 2,
@@ -139,7 +139,7 @@ class TestScalingManagerStatusRoundTrip(unittest.TestCase):
         # Attribute access (not dict access) must work after round-trip
         self.assertEqual(bytes(d.workerManagerID), b"mgr_a")
         self.assertEqual(d.identity, "host1")
-        self.assertEqual(d.lastSeenS, 5)
+        self.assertEqual(d.lastSeenSeconds, 5)
         self.assertEqual(d.maxTaskConcurrency, 4)
         self.assertEqual(d.capabilities, "gpu")
         self.assertEqual(d.pendingWorkers, 2)
@@ -153,7 +153,7 @@ class TestScalingManagerStatusRoundTrip(unittest.TestCase):
                     {
                         "worker_manager_id": b"local_a",
                         "identity": "id",
-                        "last_seen_s": 1,
+                        "last_seen_seconds": 1,
                         "max_task_concurrency": 2,
                         "capabilities": "",
                         "pending_workers": 0,

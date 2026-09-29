@@ -12,7 +12,6 @@ from scaler.protocol.capnp import (
     BaseMessage,
     ClientDisconnect,
     ClientHeartbeat,
-    DisconnectRequest,
     GraphTask,
     InformationRequest,
     ObjectInstruction,
@@ -21,6 +20,7 @@ from scaler.protocol.capnp import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerManagerHeartbeat,
 )
@@ -211,11 +211,11 @@ class Scheduler:
             return
 
         if isinstance(message, TaskCancelConfirm):
-            await self._task_controller.on_task_cancel_confirm(message)
+            await self._task_controller.on_task_cancel_confirm(WorkerID(source), message)
             return
 
         if isinstance(message, TaskResult):
-            await self._task_controller.on_task_result(message)
+            await self._task_controller.on_task_result(WorkerID(source), message)
             return
 
         if isinstance(message, TaskLog):
@@ -230,9 +230,8 @@ class Scheduler:
             await self._worker_controller.on_heartbeat(WorkerID(source), message)
             return
 
-        # scheduler receives worker disconnect request from downstream
-        if isinstance(message, DisconnectRequest):
-            await self._worker_controller.on_disconnect(WorkerID(source), message)
+        if isinstance(message, WorkerDisconnectNotification):
+            await self._worker_controller.on_disconnect_notification(WorkerID(source), message)
             return
 
         # =====================================================================================
@@ -279,6 +278,11 @@ class Scheduler:
             ),
             create_async_loop_routine(
                 self._worker_manager_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_routine_errors=True
+            ),
+            create_async_loop_routine(
+                self._object_controller.routine_storage_totals,
+                self._config_controller.get_config("status_report_interval_seconds"),
+                swallow_routine_errors=True,
             ),
             create_async_loop_routine(
                 self._information_controller.routine,

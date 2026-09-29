@@ -53,7 +53,7 @@ class TestScaling(unittest.TestCase):
     @unittest.skipIf(
         sys.platform == "win32",
         "Declarative scale-down calls stop_units mid-test, which on POSIX uses os.kill(pid, SIGINT) "
-        "so the worker runs __graceful_shutdown and sends DisconnectRequest. Windows has no equivalent "
+        "so the worker sends WorkerDisconnectNotification on shutdown. Windows has no equivalent "
         "for delivering SIGINT to a multiprocessing.spawn child (Python's os.kill on Windows maps SIGINT "
         "to TerminateProcess, and CTRL_C_EVENT requires CREATE_NEW_PROCESS_GROUP), so any scaled-down "
         "worker is killed without notice and the scheduler waits ~60s for heartbeat timeout. The scaling "
@@ -335,7 +335,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
         manager_snapshots = {
             b"mgr": WorkerManagerSnapshot(
-                worker_manager_id=b"mgr", max_task_concurrency=10, worker_count=10, last_seen_s=0.0, capabilities={}
+                worker_manager_id=b"mgr", max_task_concurrency=10, worker_count=10, last_seen_at=0.0, capabilities={}
             )
         }
 
@@ -652,7 +652,7 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
         rssFree=500000,
         queueSize=10,
         queuedTasks=queued_tasks,
-        latencyUS=100,
+        latencyMicroseconds=100,
         taskLock=False,
         processors=[],
         capabilities=capabilities,

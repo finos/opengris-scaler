@@ -17,7 +17,7 @@ from scaler.client.serializer.mixins import Serializer
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.config.types.address import AddressConfig
-from scaler.io.mixins import NetworkBackend, SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import NetworkBackend, SyncConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
@@ -83,7 +83,9 @@ class Client:
         :param stream_output: If True, stdout/stderr will be streamed to client during task execution
         :type stream_output: bool
         :param object_storage_address: Override object storage address (e.g., for Docker/Kubernetes port mapping).
-                                       If None, will use address received from scheduler.
+                                       If None, a client inside a worker given no scheduler address uses
+                                       its worker's address. Any other client uses the address the
+                                       scheduler advertises.
         :type object_storage_address: Optional[str]
         """
         self.__initialize__(
@@ -113,7 +115,6 @@ class Client:
         self._future_manager: Optional[ClientFutureManager] = None
         self._bridge: Optional[ClientAgentBridge] = None
         self._connector_agent: Optional[SyncConnector] = None
-        self._connector_storage: Optional[SyncObjectStorageConnector] = None
 
         self._serializer = serializer
 
@@ -125,6 +126,7 @@ class Client:
         self._backend: NetworkBackend = get_network_backend_from_env()
 
         self._scheduler_address = self.__resolve_scheduler_address(address)
+        object_storage_address = self.__resolve_object_storage_address(address, object_storage_address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
@@ -145,26 +147,15 @@ class Client:
         )
         self._bridge.start()
 
-        logger.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
-
-        # Blocks until the agent receives the object storage address
-        self._object_storage_address = self._bridge.get_object_storage_address()
-
         self._connector_agent = self._bridge.connector
 
-        logger.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
-        self._connector_storage = self._backend.create_sync_object_storage_connector(
-            identity=self._identity, address=self._object_storage_address, security_config=self._security_config
-        )
-
-        self._object_buffer = ObjectBuffer(
-            self._identity, self._serializer, self._connector_agent, self._connector_storage
-        )
+        # The object storage server is accessed by the client agent, on its event loop.
+        self._object_buffer = ObjectBuffer(self._identity, self._serializer, self._connector_agent, self._bridge)
         self._future_factory = functools.partial(
             ScalerFuture,
             serializer=self._serializer,
             connector_agent=self._connector_agent,
-            connector_storage=self._connector_storage,
+            object_buffer=self._object_buffer,
         )
 
     @property
@@ -797,9 +788,6 @@ class Client:
         if self._connector_agent is not None:
             self._connector_agent.destroy()
 
-        if self._connector_storage is not None:
-            self._connector_storage.destroy()
-
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
         """If the client is running inside a Scaler processor, returns the priority of the associated task."""
@@ -832,3 +820,24 @@ class Client:
 
         # Return the scheduler address from the current processor
         return current_processor.scheduler_address()
+
+    @staticmethod
+    def __resolve_object_storage_address(
+        scheduler_address: Optional[str], object_storage_address: Optional[str]
+    ) -> Optional[str]:
+        """The address to reach object storage on, None to use the one the scheduler advertises.
+
+        A client inside a worker takes its worker's address only if it takes its worker's scheduler too.
+        A client given a scheduler address may be on another cluster, and uses what that one advertises.
+        """
+        if object_storage_address is not None:
+            return object_storage_address
+
+        if scheduler_address is not None:
+            return None
+
+        current_processor = Processor.get_current_processor() if Processor is not None else None
+        if current_processor is None:
+            return None
+
+        return str(current_processor.object_storage_address())

@@ -13,8 +13,9 @@ from typing import Any
 from unittest.mock import Mock
 
 from scaler.client.future import ScalerFuture
+from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 
@@ -35,7 +36,7 @@ def _make_future(is_delayed: bool = False) -> ScalerFuture:
         group_task_id=None,
         serializer=DefaultSerializer(),
         connector_agent=Mock(spec=SyncConnector),
-        connector_storage=Mock(spec=SyncObjectStorageConnector),
+        object_buffer=Mock(spec=ObjectBuffer),
     )
     fut.set_running_or_notify_cancel()
     return fut
@@ -105,7 +106,7 @@ class ScalerFutureEmscriptenResultTest(unittest.TestCase):
         self._real_platform = _sys.platform
         # Force ``sys.platform`` to ``"emscripten"`` so ``_wait_result_ready``
         # takes the JSPI branch.
-        _sys.platform = "emscripten"  # type: ignore[misc]
+        _sys.platform = "emscripten"
 
         # Inject a fake ``pyodide.ffi.run_sync`` that drives the awaitable on
         # a fresh background-thread asyncio loop. ``asyncio.wrap_future`` is
@@ -144,7 +145,7 @@ class ScalerFutureEmscriptenResultTest(unittest.TestCase):
     def tearDown(self) -> None:
         import sys as _sys
 
-        _sys.platform = self._real_platform  # type: ignore[misc]
+        _sys.platform = self._real_platform
         _sys.modules.pop("pyodide", None)
         _sys.modules.pop("pyodide.ffi", None)
         if self._real_pyodide is not None:

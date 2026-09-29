@@ -58,6 +58,6 @@ class TestHeartbeatManagerTaskLock(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sent.taskLock)
 
     async def test_routine_skipped_when_timestamp_nonzero(self) -> None:
-        self.hm._start_timestamp_ns = 12345
+        self.hm._start_timestamp_nanoseconds = 12345
         await self.hm.routine()
         self.connector_external.send.assert_not_called()
