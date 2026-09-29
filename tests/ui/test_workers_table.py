@@ -1,4 +1,4 @@
-"""The worker row the Live tab shows, built from one worker's heartbeat."""
+"""The worker row the Overview tab shows, built from one worker's heartbeat."""
 
 import unittest
 

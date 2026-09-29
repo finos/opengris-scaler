@@ -659,12 +659,12 @@ th.sort-desc::after {
 }
 
 /* Fit-page layout: everything fits in viewport, stream scrolls internally */
-body.fit-page.fit-page-stream {
+body.fit-page.fit-page-timeline {
     height: 100vh;
     overflow: hidden;
 }
 
-body.fit-page .tab-panel.active#panel-stream {
+body.fit-page .tab-panel.active#panel-timeline {
     display: flex;
     flex-direction: column;
     height: calc(100vh - 85px); /* viewport minus header + tabs */

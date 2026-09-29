@@ -39,7 +39,7 @@ var streamTicks = [];
 var streamWindow = 300;    // seconds
 var streamNeedsRedraw = false;
 var memoryNeedsRedraw = false;
-var activeTab = "live";          // currently visible tab; hidden tabs are cached, not re-rendered
+var activeTab = "overview";          // currently visible tab; hidden tabs are cached, not re-rendered
 var lastSchedulerData = null;    // latest cached payloads, replayed on tab switch
 var lastManagersData = [];
 var lastWorkerDetails = [];
@@ -88,7 +88,7 @@ var taskEventsPage = 0;
 var taskEventsPages = 1;
 var taskEventsHeld = 0;      // events the server holds under the current filter
 var taskEventFilter = "";    // task id the server is filtering to, empty for every task
-// The Task List's filters as the server applied them, each empty while unset.
+// The Tasks tab's filters as the server applied them, each empty while unset.
 var taskLogFilter = { task_log_client: "", task_log_worker: "", task_log_status: "" };
 var taskLogMatched = 0;      // tasks the server holds that the filters match
 var workersHost = "";        // host the Workers page is filtered to, empty for every host
@@ -151,21 +151,21 @@ function selectTab(name) {
     saveState();
     var panel = $("panel-" + name);
     if (panel) panel.classList.add("active");
-    updateFitPageStream();
+    updateFitPageTimeline();
     renderActiveTab();
 }
 
 // Render the now-visible tab from the latest cached data. Hidden tabs are skipped on update; switching to
 // a tab replays its cached payload so it is immediately current.
 function renderActiveTab() {
-    if (activeTab === "live") {
+    if (activeTab === "overview") {
         if (lastSchedulerData) renderScheduler(lastSchedulerData);
         if (lastStorageData) renderStorage(lastStorageData);
         renderWorkers();
         renderManagers();
-    } else if (activeTab === "tasklist") {
+    } else if (activeTab === "tasks") {
         renderTaskLog();
-    } else if (activeTab === "tasklog") {
+    } else if (activeTab === "events") {
         renderTaskEvents();
     } else if (activeTab === "workers") {
         renderWorkerDetails();
@@ -175,7 +175,7 @@ function renderActiveTab() {
         renderClients();
     } else if (activeTab === "objects") {
         renderObjects();
-    } else if (activeTab === "stream") {
+    } else if (activeTab === "timeline") {
         renderStreamStatic();
         streamNeedsRedraw = true;
         memoryNeedsRedraw = true;
@@ -219,17 +219,17 @@ function renderPager(elId, page, totalPages, total, onPage) {
 var fitPageBtn = $("fit-page-btn");
 var fitPageActive = false;
 
-function updateFitPageStream() {
-    var streamActive = document.querySelector('.tab.active');
-    var isStream = streamActive && streamActive.getAttribute('data-tab') === 'stream';
-    document.body.classList.toggle('fit-page-stream', fitPageActive && isStream);
+function updateFitPageTimeline() {
+    var activeButton = document.querySelector('.tab.active');
+    var isTimeline = activeButton && activeButton.getAttribute('data-tab') === 'timeline';
+    document.body.classList.toggle('fit-page-timeline', fitPageActive && isTimeline);
 }
 
 fitPageBtn.addEventListener("click", function() {
     fitPageActive = !fitPageActive;
     document.body.classList.toggle("fit-page", fitPageActive);
     fitPageBtn.classList.toggle("active", fitPageActive);
-    updateFitPageStream();
+    updateFitPageTimeline();
     streamNeedsRedraw = true;
     memoryNeedsRedraw = true;
 });
@@ -288,7 +288,7 @@ function loadSavedState() {
         state = JSON.parse(sessionStorage.getItem(STATE_STORAGE_KEY));
     } catch (e) {}
     if (!state || typeof state !== "object") state = {};
-    return { tab: state.tab || "live", view: state.view || {}, settings: state.settings || {} };
+    return { tab: state.tab || "overview", view: state.view || {}, settings: state.settings || {} };
 }
 
 // Without storage the view lasts as long as the page does.
@@ -405,10 +405,10 @@ function markToggle(groupId, value) {
     }
 }
 
-// -- Live Tab: Object Storage --
+// -- Overview Tab: Object Storage --
 function updateStorage(storage) {
     lastStorageData = storage;
-    if (activeTab === "live") renderStorage(storage);
+    if (activeTab === "overview") renderStorage(storage);
 }
 
 // A pending count that does not fall is a fetch nobody can answer: get_object waits without a bound.
@@ -423,10 +423,10 @@ function renderStorage(storage) {
     ossOldest.classList.toggle("stale", storage.pending > 0);
 }
 
-// -- Live Tab: Scheduler --
+// -- Overview Tab: Scheduler --
 function updateScheduler(sched) {
     lastSchedulerData = sched;
-    if (activeTab === "live") renderScheduler(sched);
+    if (activeTab === "overview") renderScheduler(sched);
 }
 
 function renderScheduler(sched) {
@@ -439,10 +439,10 @@ function renderScheduler(sched) {
     schedLastSeen.classList.toggle("stale", !!sched.stale);
 }
 
-// -- Live Tab: Worker Managers --
+// -- Overview Tab: Worker Managers --
 function updateWorkerManagers(managers) {
     lastManagersData = managers;
-    if (activeTab === "live") renderManagers();
+    if (activeTab === "overview") renderManagers();
 }
 
 function renderManagers() {
@@ -515,7 +515,7 @@ function renderManagers() {
     }
 }
 
-// -- Live Tab: Workers --
+// -- Overview Tab: Workers --
 // Column order of the workers table; a header click sends the field name to the server.
 var WORKER_FIELDS = ["name", "manager_id", "host", "task", "task_age", "agt_cpu", "agt_rss", "proc_cpu",
                      "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended", "lag", "itl",
@@ -523,7 +523,7 @@ var WORKER_FIELDS = ["name", "manager_id", "host", "task", "task_age", "agt_cpu"
 
 function updateWorkers(workers) {
     lastWorkersData = workers;
-    if (activeTab === "live") renderWorkers();
+    if (activeTab === "overview") renderWorkers();
 }
 
 var MACHINE_FIELDS = ["host", "workers", "busy", "idle", "managers", "cpu", "rss", "rss_free",
@@ -539,7 +539,7 @@ var lastCpuTicks = [];  // the right axis, from 0 up to its last tick
 
 function updateTaskEvents(rows) {
     lastTaskEvents = rows;
-    if (activeTab === "tasklog") renderTaskEvents();
+    if (activeTab === "events") renderTaskEvents();
 }
 
 // Filtering to one task and paging both run on the server, so this renders the page it was handed.
@@ -584,7 +584,7 @@ function renderFilterLabel(prefix, description) {
     $(prefix + "-clear").style.display = description ? "" : "none";
 }
 
-// Narrow the Task List. A change naming a filter as empty clears it.
+// Narrow the Tasks tab. A change naming a filter as empty clears it.
 function filterTaskLog(change) {
     Object.assign(taskLogFilter, change);
     taskLogPage = 0;
@@ -600,11 +600,11 @@ function renderTaskLogFilter() {
     renderFilterLabel("tasklog", parts.join(", "));
 }
 
-// One client's or one worker's tasks, from another page: the Task List with only that filter set.
+// One client's or one worker's tasks, from another page: the Tasks tab with only that filter set.
 function focusTasks(filterName, value) {
     var change = { task_log_client: "", task_log_worker: "", task_log_status: "" };
     change[filterName] = value;
-    selectTab("tasklist");
+    selectTab("tasks");
     filterTaskLog(change);
 }
 
@@ -880,10 +880,10 @@ function handleWorkerEvents(events) {
             if (lastWorkersData.length !== before) removed = true;
         }
     }
-    if (removed && activeTab === "live") renderWorkers();
+    if (removed && activeTab === "overview") renderWorkers();
 }
 
-// -- Task Log --
+// -- Tasks Tab --
 function formatTime(epoch) {
     if (!epoch) return "";
     var d = new Date(epoch * 1000);
@@ -902,7 +902,7 @@ function statusClass(status) {
 
 function updateTaskLog(rows) {
     taskLogData = rows;
-    if (activeTab === "tasklist") renderTaskLog();
+    if (activeTab === "tasks") renderTaskLog();
     else updateTaskListCount();  // the count (server total) stays current even while the tab is hidden
 }
 
@@ -947,7 +947,7 @@ var TASK_LOG_CELLS = {
     }
 };
 
-// A cell that narrows the Task List to the tasks whose `filterName` field holds `value`.
+// A cell that narrows the Tasks tab to the tasks whose `filterName` field holds `value`.
 function makeFilterCell(text, value, filterName) {
     var td = makeCell(text);
     if (!value) return td;
@@ -1005,13 +1005,13 @@ function updateTaskStream(data) {
         sendView({ stream_page: p });
     });
 
-    if (activeTab === "stream") {
+    if (activeTab === "timeline") {
         renderStreamStatic();
         streamNeedsRedraw = true;
     }
 }
 
-// Rebuild the stream legend + time axis (DOM) from cached data; runs only while the stream tab is visible.
+// Rebuild the stream legend + time axis (DOM) from cached data; runs only while the Timeline tab is visible.
 function renderStreamStatic() {
     var legend = streamLegendData;
     var managerLegend = streamManagerLegendData;
@@ -1340,7 +1340,7 @@ function updateMemoryChart(data) {
     lastCpuTicks = data.cpu_ticks || [];
     memoryScale = data.scale || "linear";
     streamWindow = data.window || streamWindow;
-    if (activeTab === "stream") memoryNeedsRedraw = true;
+    if (activeTab === "timeline") memoryNeedsRedraw = true;
 }
 
 // The server's clock now, so samples sit where the clock that timed them puts them, whatever the browser's reads.
@@ -1723,7 +1723,7 @@ function buildQueueChip(task) {
     return chip;
 }
 
-// A task id that opens that task's trail in the Task Log.
+// A task id that opens that task's trail on the Events tab.
 function makeTaskLink(taskId, tag) {
     var element = document.createElement(tag || "td");
     var link = document.createElement("span");
@@ -1739,9 +1739,9 @@ function makeTaskLink(taskId, tag) {
     return element;
 }
 
-// Show one task's trail: switch to the Task Log and filter it to that task.
+// Show one task's trail: switch to the Events tab and filter it to that task.
 function focusTask(taskId) {
-    selectTab("tasklog");
+    selectTab("events");
     showOnlyTask(taskId);
 }
 
@@ -1777,8 +1777,8 @@ function formatBytes(bytes) {
 
 // -- Animation Loop --
 function renderLoop() {
-    // Only the visible stream tab draws; hidden canvases are never touched (they redraw on switch-in).
-    if (activeTab === "stream") {
+    // Only the visible Timeline tab draws; hidden canvases are never touched (they redraw on switch-in).
+    if (activeTab === "timeline") {
         if (streamNeedsRedraw) {
             streamNeedsRedraw = false;
             drawTaskStream();
@@ -1805,6 +1805,6 @@ workersBody.addEventListener("pointerdown", holdStill);
 machinesBody.addEventListener("pointerdown", holdStill);
 clientsBody.addEventListener("pointerdown", holdStill);
 applySettings(saved.settings);
-selectTab($("panel-" + saved.tab) ? saved.tab : "live");
+selectTab($("panel-" + saved.tab) ? saved.tab : "overview");
 connect();
 requestAnimationFrame(renderLoop);

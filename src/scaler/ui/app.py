@@ -55,7 +55,7 @@ COMPLETED_TASK_STATUSES = (
 # What a task the scheduler reports running is doing on its worker, as that worker's processors report it.
 WORKER_TASK_STATUSES = ("queued", "running", "suspended")
 
-# What made a Task Log row that no scheduler event did, named for the message that carried it.
+# What made an Events row that no scheduler event did, named for the message that carried it.
 PROCESSOR_REPORT_EVENT = "WorkerStatus"
 BALANCE_ADVICE_EVENT = "StateBalanceAdvice"
 
@@ -157,7 +157,7 @@ SORTABLE_TABLES = {
     "objects": OBJECTS_SORT,
 }
 
-# The Task List's filters: each view field names the row field it matches exactly.
+# The Tasks tab's filters: each view field names the row field it matches exactly.
 TASK_LOG_FILTERS = {"task_log_client": "full_client", "task_log_worker": "full_worker", "task_log_status": "status"}
 
 
@@ -173,7 +173,7 @@ class BrowserView:
     task_log_page: int = 0
     task_log_sort: Optional[str] = None
     task_log_sort_ascending: bool = True
-    task_log_client: str = ""  # each Task List filter shows only the tasks holding this value; empty shows every task
+    task_log_client: str = ""  # each Tasks tab filter shows only the tasks holding this value; empty shows every task
     task_log_worker: str = ""
     task_log_status: str = ""
     task_events_page: int = 0
@@ -226,7 +226,7 @@ class BrowserView:
         return {"stream_window": self.stream_window_minutes, "memory_scale": self.memory_scale}
 
     def task_log_filter(self) -> Dict[str, str]:
-        """Row field to the value it must hold, for each Task List filter this browser set."""
+        """Row field to the value it must hold, for each Tasks tab filter this browser set."""
         return {field: getattr(self, name) for name, field in TASK_LOG_FILTERS.items() if getattr(self, name)}
 
 

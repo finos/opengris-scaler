@@ -13,18 +13,18 @@
     </header>
 
     <nav class="tab-bar" id="tab-bar">
-        <button class="tab active" data-tab="live">Live</button>
-        <button class="tab" data-tab="tasklist">Task List</button>
-        <button class="tab" data-tab="tasklog">Task Log</button>
-        <button class="tab" data-tab="stream">Worker Task Stream</button>
+        <button class="tab active" data-tab="overview">Overview</button>
+        <button class="tab" data-tab="tasks">Tasks</button>
+        <button class="tab" data-tab="events">Events</button>
+        <button class="tab" data-tab="timeline">Timeline</button>
         <button class="tab" data-tab="workers">Workers</button>
         <button class="tab" data-tab="machines">Machines</button>
         <button class="tab" data-tab="clients">Clients</button>
         <button class="tab" data-tab="objects">Objects</button>
     </nav>
 
-    <!-- Tab: Live -->
-    <div class="tab-panel active" id="panel-live">
+    <!-- Tab: Overview -->
+    <div class="tab-panel active" id="panel-overview">
         <div class="card scheduler-card">
             <h3>Scheduler</h3>
             <div class="scheduler-metrics">
@@ -144,11 +144,11 @@
         </div>
     </div>
 
-    <!-- Tab: Task List -->
-    <div class="tab-panel" id="panel-tasklist">
+    <!-- Tab: Tasks -->
+    <div class="tab-panel" id="panel-tasks">
         <div class="card">
             <div class="card-header-row">
-                <h3 title="One row per task, rewritten in place as the task moves. Click a client, worker or status to show only the tasks sharing it.">Task List <span class="muted" id="tasklog-count" title="Tasks finished since this monitor started; the list also holds the ones still running"></span></h3>
+                <h3 title="One row per task, rewritten in place as the task moves. Click a client, worker or status to show only the tasks sharing it.">Tasks <span class="muted" id="tasklog-count" title="Tasks finished since this monitor started; the list also holds the ones still running"></span></h3>
                 <div class="inline-controls">
                     <span class="muted" id="tasklog-filter-label"></span>
                     <button class="fit-page-btn" id="tasklog-clear" style="display:none">Show all</button>
@@ -179,11 +179,11 @@
     </div>
 
 
-    <!-- Tab: Task Log (linear history) -->
-    <div class="tab-panel" id="panel-tasklog">
+    <!-- Tab: Events (linear history) -->
+    <div class="tab-panel" id="panel-events">
         <div class="card">
             <div class="card-header-row">
-                <h3 title="Every state change in the order it happened, newest first. Rows are never rewritten, so a task that is rebalanced or retried leaves its whole trail. Click a row to see only that task.">Task Log <span class="muted" id="taskevents-count"></span></h3>
+                <h3 title="Every state change in the order it happened, newest first. Rows are never rewritten, so a task that is rebalanced or retried leaves its whole trail. Click a row to see only that task.">Events <span class="muted" id="taskevents-count"></span></h3>
                 <div class="inline-controls">
                     <span class="muted" id="taskevents-filter-label"></span>
                     <button class="fit-page-btn" id="taskevents-clear" style="display:none">Show all</button>
@@ -211,8 +211,8 @@
         </div>
     </div>
 
-    <!-- Tab: Worker Task Stream -->
-    <div class="tab-panel" id="panel-stream">
+    <!-- Tab: Timeline -->
+    <div class="tab-panel" id="panel-timeline">
         <div class="card" id="stream-card">
             <div class="card-header-row">
                 <h3 title="One row per worker, one bar per task it actually ran. A bar outlined in yellow is still running. Click a worker's name for its tasks.">Worker Task Stream</h3>
