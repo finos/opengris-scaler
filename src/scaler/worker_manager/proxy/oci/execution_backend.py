@@ -139,6 +139,11 @@ class OCIExecutionBackend(TaskInputLoader, ExecutionBackend):
         self._task_id_to_instance_id.pop(task_id, None)
         self._task_id_to_input_key.pop(task_id, None)
 
+    def close(self) -> None:
+        # The OCI clients hold nothing that outlives the process, and the blocking calls run on the
+        # event loop's own executor, which the loop shuts down.
+        pass
+
     async def routine(self) -> None:
         pass
 

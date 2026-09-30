@@ -6,6 +6,8 @@ import sys
 from collections import deque
 from typing import Callable, Dict, Optional
 
+import tblib.pickling_support
+
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
 from scaler.config.types.address import AddressConfig
@@ -159,14 +161,33 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         return exit_code
 
     def _cleanup(self) -> None:
+        """Give back everything the worker holds, in the order that keeps its owners alive.
+
+        The execution backend goes first, while it can still reach whatever it is releasing, and the
+        network backend last, because the connectors run on its IO threads. Releasing here rather than
+        leaving it to interpreter shutdown keeps the order ours: both backends own native resources
+        whose destructors would otherwise run in whatever order finalization chose.
+        """
+        if self._execution_backend is not None:
+            self._execution_backend.close()
+
         if self._connector_external is not None:
             self._connector_external.destroy()
 
         if self._connector_storage is not None:
             self._connector_storage.destroy()
 
+        # Last: the connectors above run on this context's IO threads.
+        if self._backend is not None:
+            self._backend.destroy()
+
     def __initialize(self) -> None:
         bootstrap_process()
+
+        # A task's exception is pickled on to the client from this process, and a traceback only
+        # survives pickling where tblib is installed, so a failure arrives without one otherwise.
+        tblib.pickling_support.install()
+
         register_event_loop(self._event_loop)
 
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)
