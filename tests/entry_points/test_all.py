@@ -226,13 +226,6 @@ class TestScalerAllConfigShape(unittest.TestCase):
         config = self._parse(self._native_base(task_timeout_seconds=300))
         self.assertEqual(config.worker_managers[0].worker_config.task_timeout_seconds, 300)
 
-    def test_mode_value_based_string(self) -> None:
-        """mode = "fixed" (value-based, lowercase) should work the same as for scaler_worker_manager."""
-        from scaler.config.section.native_worker_manager import NativeWorkerManagerMode
-
-        config = self._parse(self._native_base(mode="fixed"))
-        self.assertEqual(config.worker_managers[0].mode, NativeWorkerManagerMode.FIXED)
-
     def test_orb_aws_ec2_worker_manager_parsed_from_toml(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
@@ -354,7 +347,7 @@ class TestRunWorkerManager(unittest.TestCase):
         with (
             patch("scaler.entry_points.scaler.register_event_loop") as mock_reg,
             patch("scaler.entry_points.scaler.bootstrap_process"),
-            patch("scaler.worker_manager_adapter.baremetal.native.NativeWorkerManager") as mock_nm,
+            patch("scaler.worker_manager.native.worker_manager.NativeWorkerManager") as mock_nm,
         ):
             mock_nm.return_value.run.return_value = None
             _run_worker_manager(config)
@@ -369,7 +362,7 @@ class TestRunWorkerManager(unittest.TestCase):
         with (
             patch("scaler.entry_points.scaler.bootstrap_process") as mock_log,
             patch("scaler.entry_points.scaler.register_event_loop"),
-            patch("scaler.worker_manager_adapter.baremetal.native.NativeWorkerManager") as mock_nm,
+            patch("scaler.worker_manager.native.worker_manager.NativeWorkerManager") as mock_nm,
         ):
             mock_nm.return_value.run.return_value = None
             _run_worker_manager(config)
@@ -404,7 +397,7 @@ class TestRunWorkerManager(unittest.TestCase):
         with (
             patch("scaler.entry_points.scaler.bootstrap_process"),
             patch("scaler.entry_points.scaler.register_event_loop"),
-            patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerManager") as mock_orb,
+            patch("scaler.worker_manager.nested.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerManager") as mock_orb,
         ):
             mock_orb.return_value.run.return_value = None
             _run_worker_manager(config)
@@ -420,7 +413,7 @@ class TestRunWorkerManager(unittest.TestCase):
         with (
             patch("scaler.entry_points.scaler.register_event_loop") as mock_reg,
             patch("scaler.entry_points.scaler.bootstrap_process"),
-            patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerManager") as mock_orb,
+            patch("scaler.worker_manager.nested.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerManager") as mock_orb,
         ):
             mock_orb.return_value.run.return_value = None
             _run_worker_manager(config)

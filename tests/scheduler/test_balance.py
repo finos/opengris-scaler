@@ -17,7 +17,7 @@ from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
+from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 
@@ -244,7 +244,7 @@ class TestBalance(unittest.TestCase):
             heartbeat_interval_seconds=HEARTBEAT_INTERVAL_SECONDS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
             load_balance_trigger_times=1,
-            scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=vanilla"),
+            scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=static"),
             logging_paths=(log_path,),
         )
 

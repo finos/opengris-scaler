@@ -88,6 +88,7 @@ struct WorkerHeartbeat {
     hostname @10 :Text;   # machine this worker runs on, so the monitor can group workers by host
     netSentBytes @11 :UInt64;  # host-wide counters, identical for workers sharing a host; the monitor
     netRecvBytes @12 :UInt64;  # reads them once per hostname rather than summing them
+    draining @13 :Bool;        # set once the worker starts to drain, never cleared: it takes no new task
 }
 
 struct WorkerHeartbeatEcho {
@@ -98,6 +99,11 @@ struct WorkerManagerHeartbeat {
     maxTaskConcurrency @0 :UInt32;
     capabilities @1 :List(CommonType.TaskCapability);
     workerManagerID @2 :Data;
+    activeTaskConcurrency @3 :UInt32;  # task slots of the units that serve
+    occupancy @4 :UInt32;              # queued and running tasks across the fleet
+    activeUnits @5 :UInt32;
+    pendingUnits @6 :UInt32;
+    drainingUnits @7 :UInt32;
 }
 
 struct WorkerManagerHeartbeatEcho {
@@ -126,6 +132,18 @@ struct ObjectInstruction {
 
 # Carries no payload: the worker it refers to is the sender, which the binder already identifies.
 struct WorkerDisconnectNotification {
+}
+
+# Manager -> worker: finish the running task, take no new one, then exit.
+struct WorkerShutdown {
+}
+
+# Parent manager -> child manager: drain the whole fleet, then exit.
+struct WorkerManagerShutdown {
+}
+
+# Child manager -> parent manager: the fleet is gone and the child is about to exit.
+struct WorkerManagerDisconnectNotification {
 }
 
 struct ClientDisconnect {
@@ -254,5 +272,9 @@ struct Message {
         workerManagerCommand @25 :WorkerManagerCommand;
 
         workerDisconnectNotification @26 :WorkerDisconnectNotification;
+
+        workerShutdown @27 :WorkerShutdown;
+        workerManagerShutdown @28 :WorkerManagerShutdown;
+        workerManagerDisconnectNotification @29 :WorkerManagerDisconnectNotification;
     }
 }

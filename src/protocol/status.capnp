@@ -74,6 +74,7 @@ struct WorkerStatus {
     hostname @12 :Text;          # machine this worker runs on, so the UI can group by host
     netSentBytes @13 :UInt64;    # host-wide network counters; identical for workers sharing a host,
     netRecvBytes @14 :UInt64;    # so the UI reads them once per hostname
+    draining @15 :Bool;          # takes no new task, and exits once its running tasks finish
 }
 
 struct WorkerManagerStatus {
@@ -98,6 +99,10 @@ struct ScalingManagerStatus {
         # Workers the scheduler has requested but that have not yet connected.
         # Computed each tick as max(0, total_requested - connected_count).
         pendingWorkers @5 :UInt32;
+        # Units as the manager reports them: a unit is a worker, or a resource that runs a child manager.
+        activeUnits @6 :UInt32;
+        pendingUnits @7 :UInt32;
+        drainingUnits @8 :UInt32;
     }
 }
 

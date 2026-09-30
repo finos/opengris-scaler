@@ -46,6 +46,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         self._security_config = security_config
 
         self._connector_external: Optional[AsyncConnector] = None
+        self._connector_manager: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._worker_task_manager: Optional[TaskManager] = None
         self._timeout_manager: Optional[TimeoutManager] = None
@@ -59,12 +60,14 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
     def register(
         self,
         connector_external: AsyncConnector,
+        connector_manager: AsyncConnector,
         connector_storage: AsyncObjectStorageConnector,
         worker_task_manager: TaskManager,
         timeout_manager: TimeoutManager,
         processor_manager: ProcessorManager,
     ):
         self._connector_external = connector_external
+        self._connector_manager = connector_manager
         self._connector_storage = connector_storage
         self._worker_task_manager = worker_task_manager
         self._timeout_manager = timeout_manager
@@ -111,26 +114,27 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         assert queued_tasks >= 0, f"negative queued task count, {num_suspended_processors=}"
 
         # TODO: add task queue size to WorkerHeartbeat
-        await self._connector_external.send(
-            WorkerHeartbeat(
-                agent=Resource(
-                    cpu=int(self._agent_process.cpu_percent() * 10), rss=get_process_memory(self._agent_process)
-                ),
-                rssFree=mem_available,
-                memLimit=mem_limit,
-                queueSize=self._task_queue_size,
-                queuedTasks=queued_tasks,
-                latencyMicroseconds=self._latency_microseconds,
-                taskLock=self._processor_manager.can_accept_task(),
-                processors=[self.__get_processor_status_from_holder(processor) for processor in processors],
-                capabilities=dict_to_capabilities(self._capabilities),
-                workerManagerID=self._worker_manager_id,
-                hostname=get_hostname(),
-                netSentBytes=net_sent,
-                netRecvBytes=net_recv,
+        heartbeat = WorkerHeartbeat(
+            agent=Resource(
+                cpu=int(self._agent_process.cpu_percent() * 10), rss=get_process_memory(self._agent_process)
             ),
-            detached=True,
+            rssFree=mem_available,
+            memLimit=mem_limit,
+            queueSize=self._task_queue_size,
+            queuedTasks=queued_tasks,
+            latencyMicroseconds=self._latency_microseconds,
+            taskLock=self._processor_manager.can_accept_task(),
+            processors=[self.__get_processor_status_from_holder(processor) for processor in processors],
+            capabilities=dict_to_capabilities(self._capabilities),
+            workerManagerID=self._worker_manager_id,
+            hostname=get_hostname(),
+            netSentBytes=net_sent,
+            netRecvBytes=net_recv,
+            draining=self._worker_task_manager.is_draining(),
         )
+        await self._connector_external.send(heartbeat, detached=True)
+        # The manager reads the same heartbeat for liveness and occupancy, and echoes it on its own link.
+        await self._connector_manager.send(heartbeat, detached=True)
         self._start_timestamp_nanoseconds = time.time_ns()
 
     def get_object_storage_address(self) -> Optional[AddressConfig]:

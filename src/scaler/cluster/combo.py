@@ -29,13 +29,13 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.process_bootstrap import bootstrap_process
-from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
+from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class SchedulerClusterCombo:
         per_worker_task_queue_size: int = DEFAULT_PER_WORKER_QUEUE_SIZE,
         hard_processor_suspend: bool = DEFAULT_HARD_PROCESSOR_SUSPEND,
         protected: bool = True,
-        scaler_policy: PolicyConfig = PolicyConfig(),
+        scaler_policy: PolicyConfig = PolicyConfig(policy_content="allocate=even_load; scaling=static"),
         event_loop: str = "builtin",
         logging_paths: Tuple[str, ...] = DEFAULT_LOGGING_PATHS,
         logging_level: str = DEFAULT_LOGGING_LEVEL,
@@ -122,7 +122,6 @@ class SchedulerClusterCombo:
                     object_storage_address=self._object_storage_address,
                     max_task_concurrency=n_workers,
                 ),
-                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
                     per_worker_task_queue_size=per_worker_task_queue_size,
@@ -187,7 +186,7 @@ class SchedulerClusterCombo:
         logger.info(f"{self.__get_prefix()} shutdown")
         if self._worker_manager_process.is_alive():
             # On POSIX, multiprocessing.Process.terminate() sends SIGTERM and the worker manager's
-            # signal handler iterates self._workers and terminates each child worker, which in turn
+            # signal handler signals each child worker to stop, which in turn
             # cleanly tears down their processors. On Windows terminate() is TerminateProcess --
             # the handler never runs and the worker / processor children become orphaned, kept
             # alive (and busy retrying YMQ connections) until they happen to notice the scheduler

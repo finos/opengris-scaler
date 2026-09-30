@@ -451,7 +451,7 @@ function renderManagers() {
     if (!managers || managers.length === 0) {
         var tr = document.createElement("tr");
         var td = document.createElement("td");
-        td.colSpan = 12;
+        td.colSpan = 13;
         td.style.color = "#64748b";
         td.textContent = "No worker managers connected";
         tr.appendChild(td);
@@ -482,6 +482,10 @@ function renderManagers() {
         var tdWC = document.createElement("td");
         tdWC.textContent = m.worker_count != null ? m.worker_count : "0";
         tr.appendChild(tdWC);
+
+        var tdUnits = document.createElement("td");
+        tdUnits.textContent = m.units || "—";
+        tr.appendChild(tdUnits);
 
         var tdCpu = document.createElement("td");
         tdCpu.textContent = m.total_proc_cpu != null ? m.total_proc_cpu + "%" : "—";
@@ -517,7 +521,7 @@ function renderManagers() {
 
 // -- Overview Tab: Workers --
 // Column order of the workers table; a header click sends the field name to the server.
-var WORKER_FIELDS = ["name", "manager_id", "host", "task", "task_age", "agt_cpu", "agt_rss", "proc_cpu",
+var WORKER_FIELDS = ["name", "state", "manager_id", "host", "task", "task_age", "agt_cpu", "agt_rss", "proc_cpu",
                      "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended", "lag", "itl",
                      "last_seen", "capabilities"];
 

@@ -33,6 +33,9 @@ class WaterfallV1Policy(ScalerPolicy):
     def remove_worker(self, worker: WorkerID) -> List[TaskID]:
         return self._allocation_policy.remove_worker(worker)
 
+    def drain_worker(self, worker: WorkerID) -> List[TaskID]:
+        return self._allocation_policy.drain_worker(worker)
+
     def get_worker_ids(self) -> Set[WorkerID]:
         return self._allocation_policy.get_worker_ids()
 

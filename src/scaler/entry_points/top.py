@@ -124,6 +124,7 @@ def show_status(status: BaseMessage, screen):
                 "lag": worker.lagMicroseconds,
                 "last": worker.lastSeenSeconds,
                 "ITL": worker.itl,
+                "drain": "yes" if worker.draining else "",
             }
             for worker in status.workerManager.workers
         ],
@@ -150,6 +151,8 @@ def show_status(status: BaseMessage, screen):
         screen.addstr(new_row + 1, 0, "Shortcuts: " + " ".join([f"{v}[{chr(k)}]" for k, v in SORT_BY_OPTIONS.items()]))
         total_pending = sum(d.pendingWorkers for d in status.scalingManager.workerManagerDetails)
         pending_str = f", {total_pending} pending" if total_pending > 0 else ""
+        total_draining = sum(d.drainingUnits for d in status.scalingManager.workerManagerDetails)
+        pending_str += f", {total_draining} unit(s) draining" if total_draining > 0 else ""
         screen.addstr(
             new_row + 3,
             0,
