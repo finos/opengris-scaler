@@ -167,6 +167,11 @@ class TaskController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def get_tasks(self) -> Dict[TaskID, Task]:
+        """Every task the scheduler is running, which a status report reads."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     async def on_task_cancel(self, client_id: ClientID, task_cancel: TaskCancel):
         raise NotImplementedError()
 

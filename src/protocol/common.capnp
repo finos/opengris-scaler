@@ -6,7 +6,7 @@ $Cxx.namespace("scaler::protocol");
 enum TaskResultType {
     success @0;           # if submit and task is done and get result
     failed @1;            # if submit and task is failed on worker
-    failedWorkerDied @2;  # if submit and worker died (only happened when scheduler keep_task=False)
+    failedWorkerDied @2;  # the processor running the task died; the scheduler retries it up to processor_death_retries
 }
 
 enum TaskCancelConfirmType {

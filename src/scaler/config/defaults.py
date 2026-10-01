@@ -58,6 +58,10 @@ DEFAULT_LOAD_BALANCE_SECONDS = 1
 # times happened
 DEFAULT_LOAD_BALANCE_TRIGGER_TIMES = 2
 
+# how many times the scheduler reruns a task whose processor died (an OOM kill, a crash, a pod going away) before it
+# fails the task to the client with the ProcessorDiedError; 0 fails it on the first death
+DEFAULT_PROCESSOR_DEATH_RETRIES = 0
+
 # number of tasks can be queued to each worker on scheduler side
 DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 

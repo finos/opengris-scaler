@@ -22,6 +22,7 @@ from scaler.config.defaults import (
     DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
     DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
     DEFAULT_OBJECT_RETENTION_SECONDS,
+    DEFAULT_PROCESSOR_DEATH_RETRIES,
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
@@ -83,6 +84,7 @@ class TestScaling(unittest.TestCase):
             object_retention_seconds=DEFAULT_OBJECT_RETENTION_SECONDS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
             load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
+            processor_death_retries=DEFAULT_PROCESSOR_DEATH_RETRIES,
             protected=False,
             event_loop="builtin",
             logging_paths=("/dev/stdout",),
@@ -135,6 +137,7 @@ class TestScaling(unittest.TestCase):
             object_retention_seconds=DEFAULT_OBJECT_RETENTION_SECONDS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
             load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
+            processor_death_retries=DEFAULT_PROCESSOR_DEATH_RETRIES,
             protected=False,
             policy=PolicyConfig(policy_content="allocate=even_load; scaling=capability"),
             event_loop="builtin",
@@ -569,7 +572,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
         binder = AsyncMock()
         task_controller = MagicMock()
-        task_controller._task_id_to_task = {}
+        task_controller.get_tasks.return_value = {}
         self.worker_controller = MagicMock()
         self.worker_controller._worker_alive_since = {}
 

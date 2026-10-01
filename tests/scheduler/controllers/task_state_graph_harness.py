@@ -54,6 +54,9 @@ FUNCTION_NAME = b"function"
 
 NO_WORKER = WorkerID.invalid_worker_id()
 
+# retries on, so the scenarios cover both the rerun and the no-retries path, whatever the shipped default is
+PROCESSOR_DEATH_RETRIES = 3
+
 # The states a live machine can be in. A terminal state removes the machine, so no event can ever reach one.
 LIVE_TASK_STATES = (TaskState.inactive, TaskState.running, TaskState.canceling, TaskState.balanceCanceling)
 
@@ -93,6 +96,7 @@ class Scenario:
     event: TaskEvent
     worker_holds_task: bool = True
     capacity_available: bool = True
+    processor_death_retries: int = PROCESSOR_DEATH_RETRIES
 
 
 SCENARIOS: Tuple[Scenario, ...] = (
@@ -120,6 +124,20 @@ SCENARIOS: Tuple[Scenario, ...] = (
         TaskResultReceived(
             task_id=TASK_ID, worker_id=WORKER_ID, task_result=make_task_result(TaskResultType.failedWorkerDied)
         ),
+    ),
+    Scenario(
+        "TaskResultReceived (worker died, no capacity)",
+        TaskResultReceived(
+            task_id=TASK_ID, worker_id=WORKER_ID, task_result=make_task_result(TaskResultType.failedWorkerDied)
+        ),
+        capacity_available=False,
+    ),
+    Scenario(
+        "TaskResultReceived (worker died, no retries)",
+        TaskResultReceived(
+            task_id=TASK_ID, worker_id=WORKER_ID, task_result=make_task_result(TaskResultType.failedWorkerDied)
+        ),
+        processor_death_retries=0,
     ),
     Scenario(
         "CancelConfirmCanceled",
@@ -207,7 +225,10 @@ class TaskControllerHarness:
         self.worker_controller.on_task_cancel.return_value = WORKER_ID
         self.worker_controller.get_worker_by_task_id.return_value = WORKER_ID
 
-        self.controller = VanillaTaskController(create_autospec(VanillaConfigController, instance=True))
+        self.config_controller = create_autospec(VanillaConfigController, instance=True)
+        self.set_processor_death_retries(PROCESSOR_DEATH_RETRIES)
+
+        self.controller = VanillaTaskController(self.config_controller)
         self.controller.register(
             binder=self.binder,
             binder_monitor=self.binder_monitor,
@@ -224,9 +245,13 @@ class TaskControllerHarness:
     def set_capacity_available(self, available: bool) -> None:
         self.worker_controller.acquire_worker.return_value = REPLACEMENT_WORKER_ID if available else NO_WORKER
 
+    def set_processor_death_retries(self, retries: int) -> None:
+        self.config_controller.get_config.side_effect = {"processor_death_retries": retries}.__getitem__
+
     def apply(self, scenario: Scenario) -> None:
         self.set_worker_holds_task(scenario.worker_holds_task)
         self.set_capacity_available(scenario.capacity_available)
+        self.set_processor_death_retries(scenario.processor_death_retries)
 
     def reset_recorded_calls(self) -> None:
         for stub in (

@@ -43,8 +43,9 @@ SNAPSHOT_HEADER = (
     "# Only live states are sources: a terminal state removes the machine, so no event can reach one.\n"
 )
 
-SOURCE_COLUMN_WIDTH = 17
-SCENARIO_COLUMN_WIDTH = 38
+# a column is as wide as its longest entry, plus a space that keeps the next column clear of it
+SOURCE_COLUMN_WIDTH = max(len(state.name) for state in LIVE_TASK_STATES) + 1
+SCENARIO_COLUMN_WIDTH = max(len(scenario.name) for scenario in SCENARIOS) + 1
 
 
 def format_snapshot_line(source_name: str, scenario_name: str, target_name: str) -> str:
@@ -396,6 +397,7 @@ class TestTaskControllerBehavior(unittest.IsolatedAsyncioTestCase):
         ):
             with self.subTest(result_type=result_type.name):
                 harness = TaskControllerHarness()
+                harness.set_processor_death_retries(0)
                 state_machine = await harness.enter_state(TaskState.running)
 
                 await harness.controller.on_task_result(WORKER_ID, make_task_result(result_type))
@@ -403,6 +405,46 @@ class TestTaskControllerBehavior(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(state_machine.current_state(), expected)
                 self.assertIsNone(harness.get_state_machine())
                 self.assertEqual(len(harness.task_results_sent_to(CLIENT_ID)), 1)
+
+    async def test_a_processor_death_runs_the_task_again_until_its_retries_are_spent(self):
+        """A processor death is not the task failing: the task runs again until its retries are spent."""
+
+        retries = 2
+        self.harness.set_processor_death_retries(retries)
+        state_machine = await self.harness.enter_state(TaskState.running)
+        self.harness.set_capacity_available(True)
+        error_object_id = ObjectID(b"processor-died-error-padded-32b!")
+        died = TaskResult(
+            taskId=TASK_ID, resultType=TaskResultType.failedWorkerDied, metadata=b"", results=[bytes(error_object_id)]
+        )
+
+        for _ in range(retries):
+            self.harness.reset_recorded_calls()
+            await self.harness.controller.on_task_result(WORKER_ID, died)
+
+            self.assertEqual(state_machine.current_state(), TaskState.running)
+            self.assertEqual(self.harness.task_results_sent_to(CLIENT_ID), [])
+            self.harness.worker_controller.on_task_done.assert_awaited_once_with(TASK_ID)
+            self.harness.object_controller.on_del_objects.assert_called_once_with(CLIENT_ID, {error_object_id})
+            self.assertEqual(len(self.harness.messages_sent_to(REPLACEMENT_WORKER_ID)), 1)
+
+        self.harness.reset_recorded_calls()
+        await self.harness.controller.on_task_result(WORKER_ID, died)
+
+        self.assertEqual(state_machine.current_state(), TaskState.failedWorkerDied)
+        self.assertEqual(self.harness.task_results_sent_to(CLIENT_ID), [died])
+        self.harness.object_controller.on_del_objects.assert_not_called()
+        self.assertEqual(self.harness.controller._task_id_to_holder, {})
+
+    async def test_a_processor_death_queues_the_task_when_no_worker_is_free(self):
+        state_machine = await self.harness.enter_state(TaskState.running)
+        self.harness.set_capacity_available(False)
+
+        await self.harness.controller.on_task_result(WORKER_ID, make_task_result(TaskResultType.failedWorkerDied))
+
+        self.assertEqual(state_machine.current_state(), TaskState.inactive)
+        self.assertEqual(list(self.harness.controller._unassigned), [TASK_ID])
+        self.assertEqual(self.harness.task_results_sent_to(CLIENT_ID), [])
 
     async def test_a_result_from_a_worker_that_no_longer_holds_the_task_is_dropped(self):
         """A worker declared dead by the heartbeat timeout can still be alive and still be running the task.
@@ -769,7 +811,7 @@ class TestTaskControllerStatistics(unittest.IsolatedAsyncioTestCase):
         await harness.controller.on_task_result(WORKER_ID, make_task_result(TaskResultType.success))
 
         self.assertIsNone(harness.get_state_machine())
-        self.assertNotIn(TASK_ID, harness.controller._task_id_to_task)
+        self.assertNotIn(TASK_ID, harness.controller._task_id_to_holder)
         self.assertEqual(list(harness.controller._unassigned), [])
 
 
