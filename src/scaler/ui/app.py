@@ -11,8 +11,7 @@ import struct
 import threading
 from collections import deque
 from pathlib import Path
-from typing import Any, Callable, Collection, Deque, Dict, FrozenSet, Iterable, List, Mapping, Optional, Set, Tuple
-
+from typing import Any, Callable, Collection, Iterable, Mapping, Optional
 from scaler.config.defaults import (
     DEFAULT_STREAM_WINDOW_MINUTES,
     MEMORY_CHART_MINIMUM_BYTES,
@@ -104,26 +103,26 @@ class SortSpec:
     `raw` names the field behind a preformatted cell, whose own text does not order.
     """
 
-    text: FrozenSet[str] = frozenset()
-    numeric: FrozenSet[str] = frozenset()
+    text: frozenset[str] = frozenset()
+    numeric: frozenset[str] = frozenset()
     raw: Mapping[str, str] = dataclasses.field(default_factory=dict)
 
     def accepts(self, field: Any) -> bool:
         return field in self.text or field in self.numeric or field in self.raw
 
-    def sort(self, rows: List[Dict[str, Any]], field: Optional[str], ascending: bool) -> List[Dict[str, Any]]:
+    def sort(self, rows: list[dict[str, Any]], field: Optional[str], ascending: bool) -> list[dict[str, Any]]:
         if field is None:
             return rows
 
         source = self.raw.get(field, field)
         if field in self.text:
 
-            def key(row: Dict[str, Any]) -> Any:
+            def key(row: dict[str, Any]) -> Any:
                 return str(row.get(source, "")).lower()
 
         else:
 
-            def key(row: Dict[str, Any]) -> Any:
+            def key(row: dict[str, Any]) -> Any:
                 value = row.get(source, 0)
                 return value if isinstance(value, (int, float)) else 0
 
@@ -187,7 +186,7 @@ class BrowserView:
     stream_window_minutes: int = DEFAULT_STREAM_WINDOW_MINUTES
     memory_scale: str = "linear"
 
-    def apply_view(self, view: Dict[str, Any]) -> None:
+    def apply_view(self, view: dict[str, Any]) -> None:
         """Apply a browser's `view` message, ignoring anything unrecognised."""
         for name in (
             "workers_page",
@@ -211,7 +210,7 @@ class BrowserView:
             if f"{name}_sort_ascending" in view:
                 setattr(self, f"{name}_sort_ascending", bool(view[f"{name}_sort_ascending"]))
 
-    def apply_settings(self, settings: Dict[str, Any]) -> None:
+    def apply_settings(self, settings: dict[str, Any]) -> None:
         """Apply a browser's `settings` message, ignoring anything unrecognised."""
         if "stream_window" in settings:
             window = int(settings["stream_window"])
@@ -222,10 +221,10 @@ class BrowserView:
             if scale in ("log", "linear"):
                 self.memory_scale = scale
 
-    def settings(self) -> Dict[str, Any]:
+    def settings(self) -> dict[str, Any]:
         return {"stream_window": self.stream_window_minutes, "memory_scale": self.memory_scale}
 
-    def task_log_filter(self) -> Dict[str, str]:
+    def task_log_filter(self) -> dict[str, str]:
         """Row field to the value it must hold, for each Tasks tab filter this browser set."""
         return {field: getattr(self, name) for name, field in TASK_LOG_FILTERS.items() if getattr(self, name)}
 
@@ -274,19 +273,19 @@ class _RenderCache:
     """
 
     def __init__(self) -> None:
-        self._sorted: Dict[Tuple[str, Optional[str], bool], List[Dict[str, Any]]] = {}
-        self._worker_details: Dict[str, List[Dict[str, Any]]] = {}
-        self._stream: Dict[int, Dict[str, Any]] = {}
-        self._memory: Dict[Tuple[float, str, Optional[float]], Dict[str, Any]] = {}
+        self._sorted: dict[tuple[str, Optional[str], bool], list[dict[str, Any]]] = {}
+        self._worker_details: dict[str, list[dict[str, Any]]] = {}
+        self._stream: dict[int, dict[str, Any]] = {}
+        self._memory: dict[tuple[float, str, Optional[float]], dict[str, Any]] = {}
 
     def sorted_rows(
         self,
         table: str,
-        rows: Callable[[], List[Dict[str, Any]]],
+        rows: Callable[[], list[dict[str, Any]]],
         spec: SortSpec,
         field: Optional[str],
         ascending: bool,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """One table in one browser's order.
 
         Building the row list is deferred: a table nobody sorted pages straight out of what holds it.
@@ -296,19 +295,19 @@ class _RenderCache:
             self._sorted[key] = spec.sort(rows(), field, ascending)
         return self._sorted[key]
 
-    def worker_details(self, app: "WebUIApp", host: str) -> List[Dict[str, Any]]:
+    def worker_details(self, app: "WebUIApp", host: str) -> list[dict[str, Any]]:
         if host not in self._worker_details:
             self._worker_details[host] = app._build_worker_details(host)
         return self._worker_details[host]
 
-    def stream(self, app: "WebUIApp", window_minutes: int) -> Dict[str, Any]:
+    def stream(self, app: "WebUIApp", window_minutes: int) -> dict[str, Any]:
         if window_minutes not in self._stream:
             stream_data = app._task_stream.get_render_data(window_minutes)
             app._enrich_stream_with_managers(stream_data)
             self._stream[window_minutes] = stream_data
         return self._stream[window_minutes]
 
-    def memory(self, app: "WebUIApp", window_seconds: float, scale: str, since: Optional[int]) -> Dict[str, Any]:
+    def memory(self, app: "WebUIApp", window_seconds: float, scale: str, since: Optional[int]) -> dict[str, Any]:
         key = (window_seconds, scale, since)
         if key not in self._memory:
             self._memory[key] = app._memory_chart.get_render_data(window_seconds, scale, since)
@@ -334,7 +333,7 @@ def _current_task_label(processor_statuses: Iterable[ProcessorStatus]) -> str:
     return f"{len(busy)} tasks"
 
 
-def paginate(items: Collection[Any], page: int, size: int) -> Tuple[List[Any], int, int]:
+def paginate(items: Collection[Any], page: int, size: int) -> tuple[list[Any], int, int]:
     """Take the requested page of `items`, clamped to what exists: (rows, page, total pages).
 
     Walks to the page rather than slicing, so a deque of retained rows costs the page, not a copy.
@@ -393,7 +392,7 @@ def _extract_hue(hsl_str: str) -> Optional[float]:
         return None
 
 
-def _find_best_hue(preferred_hue: float, existing_hues: List[float]) -> float:
+def _find_best_hue(preferred_hue: float, existing_hues: list[float]) -> float:
     """Return *preferred_hue* if it is far enough from every existing hue,
     otherwise place the new hue at the midpoint of the largest angular gap."""
     if not existing_hues:
@@ -419,7 +418,7 @@ def _find_best_hue(preferred_hue: float, existing_hues: List[float]) -> float:
     return best_mid
 
 
-def _capabilities_color(capabilities_str: str, color_map: Dict[str, str]) -> str:
+def _capabilities_color(capabilities_str: str, color_map: dict[str, str]) -> str:
     if capabilities_str not in color_map:
         h = hashlib.md5(capabilities_str.encode()).hexdigest()
         preferred_hue = int(h[:4], 16) % 360
@@ -433,7 +432,7 @@ def _capabilities_color(capabilities_str: str, color_map: Dict[str, str]) -> str
     return color_map[capabilities_str]
 
 
-def _display_capabilities(capabilities: Set[str]) -> str:
+def _display_capabilities(capabilities: set[str]) -> str:
     if not capabilities:
         return "<no capabilities>"
     return " ".join(sorted(capabilities))
@@ -446,26 +445,26 @@ class TaskStreamState:
         self._memory_store_time = datetime.timedelta(minutes=30)
 
         # worker tracking
-        self._seen_workers: Set[str] = set()
-        self._worker_capabilities: Dict[str, Set[str]] = {}
-        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#ffffff"}
+        self._seen_workers: set[str] = set()
+        self._worker_capabilities: dict[str, set[str]] = {}
+        self._capabilities_color_map: dict[str, str] = {"<no capabilities>": "#ffffff"}
 
         # task tracking  (worker -> {task_id -> start_time})
-        self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
-        self._task_id_to_worker: Dict[bytes, str] = {}
-        self._task_id_to_capabilities: Dict[bytes, str] = {}
-        self._task_id_to_function: Dict[bytes, str] = {}
-        self._worker_to_task_ids: Dict[str, Set[bytes]] = {}
+        self._current_tasks: dict[str, dict[bytes, datetime.datetime]] = {}
+        self._task_id_to_worker: dict[bytes, str] = {}
+        self._task_id_to_capabilities: dict[bytes, str] = {}
+        self._task_id_to_function: dict[bytes, str] = {}
+        self._worker_to_task_ids: dict[str, set[bytes]] = {}
 
         # completed bar history: worker -> list of bar dicts
         # each bar has absolute "start" and "end" timestamps
-        self._bar_history: Dict[str, List[Dict[str, Any]]] = {}
+        self._bar_history: dict[str, list[dict[str, Any]]] = {}
 
-        self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()
+        self._dead_workers: deque[tuple[datetime.datetime, str]] = deque()
 
         self._lock = threading.Lock()
 
-    def _caps_to_colors(self, caps_str: str) -> List[str]:
+    def _caps_to_colors(self, caps_str: str) -> list[str]:
         """Return a list of colors for the capabilities string.
 
         Single-capability and no-capability tasks return one color.
@@ -540,7 +539,7 @@ class TaskStreamState:
         self._task_id_to_worker[task_id] = worker
         self._worker_to_task_ids.setdefault(worker, set()).add(task_id)
 
-    def handle_worker_processors(self, worker: str, running: List[Tuple[bytes, int]]) -> None:
+    def handle_worker_processors(self, worker: str, running: list[tuple[bytes, int]]) -> None:
         """What this worker's processors are on right now, and how long each has been on it.
 
         The bar begins at the age the worker reports, so a task the monitor never saw start draws from its real start.
@@ -674,7 +673,7 @@ class TaskStreamState:
             self._worker_capabilities.pop(worker, None)
             self._seen_workers.discard(worker)
 
-    def get_render_data(self, window_minutes: int) -> Dict[str, Any]:
+    def get_render_data(self, window_minutes: int) -> dict[str, Any]:
         """Render the stream. The window is per-browser, so it is passed in rather than held here."""
         now = datetime.datetime.now()
         now_ts = now.timestamp()
@@ -686,9 +685,9 @@ class TaskStreamState:
             window_start_ts = now_ts - window_seconds
 
             # one row per worker, sorted by name - only include workers with visible activity
-            row_labels: List[str] = []
-            full_row_labels: List[str] = []
-            worker_order: List[str] = []
+            row_labels: list[str] = []
+            full_row_labels: list[str] = []
+            worker_order: list[str] = []
             for worker in sorted(self._seen_workers):
                 # check if worker has any running tasks
                 has_running = bool(self._current_tasks.get(worker))
@@ -708,11 +707,11 @@ class TaskStreamState:
             # - Running tasks are drawn first (behind everything)
             # - Completed bars are drawn newest-first, oldest-last (oldest on top)
             # JS hover iterates backwards, so last items = checked first = hoverable on top
-            bars: List[Dict[str, Any]] = []
+            bars: list[dict[str, Any]] = []
 
             # 1) Running tasks (drawn first / behind completed bars)
             #    Compute sublanes per row: if N tasks running on same worker, each gets sl=0..N-1, sn=N
-            running_per_row: Dict[int, List[Dict[str, Any]]] = {}
+            running_per_row: dict[int, list[dict[str, Any]]] = {}
             for row_idx, worker in enumerate(worker_order):
                 task_map = self._current_tasks.get(worker)
                 if not task_map:
@@ -750,7 +749,7 @@ class TaskStreamState:
 
             # 2) Completed bars in reverse order (newest first, oldest last = oldest drawn on top)
             #    Collect per-row first so we can compute sublane assignments.
-            completed_per_row: Dict[int, List[Dict[str, Any]]] = {}
+            completed_per_row: dict[int, list[dict[str, Any]]] = {}
             for row_idx, worker in enumerate(worker_order):
                 worker_bars = self._bar_history.get(worker, [])
                 for bar in reversed(worker_bars):
@@ -796,7 +795,7 @@ class TaskStreamState:
                 sorted_bars = sorted(normal_bars, key=lambda b: b["x"])
 
                 # Build connected overlap groups (merge-intervals with threshold)
-                groups: List[List[int]] = []  # each group is list of indices into sorted_bars
+                groups: list[list[int]] = []  # each group is list of indices into sorted_bars
                 group_end = -float("inf")
                 for idx, b in enumerate(sorted_bars):
                     b_end = b["x"] + b["w"]
@@ -817,8 +816,8 @@ class TaskStreamState:
                         sorted_bars[group[0]]["sn"] = 1
                         continue
                     # greedy interval coloring within the group
-                    lane_ends: List[float] = []
-                    bar_lanes: List[int] = []
+                    lane_ends: list[float] = []
+                    bar_lanes: list[int] = []
                     for idx in group:
                         b = sorted_bars[idx]
                         placed = False
@@ -841,7 +840,7 @@ class TaskStreamState:
                 bars.extend(completed_per_row[row_idx])
 
             # capability legend: derived from tasks visible in the stream
-            active_caps: Set[str] = set()
+            active_caps: set[str] = set()
             # from running tasks
             for worker in worker_order:
                 for task_id in self._current_tasks.get(worker, {}):
@@ -856,14 +855,14 @@ class TaskStreamState:
                         if task_caps and task_caps != "<no capabilities>":
                             active_caps.update(task_caps.split())
 
-            legend: List[Dict[str, str]] = [{"name": "<no capabilities>", "color": "#ffffff"}]
+            legend: list[dict[str, str]] = [{"name": "<no capabilities>", "color": "#ffffff"}]
             legend.extend(
                 {"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)}
                 for cap in sorted(active_caps)
             )
 
             # time axis ticks
-            ticks: List[Dict[str, Any]] = []
+            ticks: list[dict[str, Any]] = []
             num_ticks = 7
             for i in range(num_ticks):
                 val = -window_seconds + i * (window_seconds / (num_ticks - 1))
@@ -879,7 +878,7 @@ class TaskStreamState:
         }
 
 
-def _cpu_axis_ticks(peak_percent: float) -> List[float]:
+def _cpu_axis_ticks(peak_percent: float) -> list[float]:
     """Evenly spaced round percentages from 0 up to the smallest axis maximum that holds `peak_percent`.
 
     CPU is summed across processes, so a fleet computing on 64 cores peaks near 6400%.
@@ -900,7 +899,7 @@ class MemoryChartState:
 
     def __init__(self) -> None:
         # What the fleet holds, sampled once per scheduler update.
-        self._live: Deque[Tuple[int, float, int, float]] = deque()  # (number, timestamp, rss_bytes, cpu_percent)
+        self._live: deque[tuple[int, float, int, float]] = deque()  # (number, timestamp, rss_bytes, cpu_percent)
         # A browser's place is a sample's number, not its time: a coarse clock (Windows') times two in a row alike.
         self._samples_taken: int = 0
         self._memory_store_time = datetime.timedelta(minutes=30)
@@ -920,7 +919,7 @@ class MemoryChartState:
         with self._lock:
             return self._samples_taken
 
-    def get_render_data(self, window_seconds: float, scale: str, since: Optional[int]) -> Dict[str, Any]:
+    def get_render_data(self, window_seconds: float, scale: str, since: Optional[int]) -> dict[str, Any]:
         """The window's samples and axes. Window and scale are per-browser, so they are passed in.
 
         With `since`, a count from `samples_taken`, only the samples taken after it travel, and the browser appends
@@ -966,41 +965,41 @@ class WebUIApp:
         # Full fleet worker count from per-manager totals; each browser is sent one page of worker rows.
         self._total_workers: int = 0
         self._message_queue: queue.Queue[BaseMessage] = queue.Queue()
-        self._browsers: Dict[int, BrowserStream] = {}
+        self._browsers: dict[int, BrowserStream] = {}
         self._browsers_lock = threading.Lock()
         self._browser_ids = itertools.count(1)
         # Held across a whole payload, so a browser's thread never reads state the batcher is rewriting.
         self._state_lock = threading.Lock()
 
         # server-side state
-        self._scheduler_data: Dict[str, Any] = {}
-        self._workers_data: Dict[str, Dict[str, Any]] = {}
-        self._worker_capabilities: Dict[str, Dict[str, int]] = {}
+        self._scheduler_data: dict[str, Any] = {}
+        self._workers_data: dict[str, dict[str, Any]] = {}
+        self._worker_capabilities: dict[str, dict[str, int]] = {}
         # One row per task, newest first, rewritten in place; `_task_log_by_id` holds the same row objects.
-        self._task_log: Deque[Dict[str, Any]] = deque(maxlen=self._task_log_max_size)
-        self._task_log_by_id: Dict[str, Dict[str, Any]] = {}
+        self._task_log: deque[dict[str, Any]] = deque(maxlen=self._task_log_max_size)
+        self._task_log_by_id: dict[str, dict[str, Any]] = {}
         # One row per state change, so a task that is rebalanced, cancelled and retried leaves a trail.
-        self._task_events: Deque[Dict[str, Any]] = deque(maxlen=self._task_log_max_size)
+        self._task_events: deque[dict[str, Any]] = deque(maxlen=self._task_log_max_size)
         self._task_event_seq: int = 0
-        self._task_id_to_function: Dict[str, str] = {}
+        self._task_id_to_function: dict[str, str] = {}
         # Tasks each worker holds; a dict, not a set, because a worker works through them in arrival order.
-        self._worker_tasks: Dict[str, Dict[str, None]] = {}
+        self._worker_tasks: dict[str, dict[str, None]] = {}
         # Task id -> (worker, whether its processor is suspended), for every task on a processor in the last frame.
-        self._processor_tasks: Dict[str, Tuple[str, bool]] = {}
-        self._task_worker: Dict[str, str] = {}
+        self._processor_tasks: dict[str, tuple[str, bool]] = {}
+        self._task_worker: dict[str, str] = {}
         self._task_stream = TaskStreamState()
         self._memory_chart = MemoryChartState()
-        self._worker_processors: Dict[str, Dict[str, Any]] = {}
+        self._worker_processors: dict[str, dict[str, Any]] = {}
         # Scaler clients the scheduler sees, rebuilt every status frame; the totals below only ever grow.
-        self._clients_data: Dict[str, Dict[str, Any]] = {}
-        self._storage_data: Dict[str, Any] = {}
-        self._objects_data: List[Dict[str, Any]] = []
+        self._clients_data: dict[str, dict[str, Any]] = {}
+        self._storage_data: dict[str, Any] = {}
+        self._objects_data: list[dict[str, Any]] = []
         self._objects_total: int = 0
-        self._client_task_totals: Dict[str, Dict[str, int]] = {}
-        self._worker_manager_map: Dict[str, str] = {}  # worker_name -> manager_id (persistent)
-        self._worker_managers_data: Dict[str, Dict[str, Any]] = {}  # manager_id -> manager info
-        self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
-        self._manager_color_map: Dict[str, str] = {}  # manager_id -> color hex
+        self._client_task_totals: dict[str, dict[str, int]] = {}
+        self._worker_manager_map: dict[str, str] = {}  # worker_name -> manager_id (persistent)
+        self._worker_managers_data: dict[str, dict[str, Any]] = {}  # manager_id -> manager info
+        self._dead_managers: dict[str, float] = {}  # manager_id -> disconnect timestamp
+        self._manager_color_map: dict[str, str] = {}  # manager_id -> color hex
         self._monitor_address: str = str(config.monitor_address)
         # Timestamp of the last StateScheduler heartbeat; the scheduler's last-seen derives from it and goes
         # stale when the main loop stalls.
@@ -1052,7 +1051,7 @@ class WebUIApp:
         """One tick: apply everything the subscriber queued, then queue each browser its own payload."""
         # a browser holds every sample taken up to here, so this tick sends only the ones it adds
         samples_taken = self._memory_chart.samples_taken()
-        messages: List[BaseMessage] = []
+        messages: list[BaseMessage] = []
         while True:
             try:
                 messages.append(self._message_queue.get_nowait())
@@ -1062,7 +1061,7 @@ class WebUIApp:
         has_scheduler_update = False
         has_object_update = False
         has_task_update = False
-        worker_events: List[Dict[str, Any]] = []
+        worker_events: list[dict[str, Any]] = []
 
         for msg in messages:
             try:
@@ -1090,7 +1089,7 @@ class WebUIApp:
             self._last_scheduler_heartbeat_time = datetime.datetime.now()
 
         # The parts every browser gets identically.
-        shared: Dict[str, Any] = {}
+        shared: dict[str, Any] = {}
 
         # Always include scheduler data with a last_seen derived from the periodic heartbeat.
         if self._scheduler_data:
@@ -1135,7 +1134,7 @@ class WebUIApp:
         self._process_clients(data)
 
         # Key by the decoded name and read each capnp list once: capnp aliasing loses managers past the first.
-        manager_worker_counts: Dict[str, int] = {}
+        manager_worker_counts: dict[str, int] = {}
         total_workers = 0
         for pair in data.scalingManager.managedWorkers:
             manager_id_raw = bytes(pair.workerManagerID)
@@ -1149,7 +1148,7 @@ class WebUIApp:
         self._total_workers = total_workers
 
         # Update worker manager details from scaling_manager
-        current_managers: Set[str] = set()
+        current_managers: set[str] = set()
         for detail in data.scalingManager.workerManagerDetails:
             manager_id_raw = bytes(detail.workerManagerID)
             manager_id = manager_id_raw.decode() if manager_id_raw else "unknown"
@@ -1181,7 +1180,7 @@ class WebUIApp:
             self._worker_managers_data.pop(mid, None)
 
         current_workers = set()
-        processor_tasks: Dict[str, Tuple[str, bool]] = {}
+        processor_tasks: dict[str, tuple[str, bool]] = {}
         for worker_data in data.workerManager.workers:
             worker_name = worker_data.workerId.decode()
             current_workers.add(worker_name)
@@ -1245,7 +1244,7 @@ class WebUIApp:
                 "rss_free": rss_free,
                 "processors": [],
             }
-            running_tasks: List[Tuple[bytes, int]] = []
+            running_tasks: list[tuple[bytes, int]] = []
             for ps in sorted(worker_data.processorStatuses, key=lambda x: x.pid):
                 rss_val = int(ps.resource.rss / 1e6)
                 if ps.hasTask:
@@ -1318,7 +1317,7 @@ class WebUIApp:
 
         return self.__settle_worker_task_statuses(processor_tasks)
 
-    def __settle_worker_task_statuses(self, processor_tasks: Dict[str, Tuple[str, bool]]) -> bool:
+    def __settle_worker_task_statuses(self, processor_tasks: dict[str, tuple[str, bool]]) -> bool:
         """Mark each dispatched task a processor holds as running or suspended. True when any row changed.
 
         A task that leaves its processor keeps its status: it finished, and the result that ends it is on its way.
@@ -1362,7 +1361,7 @@ class WebUIApp:
         return "suspended" if worker_and_suspended[1] else "running"
 
     @staticmethod
-    def __storage_section(status: ObjectManagerStatus) -> Dict[str, Any]:
+    def __storage_section(status: ObjectManagerStatus) -> dict[str, Any]:
         """What the object storage server holds, and what is stuck waiting on it.
 
         `pending` counts requests for an object nobody has created yet.
@@ -1404,7 +1403,7 @@ class WebUIApp:
         self._objects_data = rows
         self._objects_total = state.totalObjects
 
-    def _objects_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _objects_section(self, view: BrowserView, cache: "_RenderCache") -> dict[str, Any]:
         """One page of the object rows the scheduler sent, which are the biggest few of `objects_total`."""
         objects = cache.sorted_rows(
             "objects", lambda: list(self._objects_data), OBJECTS_SORT, view.objects_sort, view.objects_sort_ascending
@@ -1421,8 +1420,8 @@ class WebUIApp:
 
     def _process_clients(self, data: StateScheduler) -> None:
         """One row per client the scheduler has heard from, with the totals this GUI has counted."""
-        seen: Set[str] = set()
-        clients: Dict[str, Dict[str, Any]] = {}
+        seen: set[str] = set()
+        clients: dict[str, dict[str, Any]] = {}
         for client in data.clientManager.clients:
             name = bytes(client.clientId).decode(errors="replace")
             seen.add(name)
@@ -1455,7 +1454,7 @@ class WebUIApp:
         if state in (TaskState.failed, TaskState.failedWorkerDied):
             totals["failed"] += 1
 
-    def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
+    def _process_worker_state(self, state_worker: StateWorker) -> Optional[dict[str, Any]]:
         worker_id = state_worker.workerId.decode()
         state = state_worker.state
 
@@ -1477,7 +1476,7 @@ class WebUIApp:
             "capabilities": list(capabilities_to_dict(state_worker.capabilities).keys()),
         }
 
-    def _process_task_state(self, state_task: StateTask) -> Optional[Dict[str, Any]]:
+    def _process_task_state(self, state_task: StateTask) -> Optional[dict[str, Any]]:
         task_id_hex = state_task.taskId.hex()
         func_name = state_task.functionName.decode()
 
@@ -1555,7 +1554,7 @@ class WebUIApp:
                 pass
         return entry
 
-    def __remember_task(self, entry: Dict[str, Any]) -> None:
+    def __remember_task(self, entry: dict[str, Any]) -> None:
         """Put a newly seen task at the top of the log, dropping the oldest once the log is full."""
         if self._task_log and len(self._task_log) == self._task_log_max_size:
             evicted = self._task_log[-1]["task_id"]
@@ -1583,17 +1582,17 @@ class WebUIApp:
         else:
             self._task_worker.pop(task_id, None)
 
-    def _enrich_stream_with_managers(self, stream_data: Dict[str, Any]) -> None:
+    def _enrich_stream_with_managers(self, stream_data: dict[str, Any]) -> None:
         """Add per-row manager IDs and a manager color legend to task stream data."""
         full_rows = stream_data.get("full_rows", [])
         row_managers = [self._worker_manager_map.get(w, "") for w in full_rows]
         stream_data["row_managers"] = row_managers
 
-        seen: Set[str] = set()
+        seen: set[str] = set()
         for mid in row_managers:
             if mid:
                 seen.add(mid)
-        manager_legend: List[Dict[str, str]] = [
+        manager_legend: list[dict[str, str]] = [
             {"name": mid, "color": _capabilities_color(mid, self._manager_color_map)} for mid in sorted(seen)
         ]
         stream_data["manager_legend"] = manager_legend
@@ -1651,22 +1650,22 @@ class WebUIApp:
             }
         )
 
-    def _storage_section(self) -> Dict[str, Any]:
+    def _storage_section(self) -> dict[str, Any]:
         """The object storage card, absent until the scheduler has reported once.
 
         Sending it early would put measured-looking zeros where the page still shows placeholders.
         """
         return {"storage": self._storage_data} if self._storage_data else {}
 
-    def _clients_section(self) -> Dict[str, Any]:
+    def _clients_section(self) -> dict[str, Any]:
         """Every connected client. There are far fewer clients than workers, so this page is not paged."""
         rows = sorted(self._clients_data.values(), key=lambda row: row["full_client"])
         return {"clients": rows, "clients_total": len(rows)}
 
-    def _task_log_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _task_log_section(self, view: BrowserView, cache: "_RenderCache") -> dict[str, Any]:
         """One page of the task list: one row per retained task the filters match, newest first unless sorted."""
         filters = view.task_log_filter()
-        tasks: Collection[Dict[str, Any]] = self._task_log
+        tasks: Collection[dict[str, Any]] = self._task_log
         if filters or view.task_log_sort is not None:
             tasks = cache.sorted_rows(
                 f"task_log:{sorted(filters.items())}",
@@ -1687,9 +1686,9 @@ class WebUIApp:
             **{name: getattr(view, name) for name in TASK_LOG_FILTERS},
         }
 
-    def _task_events_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _task_events_section(self, view: BrowserView, cache: "_RenderCache") -> dict[str, Any]:
         """One page of the task log: one row per state change, newest first, one task's or every task's."""
-        filtered: Collection[Dict[str, Any]] = self._task_events
+        filtered: Collection[dict[str, Any]] = self._task_events
         if view.task_events_task:
             filtered = [event for event in self._task_events if event["task_id"] == view.task_events_task]
 
@@ -1713,13 +1712,13 @@ class WebUIApp:
             "task_events_task": view.task_events_task,
         }
 
-    def _machines_section(self) -> Dict[str, Any]:
+    def _machines_section(self) -> dict[str, Any]:
         """One row per physical machine, however many workers it hosts.
 
         `netSentBytes` and `netRecvBytes` are host-wide, so they are read once per hostname, never summed.
         Everything else is per-worker and is added up.
         """
-        machines: Dict[str, Dict[str, Any]] = {}
+        machines: dict[str, dict[str, Any]] = {}
         for worker in self._workers_data.values():
             host = worker.get("host") or "\u2014"
             entry = machines.setdefault(
@@ -1784,7 +1783,7 @@ class WebUIApp:
         rows.sort(key=lambda row: row["host"])
         return {"machines": rows, "machines_total": len(rows)}
 
-    def _workers_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _workers_section(self, view: BrowserView, cache: "_RenderCache") -> dict[str, Any]:
         """One page of the fleet in this browser's order; the browser holds a page and cannot sort."""
         workers = cache.sorted_rows(
             "workers",
@@ -1802,16 +1801,16 @@ class WebUIApp:
             "workers_pages": total_pages,
         }
 
-    def _worker_details_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _worker_details_section(self, view: BrowserView, cache: "_RenderCache") -> dict[str, Any]:
         """One page of worker detail; the per-manager summaries cover every worker the host filter matches."""
         groups = cache.worker_details(self, view.worker_details_host)
-        flat: List[Tuple[str, Dict[str, Any]]] = [
+        flat: list[tuple[str, dict[str, Any]]] = [
             (group["manager_id"], worker) for group in groups for worker in group["workers"]
         ]
         page_rows, page, total_pages = paginate(flat, view.worker_details_page, WORKER_DETAILS_PAGE_SIZE)
         view.worker_details_page = page
 
-        shown: Dict[str, List[Dict[str, Any]]] = {}
+        shown: dict[str, list[dict[str, Any]]] = {}
         for manager_id, worker in page_rows:
             shown.setdefault(manager_id, []).append(worker)
 
@@ -1824,7 +1823,7 @@ class WebUIApp:
             "worker_details_host": view.worker_details_host,
         }
 
-    def _stream_section(self, view: BrowserView, cache: "_RenderCache") -> Dict[str, Any]:
+    def _stream_section(self, view: BrowserView, cache: "_RenderCache") -> dict[str, Any]:
         """One page of stream rows, with each bar's row index rebased to the page."""
         stream_data = dict(cache.stream(self, view.stream_window_minutes))
         rows = stream_data.get("rows", [])
@@ -1844,7 +1843,7 @@ class WebUIApp:
         stream_data["total_rows"] = len(rows)
         return stream_data
 
-    def _memory_section(self, view: BrowserView, cache: "_RenderCache", since: Optional[int]) -> Dict[str, Any]:
+    def _memory_section(self, view: BrowserView, cache: "_RenderCache", since: Optional[int]) -> dict[str, Any]:
         """The memory chart over this browser's window: the samples taken after `since`, or all of them without it."""
         window_seconds = cache.stream(self, view.stream_window_minutes)["window"]
         return {"memory_chart": cache.memory(self, window_seconds, view.memory_scale, since)}
@@ -1857,13 +1856,13 @@ class WebUIApp:
         """
         return max(self._total_workers, len(self._workers_data))
 
-    def _build_worker_details(self, host: str) -> List[Dict[str, Any]]:
+    def _build_worker_details(self, host: str) -> list[dict[str, Any]]:
         """Every worker on `host`, or on any host when it is empty, with what it runs and what waits behind it.
 
         Workers are grouped by manager. `_worker_details_section` slices one page of workers out of this per browser.
         """
         # Group every worker by manager for complete per-manager summaries.
-        managers: Dict[str, List[Dict[str, Any]]] = {}
+        managers: dict[str, list[dict[str, Any]]] = {}
         for worker_name, wp in self._worker_processors.items():
             if host and self._workers_data.get(worker_name, {}).get("host") != host:
                 continue
@@ -1903,7 +1902,7 @@ class WebUIApp:
             )
         return result
 
-    def __worker_task_lists(self, worker_name: str, processors: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def __worker_task_lists(self, worker_name: str, processors: list[dict[str, Any]]) -> dict[str, Any]:
         """What one worker is running, what is waiting behind it, and the numbers its row carries.
 
         A processor names the task it is on, so everything else the worker holds is queued there.
@@ -1932,7 +1931,7 @@ class WebUIApp:
             "capabilities": worker.get("capabilities", ""),
         }
 
-    def __queued_task(self, task_id: str) -> Dict[str, str]:
+    def __queued_task(self, task_id: str) -> dict[str, str]:
         """A queued task as its worker's row shows it. The whole id travels, because the row links to its trail."""
         return {"task_id": task_id, "function": self.__function_of(task_id)}
 
@@ -1944,14 +1943,14 @@ class WebUIApp:
         for task_id in self._worker_tasks.pop(worker_name, {}):
             self._task_worker.pop(task_id, None)
 
-    def __scheduler_liveness(self) -> Dict[str, Any]:
+    def __scheduler_liveness(self) -> dict[str, Any]:
         """last_seen + stale flag derived from the last StateScheduler heartbeat."""
         if self._last_scheduler_heartbeat_time is None:
             return {"last_seen": "\u2014", "stale": False}
         elapsed = int((datetime.datetime.now() - self._last_scheduler_heartbeat_time).total_seconds())
         return {"last_seen": format_seconds(elapsed), "stale": elapsed > self._scheduler_stale_seconds}
 
-    def get_full_state(self, view: BrowserView) -> Dict[str, Any]:
+    def get_full_state(self, view: BrowserView) -> dict[str, Any]:
         """The whole current state for one browser, in that browser's view.
 
         Built from what the batcher has processed, so anything still queued arrives one interval later.
@@ -1960,7 +1959,7 @@ class WebUIApp:
         with self._state_lock:
             return self.__full_state(view)
 
-    def __full_state(self, view: BrowserView) -> Dict[str, Any]:
+    def __full_state(self, view: BrowserView) -> dict[str, Any]:
         cache = _RenderCache()
         stream_data = self._stream_section(view, cache)
         # Build scheduler data with a last_seen derived from the periodic heartbeat.
@@ -1983,12 +1982,12 @@ class WebUIApp:
             "settings": view.settings(),
         }
 
-    def view_update(self, view: BrowserView) -> Dict[str, Any]:
+    def view_update(self, view: BrowserView) -> dict[str, Any]:
         """The paged sections for one browser, answered on its change instead of at the next tick."""
         with self._state_lock:
             return self.__view_update(view)
 
-    def __view_update(self, view: BrowserView) -> Dict[str, Any]:
+    def __view_update(self, view: BrowserView) -> dict[str, Any]:
         cache = _RenderCache()
         stream_data = self._stream_section(view, cache)
         return {
@@ -2018,7 +2017,7 @@ class WebUIApp:
         with self._browsers_lock:
             return self._browsers.get(browser_id)
 
-    def _send_to_browsers(self, build_payload: Callable[[BrowserView], Dict[str, Any]]) -> None:
+    def _send_to_browsers(self, build_payload: Callable[[BrowserView], dict[str, Any]]) -> None:
         """Queue one payload per browser: each is on its own page and sort order.
 
         The queue is what keeps a slow browser from holding up the batch: this never writes a socket.

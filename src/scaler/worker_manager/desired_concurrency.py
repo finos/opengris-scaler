@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
 
 def extract_desired_count(
-    requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest], own_capabilities: Dict[str, int]
+    requests: list[WorkerManagerCommand.DesiredTaskConcurrencyRequest], own_capabilities: dict[str, int]
 ) -> int:
     """Return the desired worker count for this provisioner from a declarative scaling command.
 

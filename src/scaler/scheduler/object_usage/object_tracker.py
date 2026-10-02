@@ -1,6 +1,6 @@
 import abc
 import itertools
-from typing import Callable, Dict, Generator, Generic, List, Optional, Set, Tuple, TypeVar
+from typing import Callable, Generator, Generic, Optional, TypeVar
 
 from scaler.utility.many_to_many_dict import ManyToManyDict
 
@@ -26,22 +26,22 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
         self._prefix = prefix
         self._callback = callback
 
-        self._current_blocks: Set[BlockType] = set()
+        self._current_blocks: set[BlockType] = set()
         self._object_key_to_block: ManyToManyDict[ObjectKeyType, BlockType] = ManyToManyDict()
-        self._object_key_to_object: Dict[ObjectKeyType, ObjectType] = dict()
+        self._object_key_to_object: dict[ObjectKeyType, ObjectType] = dict()
         # Objects by size class, the size's bit length, so `largest` reads the big ones without sorting the store.
-        self._objects_by_size_class: Dict[int, Dict[ObjectKeyType, ObjectType]] = dict()
+        self._objects_by_size_class: dict[int, dict[ObjectKeyType, ObjectType]] = dict()
 
     def object_count(self):
         return len(self._object_key_to_object)
 
-    def largest(self, limit: int) -> List[ObjectType]:
+    def largest(self, limit: int) -> list[ObjectType]:
         """The `limit` biggest objects, biggest first, taken a size class at a time.
 
         Every object at least twice the size of the smallest one returned is in the list, and the class the list
         ends in can be partial. The cost is the number of classes plus the limit, never the whole store.
         """
-        largest: List[ObjectType] = []
+        largest: list[ObjectType] = []
         for size_class in sorted(self._objects_by_size_class, reverse=True):
             if len(largest) >= limit:
                 break
@@ -52,7 +52,7 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
         largest.sort(key=lambda obj: obj.get_object_size(), reverse=True)
         return largest
 
-    def get_all_object_keys(self) -> Set[ObjectKeyType]:
+    def get_all_object_keys(self) -> set[ObjectKeyType]:
         return set(self._object_key_to_object.keys())
 
     def has_object(self, key: ObjectKeyType) -> bool:
@@ -70,7 +70,7 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
         self._object_key_to_object[key] = obj
         self._objects_by_size_class.setdefault(obj.get_object_size().bit_length(), dict())[key] = obj
 
-    def get_object_block_pairs(self, blocks: Set[BlockType]) -> Generator[Tuple[ObjectKeyType, BlockType], None, None]:
+    def get_object_block_pairs(self, blocks: set[BlockType]) -> Generator[tuple[ObjectKeyType, BlockType], None, None]:
         for block in blocks:
             if not self._object_key_to_block.has_right_key(block):
                 continue
@@ -78,7 +78,7 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
             for object_key in self._object_key_to_block.get_left_items(block):
                 yield object_key, block
 
-    def add_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[BlockType]):
+    def add_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: set[BlockType]):
         if object_key not in self._object_key_to_object:
             raise KeyError(f"cannot find key={object_key} in ObjectTracker")
 
@@ -87,7 +87,7 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
 
         self._current_blocks.update(blocks)
 
-    def remove_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[BlockType]):
+    def remove_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: set[BlockType]):
         ready_objects = []
         for block in blocks:
             obj = self.__remove_block_for_object(object_key, block)
@@ -99,7 +99,7 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
         for obj in ready_objects:
             self._callback(obj)
 
-    def add_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: BlockType):
+    def add_one_block_for_objects(self, object_keys: set[ObjectKeyType], block: BlockType):
         for object_key in object_keys:
             if object_key not in self._object_key_to_object:
                 raise KeyError(f"cannot find key={object_key} in ObjectTracker")
@@ -108,7 +108,7 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
 
         self._current_blocks.add(block)
 
-    def remove_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: BlockType):
+    def remove_one_block_for_objects(self, object_keys: set[ObjectKeyType], block: BlockType):
         ready_objects = []
         for object_key in object_keys:
             obj = self.__remove_block_for_object(object_key, block)
@@ -120,7 +120,7 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
         for obj in ready_objects:
             self._callback(obj)
 
-    def remove_blocks(self, blocks: Set[BlockType]):
+    def remove_blocks(self, blocks: set[BlockType]):
         ready_objects = []
         for block in blocks:
             if not self._object_key_to_block.has_right_key(block):
