@@ -4,6 +4,7 @@ import unittest
 from typing import Optional
 from unittest.mock import mock_open, patch
 
+from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
@@ -742,7 +743,7 @@ class TestOCIRawWorkerManagerConfig(unittest.TestCase):
             patch("sys.argv", ["scaler_worker_manager", "oci_raw", *_OCI_RAW_BASE_ARGV]),
             patch("scaler.entry_points.worker_manager.bootstrap_process"),
             patch("scaler.entry_points.worker_manager.register_event_loop"),
-            patch("scaler.worker_manager_adapter.oci_raw.worker_manager.OCIRawWorkerManager") as mock_mgr,
+            patch("scaler.worker_manager.nested.oci.worker_manager.OCIInstancesWorkerManager") as mock_mgr,
         ):
             mock_mgr.return_value.run.return_value = None
             from scaler.entry_points.worker_manager import main
@@ -784,6 +785,7 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_IMAGE_ARGV
         )
         self.assertEqual(config.instance_type, "t2.micro")
+        self.assertEqual(config.network_backend, defaults.SCALER_NETWORK_BACKEND)
 
     def test_orb_aws_ec2_missing_aws_region_raises(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
@@ -960,7 +962,7 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
     """Tests for ORBAWSEC2WorkerManager._create_user_data covering the two environment modes."""
 
     def _make_worker_manager(self, **kwargs):
-        from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
+        from scaler.worker_manager.nested.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
 
         return ORBAWSEC2WorkerManager(_make_orb_config(**kwargs))
 
@@ -1069,7 +1071,7 @@ worker_manager_id = "wm-2"
             patch("sys.argv", ["scaler_worker_manager", "oci_hpc", *_OCI_HPC_BASE_ARGV]),
             patch("scaler.entry_points.worker_manager.bootstrap_process"),
             patch("scaler.entry_points.worker_manager.register_event_loop"),
-            patch("scaler.worker_manager_adapter.oci_hpc.worker_manager.OCIHPCWorkerManager") as mock_mgr,
+            patch("scaler.worker_manager.proxy.oci.worker_manager.OCIJobsWorkerManager") as mock_mgr,
         ):
             mock_mgr.return_value.run.return_value = None
             from scaler.entry_points.worker_manager import main

@@ -13,6 +13,9 @@ CLEANUP_INTERVAL_SECONDS = 1
 # should raise it via -sri.
 STATUS_REPORT_INTERVAL_SECONDS = 1
 
+# biggest objects each status report carries, at about 240 bytes each, out of a store with no bound
+OBJECT_REPORT_LIMIT = 500
+
 # number of seconds for profiling
 PROFILING_INTERVAL_SECONDS = 1
 
@@ -57,6 +60,10 @@ DEFAULT_LOAD_BALANCE_TRIGGER_TIMES = 2
 
 # number of tasks can be queued to each worker on scheduler side
 DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
+
+# how long the scheduler waits for the object storage server to answer what it holds.
+# Without a bound the status routine would wedge behind a server that never answers.
+STORAGE_TOTALS_TIMEOUT_SECONDS = 5.0
 
 # =======================
 # WORKER SPECIFIC OPTIONS
@@ -110,8 +117,26 @@ DEFAULT_LOGGING_PATHS = ("/dev/stdout",)
 # Pushing faster mostly redraws the same picture: one tick is about a pixel over the stream's 5 minute window.
 DEFAULT_GUI_BROADCAST_INTERVAL_SECONDS = 0.5
 
-# maximum number of completed tasks the web GUI retains and shows in the task log
-DEFAULT_GUI_TASK_LOG_MAX_SIZE = 500
+# tasks and state changes the web GUI retains; paging is server-side, so this bounds its own memory
+DEFAULT_GUI_TASK_LOG_MAX_SIZE = 50_000
+
+# the task stream window a browser starts on. It has to be one of the GUI's window options.
+DEFAULT_STREAM_WINDOW_MINUTES = 5
+
+# how long a stream waits for a payload before writing a comment line, so a proxy or a NAT leaves it open.
+STREAM_KEEPALIVE_SECONDS = 15.0
+
+# the biggest view request body the web GUI accepts
+MAX_VIEW_REQUEST_BYTES = 64 * 1024
+
+# an object ID is an owner hash then a unique tag, so the tag is the half that tells two of them apart.
+OBJECT_TAG_OFFSET = 16
+
+# enough of an ID to pick one out of a page, short enough that a row of them still reads.
+TASK_ID_DISPLAY_LENGTH = 12
+
+# the memory chart's axis floor, so an idle cluster is a flat line rather than noise filling the plot.
+MEMORY_CHART_MINIMUM_BYTES = 1024**3
 
 # =======================
 # SCALER NETWORK BACKEND SPECIFIC OPTIONS

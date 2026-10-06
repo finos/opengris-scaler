@@ -226,7 +226,7 @@ _js_heartbeat_state: dict = {
 
 
 def _build_framed_heartbeat() -> bytes:
-    payload = _capnp_serialize(ClientHeartbeat(resource=Resource(cpu=0, rss=0), latencyUS=0))
+    payload = _capnp_serialize(ClientHeartbeat(resource=Resource(cpu=0, rss=0), latencyMicroseconds=0))
     return struct.pack(_YMQ_HEADER_FORMAT, len(payload)) + payload
 
 

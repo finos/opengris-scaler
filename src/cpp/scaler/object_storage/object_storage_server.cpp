@@ -140,7 +140,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             while (maybeMessageFuture.wait_for(shutdownPollInterval) == std::future_status::timeout) {
                 if (!running() || sigRequestStop) {
                     _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
-                    pendingRequests.clear();
+                    clearPendingRequests();
                     return;
                 }
             }
@@ -166,7 +166,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                             scaler::ymq::Logger::LoggingLevel::info,
                             "ObjectStorageServer: stopped, number of pending requests leftover in the system = ",
                             pendingRequests.size());
-                        pendingRequests.clear();
+                        clearPendingRequests();
                     }
                     return;
                 } else {
@@ -287,7 +287,7 @@ void ObjectStorageServer::processGetRequest(std::shared_ptr<Client> client, cons
         return;
     } else {
         // We don't have the object yet. Send the response later after once we receive the SET request.
-        pendingRequests[requestHeader.objectID].emplace_back(client, requestHeader);
+        addPendingRequest(requestHeader.objectID, client, requestHeader);
     }
 }
 
@@ -325,14 +325,14 @@ void ObjectStorageServer::processDuplicateRequest(
         sendDuplicateResponse(client, requestHeader);
     } else {
         // We don't have the referenced original object yet. Send the response later once we receive the SET
-        pendingRequests[originalObjectID].emplace_back(client, requestHeader);
+        addPendingRequest(originalObjectID, client, requestHeader);
     }
 }
 
 void ObjectStorageServer::processInfoGetTotalRequest(
     std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader)
 {
-    const uint64_t numOfFields   = 3;
+    const uint64_t numOfFields   = 6;
     const uint64_t payloadLength = numOfFields * sizeof(uint64_t);
     // Guaranteed to be aligned with 8, but to be sure we have alignas(8)
     alignas(sizeof(uint64_t)) unsigned char serializedPayload[payloadLength];
@@ -340,9 +340,19 @@ void ObjectStorageServer::processInfoGetTotalRequest(
     const uint64_t numIDs    = objectManager.size();
     const uint64_t numObjs   = objectManager.sizeUnique();
     const uint64_t totalSize = objectManager.totalObjectsSize();
+
+    const uint64_t numPending           = _pendingRequestCount;
+    const uint64_t numPendingIDs        = pendingRequests.size();
+    const auto now                      = std::chrono::steady_clock::now();
+    const auto oldestPending            = _pendingObjectsByAge.empty() ? now : _pendingObjectsByAge.begin()->first;
+    const uint64_t oldestPendingSeconds = std::chrono::duration_cast<std::chrono::seconds>(now - oldestPending).count();
+
     std::memcpy(&serializedPayload[0 * sizeof(uint64_t)], &numIDs, sizeof(uint64_t));
     std::memcpy(&serializedPayload[1 * sizeof(uint64_t)], &numObjs, sizeof(uint64_t));
     std::memcpy(&serializedPayload[2 * sizeof(uint64_t)], &totalSize, sizeof(uint64_t));
+    std::memcpy(&serializedPayload[3 * sizeof(uint64_t)], &numPending, sizeof(uint64_t));
+    std::memcpy(&serializedPayload[4 * sizeof(uint64_t)], &numPendingIDs, sizeof(uint64_t));
+    std::memcpy(&serializedPayload[5 * sizeof(uint64_t)], &oldestPendingSeconds, sizeof(uint64_t));
 
     ObjectResponseHeader responseHeader {
         .objectID      = requestHeader.objectID,
@@ -383,19 +393,44 @@ void ObjectStorageServer::sendDuplicateResponse(
     writeMessage(client, responseHeader, {});
 }
 
-void ObjectStorageServer::optionallySendPendingRequests(
-    const ObjectID& objectID, std::shared_ptr<const ObjectPayload> objectPtr)
+void ObjectStorageServer::addPendingRequest(
+    const ObjectID& objectID, std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader)
+{
+    auto& requests = pendingRequests[objectID];
+    requests.emplace_back(client, requestHeader);
+    ++_pendingRequestCount;
+    if (requests.size() == 1) {
+        _pendingObjectsByAge.emplace(requests.front().waitingSince, objectID);
+    }
+}
+
+std::vector<ObjectStorageServer::PendingRequest> ObjectStorageServer::removePendingRequests(const ObjectID& objectID)
 {
     auto it = pendingRequests.find(objectID);
     if (it == pendingRequests.end()) {
-        return;
+        return {};
     }
 
-    // Immediately remove the object's pending requests, or else another coroutine might process them too.
     auto requests = std::move(it->second);
     pendingRequests.erase(it);
+    _pendingRequestCount -= requests.size();
+    _pendingObjectsByAge.erase({requests.front().waitingSince, objectID});
+    return requests;
+}
 
-    std::vector<ObjectStorageServer::SendMessageFuture> res;
+void ObjectStorageServer::clearPendingRequests()
+{
+    pendingRequests.clear();
+    _pendingRequestCount = 0;
+    _pendingObjectsByAge.clear();
+}
+
+void ObjectStorageServer::optionallySendPendingRequests(
+    const ObjectID& objectID, std::shared_ptr<const ObjectPayload> objectPtr)
+{
+    // Immediately remove the object's pending requests, or else another coroutine might process them too.
+    auto requests = removePendingRequests(objectID);
+
     for (auto& request: requests) {
         if (request.requestHeader.requestType == ObjectRequestType::GET_OBJECT) {
             sendGetResponse(request.client, request.requestHeader, objectPtr);
@@ -408,7 +443,6 @@ void ObjectStorageServer::optionallySendPendingRequests(
             optionallySendPendingRequests(request.requestHeader.objectID, objectPtr);
         }
     }
-    return;
 }
 
 };  // namespace object_storage

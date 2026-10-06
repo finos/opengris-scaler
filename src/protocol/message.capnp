@@ -66,7 +66,8 @@ struct GraphTask {
 
 struct ClientHeartbeat {
     resource @0 :Status.Resource;
-    latencyUS @1 :UInt32;
+    latencyMicroseconds @1 :UInt32;
+    hostname @2 :Text;   # machine the client runs on, so the UI can say where a task came from
 }
 
 struct ClientHeartbeatEcho {
@@ -78,12 +79,15 @@ struct WorkerHeartbeat {
     rssFree @1 :UInt64;
     queueSize @2 :UInt32;
     queuedTasks @3 :UInt32;
-    latencyUS @4 :UInt32;
+    latencyMicroseconds @4 :UInt32;
     taskLock @5 :Bool;
     processors @6 :List(Status.ProcessorStatus);
     capabilities @7 :List(CommonType.TaskCapability);
     workerManagerID @8 :Data;
     memLimit @9 :UInt64;  # memory limit in bytes the worker runs under (cgroup if set, else system total); 0 if unknown
+    hostname @10 :Text;   # machine this worker runs on, so the monitor can group workers by host
+    netSentBytes @11 :UInt64;  # host-wide counters, identical for workers sharing a host; the monitor
+    netRecvBytes @12 :UInt64;  # reads them once per hostname rather than summing them
 }
 
 struct WorkerHeartbeatEcho {
@@ -141,6 +145,17 @@ struct StateClient {
 }
 
 struct StateObject {
+    objects @0 :List(ObjectDetail);
+    totalObjects @1 :UInt32;   # objects the scheduler tracks, of which `objects` is the largest few
+
+    struct ObjectDetail {
+        objectId @0 :Data;
+        name @1 :Data;
+        objectType @2 :CommonType.ObjectMetadata.ObjectContentType;
+        size @3 :UInt64;
+        creator @4 :Data;      # client that created it
+        taskCount @5 :UInt32;  # live tasks naming it as their function or an argument
+    }
 }
 
 struct StateBalanceAdvice {
@@ -172,6 +187,9 @@ struct StateTask {
     worker @3 :Data;
     capabilities @4 :List(CommonType.TaskCapability);
     metadata @5 :Data;
+    objectBytes @6 :UInt64;  # payload bytes this task's arguments move, so a heavy task is visible
+    client @7 :Data;         # client that submitted the task
+    event @8 :Text;          # state machine event that moved the task into this state, empty for the state it starts in
 }
 
 struct StateGraphTask {

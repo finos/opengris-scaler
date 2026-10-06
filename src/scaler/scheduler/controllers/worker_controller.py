@@ -124,7 +124,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
         suspended = min(len([p for p in info.processors if p.suspended]), UINT8_MAX)
-        last_s = min(int(time.time() - last), UINT16_MAX)
+        last_seen_seconds = min(int(time.time() - last), UINT16_MAX)
 
         if current_processor:
             debug_info = f"{int(current_processor.initialized)}{int(current_processor.hasTask)}{int(info.taskLock)}"
@@ -140,8 +140,8 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             sent=worker_task_numbers["sent"],
             queued=info.queuedTasks,
             suspended=suspended,
-            lagUS=info.latencyUS,
-            lastS=last_s,
+            lagMicroseconds=info.latencyMicroseconds,
+            lastSeenSeconds=last_seen_seconds,
             itl=debug_info,
             processorStatuses=[
                 ProcessorStatus(
@@ -150,9 +150,14 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
                     hasTask=p.hasTask,
                     suspended=p.suspended,
                     resource=Resource(cpu=p.resource.cpu, rss=p.resource.rss),
+                    currentTaskId=bytes(p.currentTaskId),
+                    taskAgeSeconds=p.taskAgeSeconds,
                 )
                 for p in info.processors
             ],
+            hostname=info.hostname,
+            netSentBytes=info.netSentBytes,
+            netRecvBytes=info.netRecvBytes,
         )
 
     def has_available_worker(self) -> bool:

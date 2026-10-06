@@ -335,7 +335,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
         manager_snapshots = {
             b"mgr": WorkerManagerSnapshot(
-                worker_manager_id=b"mgr", max_task_concurrency=10, worker_count=10, last_seen_s=0.0, capabilities={}
+                worker_manager_id=b"mgr", max_task_concurrency=10, worker_count=10, last_seen_at=0.0, capabilities={}
             )
         }
 
@@ -652,7 +652,7 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
         rssFree=500000,
         queueSize=10,
         queuedTasks=queued_tasks,
-        latencyUS=100,
+        latencyMicroseconds=100,
         taskLock=False,
         processors=[],
         capabilities=capabilities,
@@ -671,7 +671,7 @@ def _create_worker_manager_heartbeat(
 def _run_native_worker_manager(
     scheduler_address: str, max_task_concurrency: int = 4, worker_manager_id: str = "test_manager"
 ) -> None:
-    from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
+    from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 
     manager = NativeWorkerManager(
         NativeWorkerManagerConfig(
