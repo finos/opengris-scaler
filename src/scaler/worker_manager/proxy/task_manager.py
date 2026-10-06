@@ -1,6 +1,8 @@
 import asyncio
+import dataclasses
+import enum
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import cloudpickle
 from bidict import bidict
@@ -29,6 +31,20 @@ from scaler.worker_manager.proxy.mixins import ExecutionBackend
 logger = logging.getLogger(__name__)
 
 
+class _TaskState(enum.Enum):
+    QUEUED = enum.auto()
+    STARTING = enum.auto()  # execute() is awaited, so the task has no future yet
+    RUNNING = enum.auto()
+    CANCELING = enum.auto()  # force-cancelled: its future, once it has one, is dropped rather than reported
+
+
+@dataclasses.dataclass
+class _TaskEntry:
+    task: Task
+    state: _TaskState
+    holds_permit: bool = False
+
+
 class TaskManager(Looper, TaskManagerMixin):
     def __init__(
         self, base_concurrency: int, execution_backend: ExecutionBackend, idle_sleep_seconds: float = 0.0
@@ -42,17 +58,13 @@ class TaskManager(Looper, TaskManagerMixin):
 
         self._executor_semaphore = asyncio.Semaphore(value=self._base_concurrency)
 
-        self._task_id_to_task: Dict[TaskID, Task] = dict()
+        # Each state change happens with no await inside it, so no coroutine sees a task half-moved.
+        self._task_id_to_entry: Dict[TaskID, _TaskEntry] = dict()
         self._task_id_to_future: bidict[TaskID, asyncio.Future] = bidict()
 
         self._serializers: Dict[bytes, Serializer] = dict()
 
         self._queued_task_id_queue = AsyncPriorityQueue()
-        self._queued_task_ids: Set[TaskID] = set()
-
-        self._acquiring_task_ids: Set[TaskID] = set()
-        self._processing_task_ids: Set[TaskID] = set()
-        self._canceled_task_ids: Set[TaskID] = set()
 
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
@@ -80,70 +92,54 @@ class TaskManager(Looper, TaskManagerMixin):
     async def on_task_new(self, task: Task) -> None:
         task_priority = self._get_task_priority(task)
 
-        if self._executor_semaphore.locked():
-            for acquired_task_id in self._acquiring_task_ids:
-                acquired_task = self._task_id_to_task[acquired_task_id]
-                acquired_task_priority = self._get_task_priority(acquired_task)
-                if task_priority <= acquired_task_priority:
-                    break
-            else:
-                self._task_id_to_task[task.taskId] = task
-                self._processing_task_ids.add(task.taskId)
-                # Bypass tasks intentionally exceed base_concurrency to service higher-priority requests immediately.
-                self._task_id_to_future[task.taskId] = await self._execution_backend.execute(task)
-                return
+        if self._executor_semaphore.locked() and all(
+            task_priority > self._get_task_priority(entry.task)
+            for entry in self._task_id_to_entry.values()
+            if entry.holds_permit
+        ):
+            entry = _TaskEntry(task=task, state=_TaskState.STARTING)
+            self._task_id_to_entry[task.taskId] = entry
+            # Bypass tasks intentionally exceed base_concurrency to service higher-priority requests immediately.
+            await self._start_task(entry)
+            return
 
-        self._task_id_to_task[task.taskId] = task
+        self._task_id_to_entry[task.taskId] = _TaskEntry(task=task, state=_TaskState.QUEUED)
         self._queued_task_id_queue.put_nowait((-task_priority, task.taskId))
-        self._queued_task_ids.add(task.taskId)
 
     async def on_cancel_task(self, task_cancel: TaskCancel) -> None:
-        task_queued = task_cancel.taskId in self._queued_task_ids
-        task_processing = task_cancel.taskId in self._processing_task_ids
+        entry = self._task_id_to_entry.get(task_cancel.taskId)
 
-        if not task_queued and not task_processing:
-            await self._connector_external.send(
-                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound),
-                detached=True,
-            )
+        if entry is None or entry.state == _TaskState.CANCELING:
+            await self._send_cancel_confirm(task_cancel.taskId, TaskCancelConfirmType.cancelNotFound)
             return
 
-        if task_processing and not task_cancel.flags.force:
-            await self._connector_external.send(
-                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelFailed),
-                detached=True,
-            )
-            return
-
-        if task_queued:
-            self._queued_task_ids.remove(task_cancel.taskId)
+        if entry.state == _TaskState.QUEUED:
             self._queued_task_id_queue.remove(task_cancel.taskId)
-            self._task_id_to_task.pop(task_cancel.taskId)
+            self._task_id_to_entry.pop(task_cancel.taskId)
+            await self._send_cancel_confirm(task_cancel.taskId, TaskCancelConfirmType.canceled)
+            return
 
-        if task_processing:
+        if not task_cancel.flags.force:
+            await self._send_cancel_confirm(task_cancel.taskId, TaskCancelConfirmType.cancelFailed)
+            return
+
+        previous_state = entry.state
+        entry.state = _TaskState.CANCELING
+
+        # A STARTING task is cancelled by _start_task once execute() returns the handle to cancel.
+        if previous_state == _TaskState.RUNNING:
             future = self._task_id_to_future[task_cancel.taskId]
-            future.cancel()
             await self._execution_backend.on_cancel(task_cancel)
-            self._processing_task_ids.remove(task_cancel.taskId)
-            self._canceled_task_ids.add(task_cancel.taskId)
+            future.cancel()
 
-        await self._connector_external.send(
-            TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled),
-            detached=True,
-        )
+        await self._send_cancel_confirm(task_cancel.taskId, TaskCancelConfirmType.canceled)
 
     async def on_task_result(self, result: TaskResult) -> None:
         # Required by TaskManagerMixin but not dispatched from WorkerProcess.__on_receive_external.
         # WorkerProcess drives result handling via resolve_tasks() instead.
-        # NOTE: _queued_task_ids is not cleaned up by resolve_tasks(), so completed tasks whose IDs
-        # are still in _queued_task_ids will be cleared here if this method is ever called, but in
-        # normal operation those IDs accumulate until the WorkerProcess exits.
-        if result.taskId in self._queued_task_ids:
-            self._queued_task_ids.remove(result.taskId)
+        entry = self._task_id_to_entry.pop(result.taskId)
+        if entry.state == _TaskState.QUEUED:
             self._queued_task_id_queue.remove(result.taskId)
-
-        self._processing_task_ids.remove(result.taskId)
-        self._task_id_to_task.pop(result.taskId)
 
         await self._connector_external.send(result, detached=True)
 
@@ -161,57 +157,68 @@ class TaskManager(Looper, TaskManagerMixin):
         done, _ = await asyncio.wait(self._task_id_to_future.values(), return_when=asyncio.FIRST_COMPLETED)
         for future in done:
             task_id = self._task_id_to_future.inv.pop(future)
-            task = self._task_id_to_task.get(task_id)
+            entry = self._task_id_to_entry.pop(task_id)
+            try:
+                if entry.state == _TaskState.RUNNING:
+                    await self._send_task_result(entry.task, future)
+            finally:
+                self._release_task(entry)
 
-            if task is None:
-                logger.warning(f"Cannot find task in worker queue: task_id={task_id.hex()}")
-                continue
+    async def _start_task(self, entry: _TaskEntry) -> None:
+        task_id = entry.task.taskId
+        future = await self._execution_backend.execute(entry.task)
 
-            if task_id in self._processing_task_ids:
-                self._processing_task_ids.remove(task_id)
+        if entry.state == _TaskState.CANCELING:
+            await self._execution_backend.on_cancel(
+                TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=True))
+            )
+            future.cancel()
+        else:
+            entry.state = _TaskState.RUNNING
 
-                if future.exception() is None:
-                    serializer_id = ObjectID.generate_serializer_object_id(task.source)
-                    serializer = self._serializers[serializer_id]
-                    result_bytes = serializer.serialize(future.result())
-                    result_type = TaskResultType.success
-                else:
-                    result_bytes = serialize_failure(cast(Exception, future.exception()))
-                    result_type = TaskResultType.failed
+        self._task_id_to_future[task_id] = future
 
-                result_object_id = ObjectID.generate_object_id(task.source)
+    async def _send_task_result(self, task: Task, future: asyncio.Future) -> None:
+        if future.exception() is None:
+            serializer_id = ObjectID.generate_serializer_object_id(task.source)
+            serializer = self._serializers[serializer_id]
+            result_bytes = serializer.serialize(future.result())
+            result_type = TaskResultType.success
+        else:
+            result_bytes = serialize_failure(cast(Exception, future.exception()))
+            result_type = TaskResultType.failed
 
-                await self._connector_storage.set_object(result_object_id, result_bytes)
-                await self._connector_external.send(
-                    ObjectInstruction(
-                        instructionType=ObjectInstruction.ObjectInstructionType.create,
-                        objectUser=task.source,
-                        objectMetadata=ObjectMetadata(
-                            objectIds=(result_object_id,),
-                            objectTypes=(ObjectMetadata.ObjectContentType.object,),
-                            objectNames=(f"<res {result_object_id.hex()[:6]}>".encode(),),
-                        ),
-                    ),
-                    detached=True,
-                )
+        result_object_id = ObjectID.generate_object_id(task.source)
 
-                await self._connector_external.send(
-                    TaskResult(taskId=task_id, resultType=result_type, metadata=b"", results=[bytes(result_object_id)]),
-                    detached=True,
-                )
+        await self._connector_storage.set_object(result_object_id, result_bytes)
+        await self._connector_external.send(
+            ObjectInstruction(
+                instructionType=ObjectInstruction.ObjectInstructionType.create,
+                objectUser=task.source,
+                objectMetadata=ObjectMetadata(
+                    objectIds=(result_object_id,),
+                    objectTypes=(ObjectMetadata.ObjectContentType.object,),
+                    objectNames=(f"<res {result_object_id.hex()[:6]}>".encode(),),
+                ),
+            ),
+            detached=True,
+        )
 
-            elif task_id in self._canceled_task_ids:
-                self._canceled_task_ids.remove(task_id)
+        await self._connector_external.send(
+            TaskResult(taskId=task.taskId, resultType=result_type, metadata=b"", results=[bytes(result_object_id)]),
+            detached=True,
+        )
 
-            else:
-                raise ValueError(f"task_id {task_id.hex()} not found in processing or canceled tasks")
+    async def _send_cancel_confirm(self, task_id: TaskID, cancel_confirm_type: TaskCancelConfirmType) -> None:
+        await self._connector_external.send(
+            TaskCancelConfirm(taskId=task_id, cancelConfirmType=cancel_confirm_type), detached=True
+        )
 
-            if task_id in self._acquiring_task_ids:
-                self._acquiring_task_ids.remove(task_id)
-                self._executor_semaphore.release()
+    def _release_task(self, entry: _TaskEntry) -> None:
+        if entry.holds_permit:
+            self._executor_semaphore.release()
 
-            self._task_id_to_task.pop(task_id)
-            self._execution_backend.on_cleanup(task_id)
+        self._execution_backend.on_cleanup(entry.task.taskId)
 
     async def routine(self) -> None:
         pass
@@ -220,16 +227,16 @@ class TaskManager(Looper, TaskManagerMixin):
         await self._executor_semaphore.acquire()
 
         _, task_id = await self._queued_task_id_queue.get()
-        task = self._task_id_to_task[task_id]
-
-        self._acquiring_task_ids.add(task_id)
-        self._processing_task_ids.add(task_id)
-        # _queued_task_ids intentionally not cleared here; on_cancel_task and on_task_result clear it.
-        self._task_id_to_future[task.taskId] = await self._execution_backend.execute(task)
+        entry = self._task_id_to_entry[task_id]
+        entry.state = _TaskState.STARTING
+        entry.holds_permit = True
+        await self._start_task(entry)
 
     @property
     def processing_task_count(self) -> int:
-        return len(self._processing_task_ids)
+        return sum(
+            entry.state in (_TaskState.STARTING, _TaskState.RUNNING) for entry in self._task_id_to_entry.values()
+        )
 
     async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]:
         serializer_id = ObjectID.generate_serializer_object_id(task.source)
