@@ -339,6 +339,57 @@ class TestTaskActorCancel(_TaskActorTestCase):
         await self._settle()
         self.assertEqual(self.actor.processing_task_count, 0)
 
+    async def test_a_force_cancel_is_confirmed_once_the_backend_cancel_returns(self) -> None:
+        task = _make_task()
+        await self._start_task(task)
+        backend_release = asyncio.Event()
+
+        async def slow_on_cancel(_: TaskCancel) -> None:
+            await backend_release.wait()
+
+        self.backend.on_cancel = AsyncMock(side_effect=slow_on_cancel)
+        await self._cancel(task.taskId, force=True)
+        self.assertEqual(self._cancel_confirm_types(), [])
+
+        backend_release.set()
+        await self._settle()
+        self.assertEqual(self._cancel_confirm_types(), [TaskCancelConfirmType.canceled])
+
+    async def test_a_failed_backend_cancel_is_confirmed_as_failed_and_the_task_reports_its_result(self) -> None:
+        task = _make_task()
+        future = await self._start_task(task)
+        self.backend.on_cancel = AsyncMock(side_effect=RuntimeError("terminate_job failed"))
+
+        with self.assertLogs("scaler", level="ERROR"):
+            await self._cancel(task.taskId, force=True)
+
+        self.assertEqual(self._cancel_confirm_types(), [TaskCancelConfirmType.cancelFailed])
+        self.assertFalse(future.cancelled())
+        self.assertFalse(self.actor.has_free_permit)
+
+        future.set_result("done remotely")
+        await self._settle()
+        self.assertEqual(self.reported, [(task, future)])
+        self.assertTrue(self.actor.has_free_permit)
+
+    async def test_a_task_that_ends_while_a_backend_cancel_fails_reads_as_canceled(self) -> None:
+        """The task was dropped unreported when it ended, so cancelFailed would leave the scheduler waiting forever."""
+        task = _make_task()
+        future = await self._start_task(task)
+
+        async def on_cancel_while_job_finishes(_: TaskCancel) -> None:
+            future.set_result("done remotely")
+            await asyncio.sleep(0)
+            raise RuntimeError("terminate_job failed")
+
+        self.backend.on_cancel = AsyncMock(side_effect=on_cancel_while_job_finishes)
+        with self.assertLogs("scaler", level="ERROR"):
+            await self._cancel(task.taskId, force=True)
+
+        self.assertEqual(self._cancel_confirm_types(), [TaskCancelConfirmType.canceled])
+        self.assertEqual(self.reported, [])
+        self.assertTrue(self.actor.has_free_permit)
+
     async def test_a_task_that_finishes_during_the_backend_cancel_reports_nothing(self) -> None:
         task = _make_task()
         future = await self._start_task(task)
@@ -401,7 +452,7 @@ class TestTaskActorCancel(_TaskActorTestCase):
         release.set()
         await self._settle()
 
-        expected = [TaskCancelConfirmType.canceled, TaskCancelConfirmType.cancelNotFound]
+        expected = [TaskCancelConfirmType.cancelNotFound, TaskCancelConfirmType.canceled]
         self.assertEqual(self._cancel_confirm_types(), expected)
         self.backend.on_cancel.assert_called_once()
 
