@@ -18,8 +18,23 @@ class ProcessorDiedError(Exception):
     pass
 
 
+class TaskCancelUnsupportedError(Exception):
+    """A proxy execution backend cannot stop a running task, so the cancel fails and the task reports its result."""
+
+    pass
+
+
 class SchedulerError(Exception):
     """The scheduler failed while it was applying a transition for this task, so the task cannot continue."""
+
+    pass
+
+
+class SymphonyTaskError(Exception):
+    """IBM Spectrum Symphony failed a task, or returned an output the worker manager cannot read.
+
+    The message renders the Symphony failure as text: the client that receives it has no Symphony
+    installation, so a ``soamapi`` exception would arrive there as an import error instead."""
 
     pass
 
