@@ -65,5 +65,4 @@ def create_oci_worker(
             oci_profile=oci_profile,
             auth_type=auth_type,
         ),
-        idle_sleep_seconds=0.1,
     )
