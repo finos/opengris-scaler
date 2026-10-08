@@ -376,12 +376,13 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             logger.exception(f"{event.task_id!r}: could not release the worker of a faulted task")
 
         # commit before removing: the machine is being dropped either way, and without a commit the source state keeps
-        # its count in _statistics forever. failed is what the client was just told
-        self._task_state_manager.commit(event.task_id, type(event), TaskState.failed)
+        # its count in _statistics forever. the state is the scheduler's own, so that a fault of the scheduler is not
+        # counted as a task that raised, even though the client is told the ordinary failed
+        self._task_state_manager.commit(event.task_id, type(event), TaskState.failedSchedulerFault)
         self._task_state_manager.remove_state_machine(event.task_id)
 
         try:
-            await self.__send_monitor(event.task_id, TaskState.failed, type(event).__name__)
+            await self.__send_monitor(event.task_id, TaskState.failedSchedulerFault, type(event).__name__)
         except Exception:
             logger.exception(f"{event.task_id!r}: could not report the faulted task to the monitor")
 
@@ -437,6 +438,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 | TaskState.failedWorkerDied
                 | TaskState.canceled
                 | TaskState.canceledNotFound
+                | TaskState.failedSchedulerFault
             ):
                 # the task already holds a worker, or it finished before the acquired worker could be used
                 return None
@@ -478,6 +480,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 | TaskState.failedWorkerDied
                 | TaskState.canceled
                 | TaskState.canceledNotFound
+                | TaskState.failedSchedulerFault
             ):
                 # a cancel is already in flight, or the task already finished
                 return None
@@ -510,6 +513,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 | TaskState.failedWorkerDied
                 | TaskState.canceled
                 | TaskState.canceledNotFound
+                | TaskState.failedSchedulerFault
             ):
                 # balance advice is stale: the task no longer runs where the balancer believed it did
                 return None
@@ -532,6 +536,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 | TaskState.failedWorkerDied
                 | TaskState.canceled
                 | TaskState.canceledNotFound
+                | TaskState.failedSchedulerFault
             ):
                 # the task has no worker, or it already reported its outcome to the client
                 return None
@@ -558,6 +563,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 | TaskState.failedWorkerDied
                 | TaskState.canceled
                 | TaskState.canceledNotFound
+                | TaskState.failedSchedulerFault
             ):
                 # no cancel is in flight, or the task already reported its outcome to the client
                 return None
@@ -579,6 +585,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 | TaskState.failedWorkerDied
                 | TaskState.canceled
                 | TaskState.canceledNotFound
+                | TaskState.failedSchedulerFault
             ):
                 # no cancel is in flight, or the task already reported its outcome to the client
                 return None
@@ -613,6 +620,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 | TaskState.failedWorkerDied
                 | TaskState.canceled
                 | TaskState.canceledNotFound
+                | TaskState.failedSchedulerFault
             ):
                 # no cancel is in flight, or the task already reported its outcome to the client
                 return None
@@ -638,6 +646,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 | TaskState.failedWorkerDied
                 | TaskState.canceled
                 | TaskState.canceledNotFound
+                | TaskState.failedSchedulerFault
             ):
                 # the task holds no worker to lose, or it already reported its outcome to the client
                 return None
