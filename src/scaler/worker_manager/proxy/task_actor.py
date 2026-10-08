@@ -6,6 +6,7 @@ import time
 from typing import Any, Awaitable, Callable, Coroutine, Dict, Optional, Set, Union, cast
 
 from scaler.protocol.capnp import Task, TaskCancel, TaskCancelConfirmType
+from scaler.utility.exceptions import TaskCancelUnsupportedError
 from scaler.utility.identifiers import TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
@@ -247,6 +248,10 @@ class TaskActor:
             await self._execution_backend.on_cancel(
                 TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=True))
             )
+        except TaskCancelUnsupportedError as error:
+            logger.warning(f"Backend cannot cancel task: task_id={task_id.hex()}: {error}")
+            self._events.put_nowait(_CancelDone(task_id, succeeded=False))
+            return
         except Exception:
             logger.exception(f"Failed to cancel task in the backend: task_id={task_id.hex()}")
             self._events.put_nowait(_CancelDone(task_id, succeeded=False))

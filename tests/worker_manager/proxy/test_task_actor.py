@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.protocol.capnp import Task, TaskCancel, TaskCancelConfirmType
+from scaler.utility.exceptions import TaskCancelUnsupportedError
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
@@ -371,6 +372,23 @@ class TestTaskActorCancel(_TaskActorTestCase):
         await self._settle()
         self.assertEqual(self.reported, [(task, future)])
         self.assertTrue(self.actor.has_free_permit)
+
+    async def test_an_unsupported_backend_cancel_logs_one_warning_and_the_task_reports_its_result(self) -> None:
+        """A backend that cannot stop a task is not a fault, so the failed cancel is a warning without a traceback."""
+        task = _make_task()
+        future = await self._start_task(task)
+        self.backend.on_cancel = AsyncMock(side_effect=TaskCancelUnsupportedError("the backend cannot stop a task"))
+
+        with self.assertLogs("scaler", level="WARNING") as captured:
+            await self._cancel(task.taskId, force=True)
+
+        self.assertEqual([(record.levelname, record.exc_info) for record in captured.records], [("WARNING", None)])
+        self.assertIn("the backend cannot stop a task", captured.records[0].getMessage())
+        self.assertEqual(self._cancel_confirm_types(), [TaskCancelConfirmType.cancelFailed])
+
+        future.set_result("done remotely")
+        await self._settle()
+        self.assertEqual(self.reported, [(task, future)])
 
     async def test_a_task_that_ends_while_a_backend_cancel_fails_reads_as_canceled(self) -> None:
         """The task was dropped unreported when it ended, so cancelFailed would leave the scheduler waiting forever."""
