@@ -34,12 +34,12 @@ class TestVanillaScalingPolicyLogging(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        self.policy = VanillaScalingPolicy()
+        self.policy = VanillaScalingPolicy({})
         self.workers = [WorkerID(b"worker")]
 
     def __decide(self, task_count: int, worker_count: int) -> int:
         return self.policy._compute_desired_worker_count(
-            _snapshot(task_count, worker_count), _heartbeat(), self.workers
+            _snapshot(task_count, worker_count), _heartbeat(), self.workers, {}
         )
 
     def test_a_standing_request_is_logged_once(self):
@@ -110,7 +110,7 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
         return {manager_id: MagicMock() for manager_id in manager_ids}
 
     def test_vanilla_forgets_a_manager_the_scheduler_no_longer_knows(self):
-        policy = VanillaScalingPolicy()
+        policy = VanillaScalingPolicy({})
         workers = [WorkerID(b"worker")]
 
         # asks each manager for one more worker, which is what gets remembered

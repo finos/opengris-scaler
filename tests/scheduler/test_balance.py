@@ -244,7 +244,7 @@ class TestBalance(unittest.TestCase):
             heartbeat_interval_seconds=HEARTBEAT_INTERVAL_SECONDS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
             load_balance_trigger_times=1,
-            scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=vanilla"),
+            scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=static"),
             logging_paths=(log_path,),
         )
 

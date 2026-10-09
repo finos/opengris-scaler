@@ -132,7 +132,7 @@ class SortSpec:
 
 # One spec per sortable table, each covering that table's own columns.
 WORKER_SORT = SortSpec(
-    text=frozenset({"name", "manager_id", "host", "task", "itl", "capabilities"}),
+    text=frozenset({"name", "state", "manager_id", "host", "task", "itl", "capabilities"}),
     numeric=frozenset(
         {"agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended"}
     ),
@@ -1161,6 +1161,7 @@ class WebUIApp:
                 "max_task_concurrency": detail.maxTaskConcurrency,
                 "worker_count": manager_worker_counts.get(manager_id, 0),
                 "pending_workers": detail.pendingWorkers,
+                "units": f"{detail.activeUnits} / {detail.pendingUnits} / {detail.drainingUnits}",
                 "capabilities": detail.capabilities,
             }
         # Mark newly-disappeared managers with a disconnect timestamp instead of
@@ -1203,6 +1204,7 @@ class WebUIApp:
                 "id": worker_name,
                 "name": _format_worker_name(worker_name),
                 "full_name": worker_name,
+                "state": "draining" if worker_data.draining else "serving",
                 "manager_id": self._worker_manager_map.get(worker_name, "\u2014"),
                 "agt_cpu": round(worker_data.agent.cpu / 10, 1),
                 "agt_rss": agt_rss,
@@ -1852,7 +1854,7 @@ class WebUIApp:
     def _fleet_worker_count(self) -> int:
         """Full fleet size, for the "N of M" indicator next to a bounded worker list.
 
-        Workers can run without a registered manager (a native manager in fixed mode), zeroing those totals.
+        Workers can run before their manager registers or after it times out, zeroing those totals.
         The workers this backend holds are then the fleet it knows about.
         """
         return max(self._total_workers, len(self._workers_data))

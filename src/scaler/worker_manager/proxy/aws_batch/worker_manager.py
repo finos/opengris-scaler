@@ -1,48 +1,30 @@
 from __future__ import annotations
 
 import logging
-import math
-from typing import TYPE_CHECKING, List
 
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
-from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.desired_concurrency import extract_desired_count
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.config.types.address import AddressConfig
+from scaler.worker_manager.local_process import (
+    LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS,
+    local_children_address,
+    stop_local_process,
+)
+from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.proxy.aws_batch.worker import create_aws_batch_worker
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
 
-if TYPE_CHECKING:
-    from scaler.protocol.capnp import WorkerManagerCommand
-
 logger = logging.getLogger(__name__)
 
 
-class AWSBatchWorkerProvisioner(DeclarativeWorkerProvisioner):
-    def __init__(self, config: AWSBatchWorkerManagerConfig) -> None:
+class AWSBatchWorkerProvisioner(UnitProvisioner):
+    def __init__(self, config: AWSBatchWorkerManagerConfig, children_address: AddressConfig) -> None:
+        self._children_address = children_address
         self._config = config
         self._base_concurrency = config.max_concurrent_jobs
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._units: List[WorkerProcess] = []
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=-1,
-            scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
-        )
 
-    def active_unit_count(self) -> int:
-        return len(self._units)
-
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        task_concurrency = extract_desired_count(requests, self._capabilities)
-        new_desired = math.ceil(task_concurrency / self._base_concurrency)
-        await self._capacity_coordinator.set_desired_unit_count(new_desired)
-
-    def _start_unit(self) -> None:
+    async def create_unit(self, unit_id: str) -> UnitHandle:
         config = self._config
         worker = create_aws_batch_worker(
             name=config.name,
@@ -62,29 +44,26 @@ class AWSBatchWorkerProvisioner(DeclarativeWorkerProvisioner):
             event_loop=config.worker_config.event_loop,
             job_timeout_seconds=config.job_timeout_minutes * 60,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
+            worker_manager_address=self._children_address,
+            unit_id=unit_id,
         )
         worker.start()
-        self._units.append(worker)
-        logger.info(f"Started Batch worker process {worker.name!r}")
+        logger.info(f"started Batch worker process {worker.name!r}")
+        return worker
 
-    async def start_units(self, count: int) -> None:
-        for _ in range(count):
-            self._start_unit()
+    async def destroy_unit(self, handle: UnitHandle) -> None:
+        assert isinstance(handle, WorkerProcess)
+        await stop_local_process(handle)
+        logger.info(f"stopped Batch worker process {handle.name!r}")
 
-    async def stop_units(self, count: int) -> None:
-        to_stop = self._units[:count]
-        if len(to_stop) < count:
-            logger.warning(f"Requested to stop {count} worker process(es) but only {len(to_stop)} available.")
-        for worker in to_stop:
-            worker.terminate()
-            self._units.pop(0)
-            logger.info(f"Stopped Batch worker process {worker.name!r}")
+    def max_units(self) -> int:
+        return -1
 
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        for worker in self._units:
-            worker.terminate()
-        self._units.clear()
+    def task_concurrency_per_unit(self) -> int:
+        return self._base_concurrency
+
+    def startup_timeout_seconds(self) -> int:
+        return LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS
 
 
 class AWSBatchWorkerManager:
@@ -97,16 +76,16 @@ class AWSBatchWorkerManager:
         if config.backend != AWSHPCBackend.batch:
             raise NotImplementedError(f"backend {config.backend.name!r} is not yet implemented")
 
-        provisioner = AWSBatchWorkerProvisioner(config)
+        children_address = local_children_address(config.worker_manager_config)
+
+        provisioner = AWSBatchWorkerProvisioner(config, children_address)
         runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_aws_hpc",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=-1,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
-            worker_provisioner=provisioner,
+            provisioner=provisioner,
+            children_address=children_address,
             io_threads=config.worker_config.io_threads,
-            workers_per_provisioner_unit=config.max_concurrent_jobs,
         )
         runner.run()

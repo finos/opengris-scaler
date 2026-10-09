@@ -3,8 +3,9 @@ import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
+from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, ErrorCode
-from scaler.protocol.capnp import Task, WorkerDisconnectNotification
+from scaler.protocol.capnp import Task, WorkerDisconnectNotification, WorkerHeartbeat
 from scaler.scheduler.controllers.mixins import ConfigController, PolicyController, TaskController
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
@@ -16,6 +17,49 @@ from tests.utility.utility import logging_test_name
 _WORKER_ID = WorkerID(b"worker_aaa")
 _MANAGER_ID = b"manager_bbb"
 _TASK_ID = TaskID(b"0" * 16)
+
+
+def _received_heartbeat(draining: bool) -> WorkerHeartbeat:
+    """A heartbeat as the binder delivers it: decoded from the wire, not built in memory."""
+    message = deserialize(serialize(WorkerHeartbeat(queueSize=10, workerManagerID=_MANAGER_ID, draining=draining)))
+    assert isinstance(message, WorkerHeartbeat)
+    return message
+
+
+class TestVanillaWorkerControllerOnDrainingHeartbeat(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+        config_controller = MagicMock(spec=ConfigController)
+        self.policy_controller = MagicMock(spec=PolicyController)
+        self.policy_controller.add_worker.return_value = False
+        self.policy_controller.drain_worker.return_value = [_TASK_ID]
+
+        self.controller = VanillaWorkerController(config_controller, self.policy_controller)
+        self.task_controller = MagicMock(spec=TaskController)
+        self.controller.register(AsyncMock(), AsyncMock(), self.task_controller)
+
+    async def test_first_draining_heartbeat_takes_back_the_worker_tasks(self) -> None:
+        """The scheduler drains a worker, and takes back its tasks, once the worker reports draining."""
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=False))
+        self.policy_controller.drain_worker.assert_not_called()
+
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
+        self.policy_controller.drain_worker.assert_called_once_with(_WORKER_ID)
+        self.task_controller.on_task_balance_cancel.assert_called_once_with(_TASK_ID)
+
+    async def test_status_reports_a_draining_worker(self) -> None:
+        """The monitor reads a draining worker as draining, not as an ordinary busy one."""
+        self.policy_controller.statistics.return_value = {_WORKER_ID: {"free": 10, "sent": 0}}
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
+        (status,) = self.controller.get_status().workers
+        self.assertTrue(status.draining)
+
+    async def test_later_draining_heartbeats_do_not_drain_again(self) -> None:
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
+        self.policy_controller.drain_worker.assert_called_once_with(_WORKER_ID)
 
 
 class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsyncioTestCase):

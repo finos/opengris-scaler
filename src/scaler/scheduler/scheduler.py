@@ -79,7 +79,11 @@ class Scheduler:
         )
 
         self._client_manager.register(
-            self._binder, self._binder_monitor, self._object_controller, self._task_controller, self._worker_controller
+            self._binder,
+            self._binder_monitor,
+            self._object_controller,
+            self._task_controller,
+            self._worker_manager_controller,
         )
         self._object_controller.register(
             self._binder, self._binder_monitor, self._connector_storage, self._client_manager, self._worker_controller

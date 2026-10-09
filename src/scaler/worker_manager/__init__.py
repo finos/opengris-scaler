@@ -1,10 +1,10 @@
 """
 Worker managers.
 
-A worker manager keeps the scheduler supplied with workers. It heartbeats to the scheduler, reads
-back the desired task concurrency, and asks its provisioner to converge on it. `runner.py` drives
-that loop, `capacity_coordinator.py` rate-limits the scaling, and `mixins.py` declares the
-`DeclarativeWorkerProvisioner` interface that all seven adapters implement.
+A worker manager keeps the scheduler supplied with workers. It heartbeats to the scheduler and reads
+back the desired task concurrency. `runner.py` drives that loop, `unit_controller.py` owns the fleet
+and converges it on the desired task concurrency, and `mixins.py` declares the `UnitProvisioner`
+interface that all seven adapters implement: the mechanics of creating, polling, and destroying one unit.
 
 The adapters are grouped by what a provisioner unit is:
 

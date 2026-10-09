@@ -1,6 +1,7 @@
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.native.worker_manager import NativeWorkerProvisioner
 
 
@@ -9,40 +10,20 @@ def _make_provisioner(max_task_concurrency: int = -1) -> NativeWorkerProvisioner
     config.worker_config.per_worker_capabilities.capabilities = {}
     config.worker_manager_config.max_task_concurrency = max_task_concurrency
     config.worker_manager_config.worker_manager_id = "test-wm"
-    config.worker_manager_config.scale_down_cooldown_seconds = 0
     config.worker_type = "NAT"
-    return NativeWorkerProvisioner(config)
+    return NativeWorkerProvisioner(config, AddressConfig.from_string("tcp://127.0.0.1:2"))
 
 
-def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:
-    request = MagicMock()
-    request.taskConcurrency = task_concurrency
-    request.capabilities = [MagicMock(key=k, value=v) for k, v in capabilities.items()]
-    return request
+class TestNativeWorkerProvisioner(unittest.IsolatedAsyncioTestCase):
+    def test_one_unit_is_one_worker(self) -> None:
+        provisioner = _make_provisioner(max_task_concurrency=4)
+        self.assertEqual(provisioner.task_concurrency_per_unit(), 1)
+        self.assertEqual(provisioner.max_units(), 4)
 
-
-def _make_worker(pid: int = 1234) -> MagicMock:
-    worker = MagicMock()
-    worker.pid = pid
-    worker.identity = f"NAT|worker-{pid}"
-    return worker
-
-
-class TestNativeWorkerProvisionerConcurrencyConversion(unittest.IsolatedAsyncioTestCase):
-    async def test_passes_task_concurrency_directly_as_desired_unit_count(self) -> None:
+    async def test_create_unit_names_the_worker_after_the_unit(self) -> None:
         provisioner = _make_provisioner()
-        request = _make_request(task_concurrency=3, capabilities={})
-        with patch.object(provisioner._capacity_coordinator, "_reconcile", new_callable=AsyncMock):
-            await provisioner.set_desired_task_concurrency([request])
-        self.assertEqual(provisioner._capacity_coordinator._desired_unit_count, 3)
-
-
-class TestNativeWorkerProvisionerStopUnits(unittest.IsolatedAsyncioTestCase):
-    async def test_stop_units_more_than_available_does_not_raise(self) -> None:
-        provisioner = _make_provisioner()
-        workers = [_make_worker(pid=3000 + i) for i in range(2)]
-        with patch.object(provisioner, "_create_worker", side_effect=workers):
-            await provisioner.start_units(2)
-        with patch("os.kill"), patch("psutil.Process"):
-            await provisioner.stop_units(5)
-        self.assertEqual(provisioner._workers, [])
+        with patch("scaler.worker_manager.native.worker_manager.Worker") as worker_class:
+            handle = await provisioner.create_unit("unit-1")
+        self.assertIs(handle, worker_class.return_value)
+        self.assertEqual(worker_class.call_args.kwargs["name"], "NAT|unit-1")
+        worker_class.return_value.start.assert_called_once()

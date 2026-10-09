@@ -132,6 +132,7 @@ class WorkerStatus(CapnpStruct):
     hostname: str
     netSentBytes: int
     netRecvBytes: int
+    draining: bool
 
 class WorkerManagerStatus(CapnpStruct):
     workers: Any
@@ -148,6 +149,9 @@ class ScalingManagerStatus(CapnpStruct):
         maxTaskConcurrency: int
         capabilities: str
         pendingWorkers: int
+        activeUnits: int
+        pendingUnits: int
+        drainingUnits: int
 
     managedWorkers: Any
     workerManagerDetails: Any
@@ -239,6 +243,7 @@ class WorkerHeartbeat(BaseMessage):
     hostname: str
     netSentBytes: int
     netRecvBytes: int
+    draining: bool
 
 class WorkerHeartbeatEcho(BaseMessage):
     objectStorageAddress: ObjectStorageAddress
@@ -247,6 +252,11 @@ class WorkerManagerHeartbeat(BaseMessage):
     maxTaskConcurrency: int
     capabilities: Any
     workerManagerID: bytes
+    activeTaskConcurrency: int
+    occupancy: int
+    activeUnits: int
+    pendingUnits: int
+    drainingUnits: int
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 
@@ -268,6 +278,9 @@ class ObjectInstruction(BaseMessage):
         clear = 2
 
 class WorkerDisconnectNotification(BaseMessage): ...
+class WorkerShutdown(BaseMessage): ...
+class WorkerManagerShutdown(BaseMessage): ...
+class WorkerManagerDisconnectNotification(BaseMessage): ...
 
 class ClientDisconnect(BaseMessage):
     disconnectType: "ClientDisconnect.DisconnectType"
@@ -369,6 +382,9 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
     workerDisconnectNotification: WorkerDisconnectNotification
+    workerShutdown: WorkerShutdown
+    workerManagerShutdown: WorkerManagerShutdown
+    workerManagerDisconnectNotification: WorkerManagerDisconnectNotification
 
 class ObjectRequestHeader(CapnpStruct):
     MESSAGE_LENGTH: ClassVar[int]

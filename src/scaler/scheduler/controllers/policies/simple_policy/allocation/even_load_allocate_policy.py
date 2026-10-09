@@ -19,7 +19,10 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         self._workers_to_task_ids: Dict[WorkerID, IndexedQueue] = dict()
         self._task_id_to_worker: Dict[TaskID, WorkerID] = {}
 
+        # Workers that take tasks, keyed by load. A draining worker leaves it: a worker with no free slot must not sit
+        # at its head, or every assignment fails.
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
+        self._draining_workers: Set[WorkerID] = set()
 
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         # TODO: handle uneven queue size for each worker
@@ -39,13 +42,24 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         if worker not in self._workers_to_task_ids:
             return []
 
-        self._worker_queue.remove(worker)
+        if worker in self._draining_workers:
+            self._draining_workers.remove(worker)
+        else:
+            self._worker_queue.remove(worker)
         self._workers_to_queue_size.pop(worker, None)
 
         task_ids = self._workers_to_task_ids.pop(worker).to_list()
         for task_id in task_ids:
             self._task_id_to_worker.pop(task_id)
         return task_ids
+
+    def drain_worker(self, worker: WorkerID) -> List[TaskID]:
+        if worker not in self._workers_to_task_ids or worker in self._draining_workers:
+            return []
+
+        self._worker_queue.remove(worker)
+        self._draining_workers.add(worker)
+        return self._workers_to_task_ids[worker].to_list()
 
     def get_worker_ids(self) -> Set[WorkerID]:
         return set(self._workers_to_task_ids.keys())
@@ -73,16 +87,17 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
     def __get_balance_count_by_worker(self) -> Dict[WorkerID, int]:
         """Returns, for every worker, the number of tasks to balance out."""
 
-        queued_tasks_per_worker = {
-            worker: max(0, len(tasks) - 1) for worker, tasks in self._workers_to_task_ids.items()
+        serving_workers = {
+            worker: tasks for worker, tasks in self._workers_to_task_ids.items() if worker not in self._draining_workers
         }
+        queued_tasks_per_worker = {worker: max(0, len(tasks) - 1) for worker, tasks in serving_workers.items()}
 
         any_worker_has_queued_task = any(queued_tasks_per_worker.values())
 
         if not any_worker_has_queued_task:
             return {}
 
-        number_of_idle_workers = sum(1 for tasks in self._workers_to_task_ids.values() if len(tasks) == 0)
+        number_of_idle_workers = sum(1 for tasks in serving_workers.values() if len(tasks) == 0)
 
         if number_of_idle_workers == 0:
             return {}
@@ -142,7 +157,8 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         worker = self._task_id_to_worker.pop(task_id)
         self._workers_to_task_ids[worker].remove(task_id)
 
-        self._worker_queue.decrease_priority(worker)
+        if worker not in self._draining_workers:
+            self._worker_queue.decrease_priority(worker)
         return worker
 
     def has_available_worker(self, capabilities: Optional[Dict[str, int]] = None) -> bool:

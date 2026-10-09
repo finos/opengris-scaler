@@ -48,6 +48,20 @@ class TaskManager(metaclass=abc.ABCMeta):
     def get_queued_size(self):
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def drain(self) -> None:
+        """start no new task from now on: the scheduler takes back the queued ones"""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def is_draining(self) -> bool:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def is_idle(self) -> bool:
+        """no task queued or running"""
+        raise NotImplementedError()
+
 
 class ProcessorManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod

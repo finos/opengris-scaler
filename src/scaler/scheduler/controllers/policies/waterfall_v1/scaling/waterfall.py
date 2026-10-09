@@ -74,7 +74,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         """Compute desired worker count per capability set for this manager only.
 
         Generic (empty-cap) tasks fill higher-priority managers first; this manager's share is
-        whatever overflows from higher priorities, clamped by its effective capacity.
+        whatever overflows from higher priorities, clamped by its effective capacity, and never below its floor.
 
         Capability-specific requests are emitted only for capsets this manager owns: the
         highest-priority manager whose advertised capabilities are a superset of the capset.
@@ -84,7 +84,8 @@ class WaterfallScalingPolicy(ScalingPolicy):
         generic_desired = self._allocate_generic_desired(
             current_rule, information_snapshot, current_heartbeat, snapshots
         )
-        result.append(({}, generic_desired))
+        floor = min(current_rule.min_task_concurrency, current_heartbeat.maxTaskConcurrency)
+        result.append(({}, max(floor, generic_desired)))
 
         for required_keys, capability_dict in self._tasks_by_capability(information_snapshot).items():
             cap_desired = self._allocate_capset_desired(

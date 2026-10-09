@@ -4,7 +4,7 @@ Simple Engine
 ``simple`` requires a semicolon-delimited ``policy_content`` string with exactly two keys:
 
 * ``allocate``: ``even_load`` or ``capability``
-* ``scaling``: ``no``, ``vanilla``, or ``capability``
+* ``scaling``: ``static``, ``vanilla``, or ``capability``
 
 Quick Start (copy/paste)
 ------------------------
@@ -61,9 +61,9 @@ Other quick policy strings for ``simple``:
 
         .. code-block:: toml
 
-            # No autoscaling
+            # Fixed capacity: every worker manager runs its advertised maximum
             policy_engine_type = "simple"
-            policy_content = "allocate=even_load; scaling=no"
+            policy_content = "allocate=even_load; scaling=static"
 
             # Capability-aware autoscaling (recommended pair)
             policy_engine_type = "simple"
@@ -73,8 +73,8 @@ Other quick policy strings for ``simple``:
 
         .. code-block:: text
 
-            # No autoscaling
-            --policy-engine-type simple --policy-content "allocate=even_load; scaling=no"
+            # Fixed capacity: every worker manager runs its advertised maximum
+            --policy-engine-type simple --policy-content "allocate=even_load; scaling=static"
 
             # Capability-aware autoscaling (recommended pair)
             --policy-engine-type simple --policy-content "allocate=capability; scaling=capability"
@@ -106,16 +106,19 @@ Scaling
 
 The ``scaling`` option controls how worker capacity grows or shrinks.
 
-* ``scaling=no``
+* ``scaling=static`` or ``scaling=static:N``
 
-  * Disables scheduler-driven scaling commands.
-  * Use for static capacity or external orchestrators.
+  * Requests the same task concurrency from every worker manager, whatever the load.
+  * ``static`` requests the maximum task concurrency each worker manager advertises.
+  * ``static:N`` requests ``N``, capped at that maximum. ``static:0`` stops every worker.
+  * Only ``static`` takes an argument.
 
-* ``scaling=vanilla``
+* ``scaling=vanilla`` or ``scaling=vanilla[<bounds>]``
 
   * General autoscaling for homogeneous clusters.
   * Scale up when ``tasks / workers > 10``.
   * Scale down when ``tasks / workers < 1``.
+  * The optional bounds keep each named worker manager within a range, see `Vanilla bounds`_.
 
 * ``scaling=capability``
 
@@ -123,6 +126,27 @@ The ``scaling`` option controls how worker capacity grows or shrinks.
   * Groups demand by capability and scales per capability group.
   * Scale up when ``tasks / capable_workers > 5``.
   * Scale down when ``tasks / capable_workers < 0.5``.
+
+Vanilla bounds
+--------------
+
+``vanilla`` takes an optional list of bounds, one entry per worker manager, separated by ``,``:
+
+.. code-block:: text
+
+    allocate=even_load; scaling=vanilla[native-local:8:8, ecs-burst:100]
+
+* An entry is ``worker_manager_id:max_task_concurrency[:min_task_concurrency]``, the column order of a waterfall rule.
+* The effective cap is ``min(max_task_concurrency, heartbeat.max_task_concurrency)``; leave it empty to keep only the heartbeat's: ``warm::2``.
+* The worker manager never gets fewer than its floor, clamped to the effective cap, even with no tasks.
+* A worker manager without an entry ranges from ``0`` to its heartbeat's ``max_task_concurrency``.
+* A ``worker_manager_id`` in the bounds cannot contain ``:``, ``,``, ``]``, or ``;``.
+* A floor above its cap, a negative count, or a repeated ``worker_manager_id`` is refused at startup.
+
+An entry whose floor equals its cap holds a fixed pool next to worker managers that scale.
+In the example, ``native-local`` always runs 8 workers, and ``ecs-burst`` scales with the load.
+When the load shrinks, ``vanilla`` counts the workers held at other managers' floors as supply.
+So a few tasks over an idle fixed pool do not start a worker on ``ecs-burst``.
 
 Notes:
 

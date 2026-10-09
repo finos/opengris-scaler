@@ -1,26 +1,26 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import shlex
-from typing import TYPE_CHECKING, List
 
 import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
-from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import format_capabilities
-from scaler.worker_manager.desired_concurrency import extract_desired_count
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.cloud.child_command import (
+    CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS,
+    child_link_arguments,
+    cloud_children_address,
+    format_capabilities,
+)
+from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
-
-if TYPE_CHECKING:
-    from scaler.protocol.capnp import WorkerManagerCommand
 
 logger = logging.getLogger(__name__)
 
 
-class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
+class ECSWorkerProvisioner(UnitProvisioner):
     def __init__(self, config: ECSWorkerManagerConfig) -> None:
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
@@ -49,14 +49,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_task_memory = config.ecs_task_memory
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
-        self._units: List[str] = []  # ECS task ARNs of active units
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=self._max_instances,
-            scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
-        )
+        self._worker_manager_config = config.worker_manager_config
 
         aws_session = boto3.Session(
             aws_access_key_id=config.aws_access_key_id,
@@ -106,12 +99,11 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
             )
         self._ecs_task_definition = resp["taskDefinition"]["taskDefinitionArn"]
 
-    def _build_task_command(self) -> str:
+    def _build_task_command(self, unit_id: str) -> str:
         command = (
             f"scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} "
-            f"--mode fixed "
+            f"{child_link_arguments(self._worker_manager_config, unit_id, self._ecs_task_cpu)} "
             f"--worker-type ECS "
-            f"--max-task-concurrency {self._ecs_task_cpu} "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "
             f"--task-timeout-seconds {self._task_timeout_seconds} "
@@ -138,17 +130,9 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
 
         return command
 
-    def active_unit_count(self) -> int:
-        return len(self._units)
-
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        task_concurrency = extract_desired_count(requests, self._capabilities)
-        await self._capacity_coordinator.set_desired_unit_count(math.ceil(task_concurrency / self._ecs_task_cpu))
-
-    async def _start_unit(self, command: str) -> None:
-        resp = self._ecs_client.run_task(
+    async def create_unit(self, unit_id: str) -> UnitHandle:
+        resp = await asyncio.to_thread(
+            self._ecs_client.run_task,
             cluster=self._ecs_cluster,
             taskDefinition=self._ecs_task_definition,
             launchType="FARGATE",
@@ -157,7 +141,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
                     {
                         "name": "scaler-container",
                         "environment": [
-                            {"name": "COMMAND", "value": command},
+                            {"name": "COMMAND", "value": self._build_task_command(unit_id)},
                             {"name": "PYTHON_REQUIREMENTS", "value": self._ecs_python_requirements},
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
                         ],
@@ -172,55 +156,45 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
             raise RuntimeError(f"ECS run task failed: {failures}")
 
         tasks = resp.get("tasks") or []
-        if not tasks:
-            raise RuntimeError("ECS run task returned no tasks")
-        if len(tasks) > 1:
-            raise RuntimeError("ECS run task returned multiple tasks, expected only one")
+        if len(tasks) != 1:
+            raise RuntimeError(f"ECS run task returned {len(tasks)} tasks, expected one")
 
         task_arn = tasks[0]["taskArn"]
-        self._units.append(task_arn)
-        logger.info(f"Started ECS task {task_arn!r}")
+        logger.info(f"started ECS task {task_arn!r}")
+        return task_arn
 
-    async def start_units(self, count: int) -> None:
-        command = self._build_task_command()
-        for _ in range(count):
-            await self._start_unit(command)
+    async def destroy_unit(self, handle: UnitHandle) -> None:
+        resp = await asyncio.to_thread(
+            self._ecs_client.stop_task,
+            cluster=self._ecs_cluster,
+            task=handle,
+            reason="Shutdown requested by ECS worker manager",
+        )
+        failures = resp.get("failures") or []
+        if failures:
+            raise RuntimeError(f"ECS stop task {handle!r} failed: {failures}")
+        logger.info(f"stopped ECS task {handle!r}")
 
-    async def stop_units(self, count: int) -> None:
-        to_stop = self._units[:count]
-        if len(to_stop) < count:
-            logger.warning(f"Requested to stop {count} ECS task(s) but only {len(to_stop)} available.")
-        for task_arn in to_stop:
-            resp = self._ecs_client.stop_task(
-                cluster=self._ecs_cluster, task=task_arn, reason="Shutdown requested by ECS worker manager"
-            )
-            failures = resp.get("failures") or []
-            if failures:
-                logger.error(f"ECS stop task {task_arn!r} failed: {failures}")
-            else:
-                self._units.remove(task_arn)
-                logger.info(f"Stopped ECS task {task_arn!r}")
+    def max_units(self) -> int:
+        return self._max_instances
 
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        await self.stop_units(len(self._units))
+    def task_concurrency_per_unit(self) -> int:
+        return self._ecs_task_cpu
+
+    def startup_timeout_seconds(self) -> int:
+        return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS
 
 
 class ECSWorkerManager:
     def __init__(self, config: ECSWorkerManagerConfig) -> None:
-        provisioner = ECSWorkerProvisioner(config)
-        mtc = config.worker_manager_config.max_task_concurrency
-        max_instances = math.ceil(mtc / config.ecs_task_cpu) if mtc != -1 else -1
         self._runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_ecs",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=max_instances,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
-            worker_provisioner=provisioner,
+            provisioner=ECSWorkerProvisioner(config),
+            children_address=cloud_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
-            workers_per_provisioner_unit=config.ecs_task_cpu,
         )
 
     def run(self) -> None:

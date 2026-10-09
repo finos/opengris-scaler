@@ -226,13 +226,6 @@ class TestScalerAllConfigShape(unittest.TestCase):
         config = self._parse(self._native_base(task_timeout_seconds=300))
         self.assertEqual(config.worker_managers[0].worker_config.task_timeout_seconds, 300)
 
-    def test_mode_value_based_string(self) -> None:
-        """mode = "fixed" (value-based, lowercase) should work the same as for scaler_worker_manager."""
-        from scaler.config.section.native_worker_manager import NativeWorkerManagerMode
-
-        config = self._parse(self._native_base(mode="fixed"))
-        self.assertEqual(config.worker_managers[0].mode, NativeWorkerManagerMode.FIXED)
-
     def test_orb_aws_ec2_worker_manager_parsed_from_toml(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 

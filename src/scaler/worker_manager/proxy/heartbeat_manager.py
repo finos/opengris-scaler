@@ -37,6 +37,7 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
         self._agent_process = psutil.Process()
 
         self._connector_external: Optional[AsyncConnector] = None
+        self._connector_manager: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._task_manager: Optional["TaskManager"] = None
         self._timeout_manager: Optional[TimeoutManager] = None
@@ -49,11 +50,13 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
     def register(
         self,
         connector_external: AsyncConnector,
+        connector_manager: AsyncConnector,
         connector_storage: AsyncObjectStorageConnector,
         worker_task_manager: "TaskManager",
         timeout_manager: TimeoutManager,
     ) -> None:
         self._connector_external = connector_external
+        self._connector_manager = connector_manager
         self._connector_storage = connector_storage
         self._task_manager = worker_task_manager
         self._timeout_manager = timeout_manager
@@ -77,9 +80,6 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
         return self._object_storage_address
 
     async def routine(self) -> None:
-        if self._start_timestamp_nanoseconds != 0:
-            return
-
         try:
             agent_cpu = int(self._agent_process.cpu_percent() * 10)
             agent_rss = get_process_memory(self._agent_process)
@@ -89,19 +89,24 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
 
         mem_limit, mem_available = get_memory_limit_and_available()
 
-        await self._connector_external.send(
-            WorkerHeartbeat(
-                agent=Resource(cpu=agent_cpu, rss=agent_rss),
-                rssFree=mem_available,
-                memLimit=mem_limit,
-                queueSize=self._task_queue_size,
-                queuedTasks=self._task_manager.get_queued_size(),
-                latencyMicroseconds=self._latency_microseconds,
-                taskLock=not self._task_manager.can_accept_task(),
-                processors=self._processor_status_provider.get_processor_statuses(),
-                capabilities=dict_to_capabilities(self._capabilities),
-                workerManagerID=self._worker_manager_id,
-            ),
-            detached=True,
+        heartbeat = WorkerHeartbeat(
+            agent=Resource(cpu=agent_cpu, rss=agent_rss),
+            rssFree=mem_available,
+            memLimit=mem_limit,
+            queueSize=self._task_queue_size,
+            queuedTasks=self._task_manager.get_queued_size(),
+            latencyMicroseconds=self._latency_microseconds,
+            taskLock=not self._task_manager.can_accept_task(),
+            processors=self._processor_status_provider.get_processor_statuses(),
+            capabilities=dict_to_capabilities(self._capabilities),
+            workerManagerID=self._worker_manager_id,
+            draining=self._task_manager.is_draining(),
         )
+        # The manager judges liveness by these heartbeats, so they never wait on the scheduler's echo.
+        await self._connector_manager.send(heartbeat, detached=True)
+
+        if self._start_timestamp_nanoseconds != 0:
+            return  # the scheduler has not echoed the last heartbeat yet
+
+        await self._connector_external.send(heartbeat, detached=True)
         self._start_timestamp_nanoseconds = time.time_ns()

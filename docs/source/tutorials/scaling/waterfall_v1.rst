@@ -73,7 +73,7 @@ Policy Content (CSV-like)
 
 .. code-block:: text
 
-    priority,worker_manager_id,max_task_concurrency
+    priority,worker_manager_id[,max_task_concurrency[,min_task_concurrency]]
 
 Example:
 
@@ -121,6 +121,30 @@ max_task_concurrency
 * The effective cap is ``min(rule.max_task_concurrency, heartbeat.max_task_concurrency)``.
 * A lower-priority manager only scales up after all higher-priority managers reach their effective caps.
 * A higher-priority manager only scales down after lower-priority managers are drained.
+* Omitted or empty: the cap is the manager's heartbeat ``max_task_concurrency``.
+
+min_task_concurrency
+--------------------
+
+``min_task_concurrency`` defines the rule-level floor for a manager.
+
+* Type: non-negative integer, at most the rule's ``max_task_concurrency``.
+* Omitted: the floor is ``0``.
+* The effective floor is ``min(rule.min_task_concurrency, heartbeat.max_task_concurrency)``.
+* The manager never gets fewer than its floor, even with no tasks.
+* The floor applies to tasks without capabilities only; capability requests stay driven by demand.
+* A floor on a lower tier keeps that tier warm, but higher tiers still fill first.
+
+A rule whose floor equals its cap holds a fixed pool, next to tiers that scale on demand:
+
+.. code-block:: text
+
+    #  priority, worker_manager_id, max_task_concurrency, min_task_concurrency
+             1,      native-local,                    8,                    8
+             2,         ecs-burst,                  100
+
+``native-local`` always runs 8 workers, and only demand beyond them reaches ``ecs-burst``.
+To set a floor without a cap, leave the cap column empty: ``3,orb-warm,,2``.
 
 Engine behavior and limits
 --------------------------

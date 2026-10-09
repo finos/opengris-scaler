@@ -318,6 +318,75 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
 
+class TestWaterfallFloor(unittest.TestCase):
+    """A rule's min_task_concurrency holds its manager at a floor while lower tiers scale on demand."""
+
+    def setUp(self):
+        setup_logger()
+        self.policy = WaterfallScalingPolicy(
+            [
+                WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=8, min_task_concurrency=8),
+                WaterfallRule(priority=2, worker_manager_id=b"cloud", max_task_concurrency=100),
+            ]
+        )
+
+    def _desired(self, manager_id: bytes, task_count: int, native_workers: int, max_task_concurrency: int = 100):
+        snapshot = InformationSnapshot(tasks=_create_tasks(task_count), workers={})
+        manager_snapshots = {
+            b"native": _create_manager_snapshot(b"native", max_task_concurrency=8, worker_count=native_workers),
+            b"cloud": _create_manager_snapshot(b"cloud", max_task_concurrency=100, worker_count=0),
+        }
+        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=max_task_concurrency)
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+        return _generic_request(commands[0]).taskConcurrency
+
+    def test_floor_holds_with_no_tasks(self):
+        """A manager with a floor keeps it when there is no work."""
+        self.assertEqual(self._desired(b"native", task_count=0, native_workers=8, max_task_concurrency=8), 8)
+        self.assertEqual(self._desired(b"cloud", task_count=0, native_workers=8), 0)
+
+    def test_demand_below_floor_stays_on_the_floor_tier(self):
+        """Demand that fits under the floor does not reach the next tier."""
+        self.assertEqual(self._desired(b"native", task_count=50, native_workers=8, max_task_concurrency=8), 8)
+        self.assertEqual(self._desired(b"cloud", task_count=50, native_workers=8), 0)
+
+    def test_demand_above_the_floor_spills_to_the_next_tier(self):
+        """Demand beyond the floor tier's cap overflows to the next tier as before."""
+        self.assertEqual(self._desired(b"native", task_count=200, native_workers=8, max_task_concurrency=8), 8)
+        self.assertEqual(self._desired(b"cloud", task_count=200, native_workers=8), 12)
+
+    def test_floor_is_clamped_to_the_advertised_maximum(self):
+        """A floor above the manager's advertised maximum asks for that maximum."""
+        self.assertEqual(self._desired(b"native", task_count=0, native_workers=0, max_task_concurrency=3), 3)
+
+    def test_demand_above_the_floor_raises_the_target(self):
+        """A floor below the cap is a minimum, not a fixed count."""
+        policy = WaterfallScalingPolicy(
+            [WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=20, min_task_concurrency=2)]
+        )
+        snapshot = InformationSnapshot(tasks=_create_tasks(100), workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"native", max_task_concurrency=20)
+        manager_snapshots = {b"native": _create_manager_snapshot(b"native", max_task_concurrency=20, worker_count=2)}
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+
+        self.assertEqual(_generic_request(commands[0]).taskConcurrency, 10)
+
+    def test_floor_does_not_apply_to_capability_requests(self):
+        """Only the generic request carries the floor; a capability request stays driven by demand."""
+        policy = WaterfallScalingPolicy(
+            [WaterfallRule(priority=1, worker_manager_id=b"gpu", max_task_concurrency=8, min_task_concurrency=4)]
+        )
+        snapshot = InformationSnapshot(tasks=_create_tasks(5, capabilities={"gpu": 1}), workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"gpu", max_task_concurrency=8, capabilities={"gpu": 1})
+        manager_snapshots = {b"gpu": _create_manager_snapshot(b"gpu", max_task_concurrency=8, capabilities={"gpu": 1})}
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+
+        self.assertEqual(_generic_request(commands[0]).taskConcurrency, 4)
+        self.assertEqual(_capability_requests(commands[0]), [({"gpu": 1}, 1)])
+
+
 class TestWaterfallCapabilities(unittest.TestCase):
     """Capability-aware declarative emission for WaterfallScalingPolicy."""
 
@@ -519,6 +588,28 @@ class TestWaterfallV1Policy(unittest.TestCase):
         self.assertIsNone(rules[0].max_task_concurrency)
         self.assertEqual(rules[1].max_task_concurrency, 20)
 
+    def test_config_parsing_with_min_task_concurrency(self):
+        """A fourth column sets the rule's floor; it defaults to 0."""
+        rules = parse_waterfall_rules("1,native,8,8\n2,cloud,20")
+        self.assertEqual(rules[0].min_task_concurrency, 8)
+        self.assertEqual(rules[1].min_task_concurrency, 0)
+
+    def test_config_parsing_floor_without_cap(self):
+        """An empty max_task_concurrency column leaves the cap unset while a floor is given."""
+        rules = parse_waterfall_rules("1,native,,4")
+        self.assertIsNone(rules[0].max_task_concurrency)
+        self.assertEqual(rules[0].min_task_concurrency, 4)
+
+    def test_invalid_config_floor_above_cap(self):
+        """A floor above the rule's cap should raise ValueError."""
+        with self.assertRaisesRegex(ValueError, "cannot exceed"):
+            WaterfallV1Policy("1,native,4,8")
+
+    def test_invalid_config_negative_floor(self):
+        """A negative floor should raise ValueError."""
+        with self.assertRaisesRegex(ValueError, "cannot be negative"):
+            WaterfallV1Policy("1,native,8,-1")
+
     def test_invalid_config_empty(self):
         """Empty policy content should raise ValueError."""
         with self.assertRaises(ValueError):
@@ -534,7 +625,7 @@ class TestWaterfallV1Policy(unittest.TestCase):
         with self.assertRaises(ValueError):
             WaterfallV1Policy("manager_a_only")
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("1,manager_a,10,extra")
+            WaterfallV1Policy("1,manager_a,10,2,extra")
 
     def test_invalid_config_non_integer_priority(self):
         """Non-integer priority should raise ValueError."""

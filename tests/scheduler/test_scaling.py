@@ -31,9 +31,12 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
+from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
-from scaler.protocol.helpers import capabilities_to_dict
+from scaler.protocol.helpers import capabilities_to_dict, dict_to_capabilities
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerBounds, WorkerManagerSnapshot
+from scaler.scheduler.controllers.policies.simple_policy.scaling.utility import create_scaling_policy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
@@ -52,12 +55,10 @@ class TestScaling(unittest.TestCase):
 
     @unittest.skipIf(
         sys.platform == "win32",
-        "Declarative scale-down calls stop_units mid-test, which on POSIX uses os.kill(pid, SIGINT) "
-        "so the worker sends WorkerDisconnectNotification on shutdown. Windows has no equivalent "
-        "for delivering SIGINT to a multiprocessing.spawn child (Python's os.kill on Windows maps SIGINT "
-        "to TerminateProcess, and CTRL_C_EVENT requires CREATE_NEW_PROCESS_GROUP), so any scaled-down "
-        "worker is killed without notice and the scheduler waits ~60s for heartbeat timeout. The scaling "
-        "policy logic itself is covered by TestVanillaScalingPolicy below.",
+        "Declarative scale-down destroys workers mid-test with Process.terminate(), which on POSIX sends "
+        "SIGTERM so the worker sends WorkerDisconnectNotification on shutdown. On Windows terminate() is "
+        "TerminateProcess, so any scaled-down worker is killed without notice and the scheduler waits ~60s "
+        "for heartbeat timeout. The scaling policy logic itself is covered by TestVanillaScalingPolicy below.",
     )
     def test_scaling_basic(self):
         object_storage = ObjectStorageServerProcess(
@@ -166,7 +167,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
     def setUp(self):
         setup_logger()
-        self.policy = VanillaScalingPolicy()
+        self.policy = VanillaScalingPolicy({})
 
     def _single_request(self, snapshot, heartbeat, managed):
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
@@ -248,6 +249,105 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         self.assertEqual(request.taskConcurrency, 2)
 
 
+class TestVanillaBounds(unittest.TestCase):
+    """Vanilla keeps each manager within its bounds, and counts workers held at other managers' floors as supply."""
+
+    def setUp(self):
+        setup_logger()
+        self.policy = VanillaScalingPolicy(
+            {b"native": WorkerManagerBounds(max_task_concurrency=8, min_task_concurrency=8)}
+        )
+
+    def _desired(
+        self,
+        policy: VanillaScalingPolicy,
+        manager_id: bytes,
+        task_count: int,
+        worker_counts: Dict[bytes, int],
+        max_task_concurrency: int = 100,
+    ) -> int:
+        tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(task_count)}
+        workers = {
+            WorkerID(f"{other_id.decode()}-{worker_i}".encode()): _create_mock_worker_heartbeat({})
+            for other_id, count in worker_counts.items()
+            for worker_i in range(count)
+        }
+        managed = [worker_id for worker_id in workers if worker_id.startswith(manager_id + b"-")]
+        snapshots = {
+            other_id: WorkerManagerSnapshot(
+                worker_manager_id=other_id, max_task_concurrency=100, worker_count=count, last_seen_at=time.time()
+            )
+            for other_id, count in worker_counts.items()
+        }
+        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=max_task_concurrency)
+        commands = policy.get_scaling_commands(
+            InformationSnapshot(tasks=tasks, workers=workers), heartbeat, managed, snapshots
+        )
+        return commands[0].setDesiredTaskConcurrencyRequests[0].taskConcurrency
+
+    def test_a_pinned_manager_holds_its_count_with_no_tasks(self):
+        """A manager whose floor equals its cap keeps that count when idle."""
+        self.assertEqual(self._desired(self.policy, b"native", 0, {b"native": 8}), 8)
+
+    def test_an_idle_pinned_pool_keeps_the_scaling_manager_at_zero(self):
+        """Few tasks over a pinned pool ask the scaling manager for nothing, not ceil(tasks / 10)."""
+        self.assertEqual(self._desired(self.policy, b"cloud", 5, {b"native": 8, b"cloud": 0}), 0)
+
+    def test_load_beyond_the_pinned_pool_scales_the_other_manager_up(self):
+        """Above the scale-up ratio the scaling manager still grows."""
+        self.assertEqual(self._desired(self.policy, b"cloud", 100, {b"native": 8, b"cloud": 0}), 1)
+
+    def test_a_pool_that_is_not_up_supplies_nothing(self):
+        """Only connected workers at a floor count, so a pool that is still starting does not starve the tasks."""
+        self.assertEqual(self._desired(self.policy, b"cloud", 5, {b"native": 0, b"cloud": 10}), 1)
+
+    def test_workers_above_a_floor_are_not_subtracted(self):
+        """Only the workers a floor holds count as supply; the rest can shrink."""
+        policy = VanillaScalingPolicy({b"a": WorkerManagerBounds(max_task_concurrency=10, min_task_concurrency=2)})
+        # ratio 40 / 46 < 1: needed ceil(40 / 10) = 4, minus the 2 workers a's floor holds.
+        self.assertEqual(self._desired(policy, b"b", 40, {b"a": 6, b"b": 40}), 2)
+
+    def test_the_cap_of_the_bounds_clamps_below_the_advertised_maximum(self):
+        """A cap in the bounds wins when it is lower than the manager's own maximum."""
+        policy = VanillaScalingPolicy({b"cloud": WorkerManagerBounds(max_task_concurrency=3)})
+        self.assertEqual(self._desired(policy, b"cloud", 500, {b"cloud": 3}), 3)
+
+    def test_the_floor_is_clamped_to_the_advertised_maximum(self):
+        """A floor above what the manager advertises asks for that maximum."""
+        self.assertEqual(self._desired(self.policy, b"native", 0, {b"native": 0}, max_task_concurrency=4), 4)
+
+    def test_bounds_parse_from_the_scaling_string(self):
+        """`vanilla[id:max[:min], ...]` sets each manager's bounds; an empty max leaves the cap to the manager."""
+        policy = create_scaling_policy("vanilla[native-local:8:8, ecs-burst:100, warm::2]")
+        assert isinstance(policy, VanillaScalingPolicy)
+        self.assertEqual(
+            policy._bounds,
+            {
+                b"native-local": WorkerManagerBounds(8, 8),
+                b"ecs-burst": WorkerManagerBounds(100, 0),
+                b"warm": WorkerManagerBounds(None, 2),
+            },
+        )
+
+    def test_invalid_bounds_are_refused(self):
+        for scaling in [
+            "vanilla[]",
+            "vanilla[native]",
+            "vanilla[native:8:8",
+            "vanilla[:8]",
+            "vanilla[native:4:8]",
+            "vanilla[native:-1]",
+            "vanilla[native:many]",
+            "vanilla[native:8:8:8]",
+            "vanilla[native:8, native:4]",
+            "static[native:8]",
+            "capability[native:8]",
+        ]:
+            with self.subTest(scaling=scaling):
+                with self.assertRaises(ValueError):
+                    create_scaling_policy(scaling)
+
+
 class TestAtCapacityEmission(unittest.TestCase):
     """Policies unconditionally emit setDesired even when the computed desired equals the
     manager's current connected worker count -- the worker manager always receives the
@@ -258,7 +358,7 @@ class TestAtCapacityEmission(unittest.TestCase):
 
     def test_vanilla_at_cap_emits_current(self):
         """Vanilla: ratio asks for current+1, cap clamps to current -> emits setDesired(current)."""
-        policy = VanillaScalingPolicy()
+        policy = VanillaScalingPolicy({})
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
@@ -273,7 +373,7 @@ class TestAtCapacityEmission(unittest.TestCase):
 
     def test_vanilla_changes_emit(self):
         """Vanilla: when ratio's desired differs from current connected, emit."""
-        policy = VanillaScalingPolicy()
+        policy = VanillaScalingPolicy({})
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(b"w0")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
@@ -471,7 +571,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
 
     def setUp(self):
         setup_logger()
-        self.policy = VanillaScalingPolicy()
+        self.policy = VanillaScalingPolicy({})
 
     def test_drain_all_when_idle(self):
         """With workers connected and no tasks, the policy targets desired=0 and emits
@@ -618,7 +718,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         source = b"mgr-src"
         manager_id = b"mgr-id"
         # Manager advertises only "cpu" capability.
-        heartbeat = WorkerManagerHeartbeat(maxTaskConcurrency=10, capabilities={"cpu": -1}, workerManagerID=manager_id)
+        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=10, capabilities={"cpu": -1})
 
         # Generic (empty caps, wildcard) -> 2; gpu-only -> 4 (not servable); cpu-only -> 3 (servable).
         self.policy_controller.get_scaling_commands.return_value = [
@@ -663,9 +763,18 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
 def _create_worker_manager_heartbeat(
     worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
-    return WorkerManagerHeartbeat(
-        maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
+    """A heartbeat as the binder delivers it: decoded from the wire, not built in memory."""
+    heartbeat = deserialize(
+        serialize(
+            WorkerManagerHeartbeat(
+                maxTaskConcurrency=max_task_concurrency,
+                capabilities=dict_to_capabilities(capabilities or {}),
+                workerManagerID=worker_manager_id,
+            )
+        )
     )
+    assert isinstance(heartbeat, WorkerManagerHeartbeat)
+    return heartbeat
 
 
 def _run_native_worker_manager(

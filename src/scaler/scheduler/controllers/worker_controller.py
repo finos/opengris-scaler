@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import (
-    ClientDisconnect,
     ObjectStorageAddress,
     ProcessorStatus,
     Resource,
@@ -21,7 +20,7 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import capabilities_to_dict, dict_to_capabilities
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
-from scaler.utility.identifiers import ClientID, TaskID, WorkerID
+from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
 logger = logging.getLogger(__name__)
@@ -66,6 +65,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         return worker
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat) -> None:
+        previous = self._worker_alive_since.get(worker_id)
+        started_draining = info.draining and (previous is None or not previous[1].draining)
+
         info.capabilities = capabilities_to_dict(info.capabilities)
         if self._policy_controller.add_worker(worker_id, info.capabilities, info.queueSize):
             logger.info(f"worker {worker_id!r} connected")
@@ -84,6 +86,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
         self._worker_alive_since[worker_id] = (time.time(), info)
 
+        if started_draining:
+            await self.__drain_worker(worker_id)
+
         object_storage_address = self._config_controller.get_config("advertised_object_storage_address")
         await self._binder.send(
             worker_id,
@@ -96,10 +101,6 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             ),
             detached=True,
         )
-
-    async def on_client_shutdown(self, client_id: ClientID) -> None:
-        for worker in self._policy_controller.get_worker_ids():
-            await self.__shutdown_worker(worker)
 
     async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification) -> None:
         # The notification always refers to its sender, whose identity comes from the binder and
@@ -158,6 +159,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             hostname=info.hostname,
             netSentBytes=info.netSentBytes,
             netRecvBytes=info.netRecvBytes,
+            draining=info.draining,
         )
 
     def has_available_worker(self) -> bool:
@@ -221,8 +223,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         for task_id in task_ids:
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
 
-    async def __shutdown_worker(self, worker_id: WorkerID) -> None:
-        await self._binder.send(
-            worker_id, ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown), detached=True
-        )
-        await self.__disconnect_worker(worker_id, reason="client shutdown")
+    async def __drain_worker(self, worker_id: WorkerID) -> None:
+        # The worker refuses to give up the task it runs, so only its queued tasks move.
+        task_ids = self._policy_controller.drain_worker(worker_id)
+        logger.info(f"{worker_id!r} is draining: taking back {len(task_ids)} task(s)")
+        for task_id in task_ids:
+            await self._task_controller.on_task_balance_cancel(task_id)

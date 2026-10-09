@@ -228,7 +228,6 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
     });
   } else if (wm.type === "baremetal_native") {
     Object.assign(table, {
-      mode: wm.mode || "fixed",
       object_storage_address: `${ctx.proto}://127.0.0.1:${ctx.op}${ctx.wsSlash}`,
     });
     if (wm.workerType) table.worker_type = wm.workerType;

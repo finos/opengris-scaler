@@ -52,6 +52,9 @@ class _StubCollaborator:
     def destroy(self, *args: object) -> None:
         self.destroyed = True
 
+    def is_draining(self) -> bool:
+        return False
+
 
 class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
     @staticmethod
@@ -76,6 +79,8 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
             logging_paths=(),
             logging_level="INFO",
             worker_manager_id=b"wm",
+            worker_manager_address=AddressConfig.from_string("tcp://127.0.0.1:2347"),
+            unit_id="unit",
         )
 
         worker._backend = None  # only used as a collaborator factory, which __initialize skips below
@@ -89,6 +94,8 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
             raise task_routine_error
 
         worker._connector_external = _StubCollaborator()
+        worker._connector_manager = _StubCollaborator()
+        worker._manager_timeout_manager = _StubCollaborator()
         worker._connector_storage = _StubCollaborator()
         worker._binder_internal = _StubCollaborator()
         worker._heartbeat_manager = _StubCollaborator()
@@ -228,6 +235,11 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
         sent = worker._connector_external.sent_messages
         self.assertEqual(len(sent), 1, "WorkerDisconnectNotification was not sent during teardown")
         self.assertIsInstance(sent[0], WorkerDisconnectNotification)
+
+        # The manager learns of the exit from the same message, and reaps the process at once.
+        sent_to_manager = worker._connector_manager.sent_messages
+        self.assertEqual(len(sent_to_manager), 1, "the manager was not notified during teardown")
+        self.assertIsInstance(sent_to_manager[0], WorkerDisconnectNotification)
 
     async def test_teardown_completes_when_the_notification_send_hangs(self) -> None:
         # The notification only saves the scheduler from waiting out the heartbeat timeout, so a

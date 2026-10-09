@@ -54,6 +54,9 @@ class TaskManager(Looper, TaskManagerMixin):
         self._processing_task_ids: Set[TaskID] = set()
         self._canceled_task_ids: Set[TaskID] = set()
 
+        self._draining = False
+        self._queue_changed = asyncio.Event()  # a draining worker waits on it for the head of the queue to change
+
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._heartbeat_manager: Optional[HeartbeatManager] = None
@@ -80,7 +83,7 @@ class TaskManager(Looper, TaskManagerMixin):
     async def on_task_new(self, task: Task) -> None:
         task_priority = self._get_task_priority(task)
 
-        if self._executor_semaphore.locked():
+        if self._executor_semaphore.locked() and not self._draining:
             for acquired_task_id in self._acquiring_task_ids:
                 acquired_task = self._task_id_to_task[acquired_task_id]
                 acquired_task_priority = self._get_task_priority(acquired_task)
@@ -96,6 +99,7 @@ class TaskManager(Looper, TaskManagerMixin):
         self._task_id_to_task[task.taskId] = task
         self._queued_task_id_queue.put_nowait((-task_priority, task.taskId))
         self._queued_task_ids.add(task.taskId)
+        self._queue_changed.set()
 
     async def on_cancel_task(self, task_cancel: TaskCancel) -> None:
         task_queued = task_cancel.taskId in self._queued_task_ids
@@ -119,6 +123,7 @@ class TaskManager(Looper, TaskManagerMixin):
             self._queued_task_ids.remove(task_cancel.taskId)
             self._queued_task_id_queue.remove(task_cancel.taskId)
             self._task_id_to_task.pop(task_cancel.taskId)
+            self._queue_changed.set()
 
         if task_processing:
             future = self._task_id_to_future[task_cancel.taskId]
@@ -149,6 +154,15 @@ class TaskManager(Looper, TaskManagerMixin):
 
     def get_queued_size(self) -> int:
         return self._queued_task_id_queue.qsize()
+
+    def drain(self) -> None:
+        self._draining = True
+
+    def is_draining(self) -> bool:
+        return self._draining
+
+    def is_idle(self) -> bool:
+        return not self._processing_task_ids and self._queued_task_id_queue.qsize() == 0
 
     def can_accept_task(self) -> bool:
         return not self._executor_semaphore.locked()
@@ -219,7 +233,15 @@ class TaskManager(Looper, TaskManagerMixin):
     async def process_task(self) -> None:
         await self._executor_semaphore.acquire()
 
-        _, task_id = await self._queued_task_id_queue.get()
+        queue_priority, task_id = await self._queued_task_id_queue.get()
+        if self._draining:
+            # A draining worker starts no task. The scheduler cancels the queued ones.
+            self._queued_task_id_queue.put_nowait((queue_priority, task_id))
+            self._executor_semaphore.release()
+            self._queue_changed.clear()
+            await self._queue_changed.wait()
+            return
+
         task = self._task_id_to_task[task_id]
 
         self._acquiring_task_ids.add(task_id)

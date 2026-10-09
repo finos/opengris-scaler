@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import functools
 import json
 import logging
 import math
 import os
 import shlex
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
 try:
@@ -18,13 +19,16 @@ except ModuleNotFoundError as exc:
     raise ModuleNotFoundError('execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager') from exc
 
 from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
-from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
-from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import format_capabilities, load_requirements_content
-from scaler.worker_manager.desired_concurrency import extract_desired_count
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.cloud.child_command import (
+    CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS,
+    child_link_arguments,
+    cloud_children_address,
+    format_capabilities,
+    load_requirements_content,
+)
+from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
 
 logger = logging.getLogger(__name__)
@@ -63,105 +67,89 @@ def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str
     return None
 
 
-class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
+class ORBWorkerProvisioner(UnitProvisioner):
+    """One unit is one EC2 instance, launched from a template of its own.
+
+    ORB sets the user data per template, and each instance must carry its own unit id, so each unit gets a template.
+    A handle is (template id, instance id).
+    """
+
     def __init__(
         self,
-        config: ORBAWSEC2WorkerManagerConfig,
         max_instances: int,
         sdk: Any,
-        template_id: str,
+        template_kwargs: Dict[str, Any],
+        user_data_for_unit: Callable[[str], str],
         workers_per_instance: int,
     ) -> None:
-        self._config = config
         self._max_instances = max_instances
         self._sdk = sdk
-        self._template_id = template_id
+        self._template_kwargs = template_kwargs
+        self._user_data_for_unit = user_data_for_unit
         self._workers_per_instance = workers_per_instance
-        self._units: List[str] = []  # EC2 instance IDs of active units
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=max_instances,
-            scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
+
+    async def create_unit(self, unit_id: str) -> UnitHandle:
+        template_id = f"opengris-orb-{unit_id}"
+        await self._sdk.create_template(
+            template_id=template_id,
+            name=template_id,
+            max_instances=1,
+            user_data=self._user_data_for_unit(unit_id),
+            **self._template_kwargs,
         )
+        try:
+            await self._sdk.validate_template(template_id=template_id)
+            instance_id = await self._request_instance(template_id)
+        except BaseException:
+            await self._sdk.delete_template(template_id=template_id)
+            raise
+        return template_id, instance_id
 
-    def active_unit_count(self) -> int:
-        return len(self._units)
-
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        own_capabilities = self._config.worker_config.per_worker_capabilities.capabilities
-        task_concurrency = extract_desired_count(requests, own_capabilities)
-        await self._capacity_coordinator.set_desired_unit_count(
-            math.ceil(task_concurrency / self._workers_per_instance)
-        )
-
-    async def start_units(self, count: int) -> None:
-        logger.info(f"Submitting ORB batch machine request for template {self._template_id} (count={count})...")
-        create_response = await self._sdk.create_request(template_id=self._template_id, count=count)
+    async def _request_instance(self, template_id: str) -> str:
+        logger.info(f"submitting ORB machine request for template {template_id}...")
+        create_response = await self._sdk.create_request(template_id=template_id, count=1)
 
         request_id = create_response.get("created_request_id") if isinstance(create_response, dict) else None
         if not request_id:
             raise RuntimeError(f"ORB create_request returned no request ID. Response: {create_response}")
 
-        logger.info(f"ORB request {request_id} submitted, polling for {count} instance ID(s)...")
+        logger.info(f"ORB request {request_id} submitted, polling for its instance ID...")
         timeout_seconds = ORB_AWS_EC2_MAX_POLLING_ATTEMPTS * ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
-        elapsed = 0
-
-        while elapsed < timeout_seconds:
+        for _ in range(ORB_AWS_EC2_MAX_POLLING_ATTEMPTS):
             await asyncio.sleep(ORB_AWS_EC2_POLLING_INTERVAL_SECONDS)
-            elapsed += ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
 
             status_response = await self._sdk.get_request_status(request_ids=[request_id])
-
             requests = status_response.get("requests", []) if isinstance(status_response, dict) else []
             if not requests:
                 continue
 
             req = requests[0] if isinstance(requests[0], dict) else {}
-            status = req.get("status", "")
             machine_ids = req.get("machine_ids", [])
+            if machine_ids:
+                logger.info(f"ORB request {request_id}: instance {machine_ids[0]} ready")
+                return machine_ids[0]
 
-            if len(machine_ids) >= count:
-                for instance_id in machine_ids:
-                    logger.info(f"ORB request {request_id}: instance {instance_id} ready")
-                self._units.extend(machine_ids)
-                return
-
+            status = req.get("status", "")
             if status.lower() in {"failed", "error", "cancelled", "canceled"}:
-                raise RuntimeError(
-                    f"ORB request {request_id} reached terminal status '{status}' "
-                    f"with {len(machine_ids)}/{count} instances fulfilled."
-                )
+                raise RuntimeError(f"ORB request {request_id} reached terminal status '{status}' with no instance")
 
-        raise TimeoutError(
-            f"ORB request {request_id} timed out after {timeout_seconds:.0f}s " f"with 0/{count} instances fulfilled."
-        )
+        raise TimeoutError(f"ORB request {request_id} timed out after {timeout_seconds:.0f}s with no instance")
 
-    async def stop_units(self, count: int) -> None:
-        unit_ids = self._units[:count]
-        if len(unit_ids) < count:
-            logger.warning(f"Requested to stop {count} unit(s) but only {len(unit_ids)} available.")
-        if not unit_ids:
-            return
-        logger.info(f"Stopping {len(unit_ids)} unit(s): instances {unit_ids}")
-        await self._sdk.create_return_request(machine_ids=unit_ids)
-        del self._units[:count]
-        logger.info(f"Successfully stopped {count} unit(s): instances {unit_ids}")
+    async def destroy_unit(self, handle: UnitHandle) -> None:
+        assert isinstance(handle, tuple)
+        template_id, instance_id = handle
+        await self._sdk.create_return_request(machine_ids=[instance_id])
+        await self._sdk.delete_template(template_id=template_id)
+        logger.info(f"returned instance {instance_id}")
 
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        if not self._units:
-            return
-        logger.info(f"Terminating {len(self._units)} unit(s)...")
-        try:
-            await self._sdk.create_return_request(machine_ids=self._units)
-            logger.info(f"Successfully requested termination of instances: {self._units}")
-        except Exception as e:
-            logger.warning(f"Failed to terminate instances during cleanup: {e}")
-        self._units.clear()
+    def max_units(self) -> int:
+        return self._max_instances
+
+    def task_concurrency_per_unit(self) -> int:
+        return self._workers_per_instance
+
+    def startup_timeout_seconds(self) -> int:
+        return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS
 
 
 class ORBAWSEC2WorkerManager:
@@ -221,63 +209,50 @@ class ORBAWSEC2WorkerManager:
             f"max_task_concurrency={mtc} -> max_instances={max_instances}"
         )
 
-        template_id = os.urandom(8).hex()
+        resource_id = os.urandom(8).hex()
 
         security_group_ids = self._config.security_group_ids
         if not security_group_ids:
-            self._create_security_group(template_id)
+            self._create_security_group(resource_id)
             security_group_ids = [self._created_security_group_id]
 
         key_name = self._config.key_name
         if not key_name:
-            self._create_key_pair(template_id)
+            self._create_key_pair(resource_id)
             key_name = self._created_key_name
 
-        user_data = self._create_user_data()
         image_id = self._config.image_id or self._discover_latest_al2023_ami()
 
-        self._orb_pool = ORBWorkerProvisioner(
-            config=self._config,
-            max_instances=max_instances,
-            sdk=sdk,
-            template_id=template_id,
-            workers_per_instance=workers_per_instance,
-        )
-        self._runner = WorkerManagerRunner(
-            address=self._config.worker_manager_config.scheduler_address,
-            name="worker_manager_orb_aws_ec2",
-            heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
-            capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=max_instances,
-            worker_manager_id=self._config.worker_manager_config.worker_manager_id.encode(),
-            worker_provisioner=self._orb_pool,
-            io_threads=self._config.worker_config.io_threads,
-            workers_per_provisioner_unit=workers_per_instance,
-        )
-
-        template_kwargs = dict(
-            template_id=template_id,
-            name=f"opengris-orb-{template_id}",
+        template_kwargs: Dict[str, Any] = dict(
             image_id=image_id,
             provider_api="RunInstances",
             instance_type=self._config.instance_type,
-            max_instances=max_instances,
             provider_name="aws-default",
             machine_types={self._config.instance_type: 1},
             subnet_ids=[self._subnet_id],
             security_group_ids=security_group_ids,
             key_name=key_name,
-            user_data=user_data,
             tags=self._config.instance_tags,
         )
         if self._config.debug_dump_path is not None:
-            self._dump_debug_state(template_id, template_kwargs)
+            self._dump_debug_state(resource_id, template_kwargs)
 
-        create_result = await sdk.create_template(**template_kwargs)
-        logger.info(f"create_template result: {create_result}")
-
-        validate_result = await sdk.validate_template(template_id=template_id)
-        logger.info(f"validate_template result: {validate_result}")
+        self._orb_pool = ORBWorkerProvisioner(
+            max_instances=max_instances,
+            sdk=sdk,
+            template_kwargs=template_kwargs,
+            user_data_for_unit=functools.partial(self._create_user_data, workers_per_instance=workers_per_instance),
+            workers_per_instance=workers_per_instance,
+        )
+        self._runner = WorkerManagerRunner(
+            name="worker_manager_orb_aws_ec2",
+            worker_manager_config=self._config.worker_manager_config,
+            heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
+            capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
+            provisioner=self._orb_pool,
+            children_address=cloud_children_address(self._config.worker_manager_config),
+            io_threads=self._config.worker_config.io_threads,
+        )
 
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
@@ -354,7 +329,7 @@ class ORBAWSEC2WorkerManager:
             json.dump(template_kwargs, f, indent=2, default=str)
         logger.info(f"[DEBUG] Dumped config to {config_path} and template to {template_path}")
 
-    def _create_user_data(self) -> str:
+    def _create_user_data(self, unit_id: str, workers_per_instance: int) -> str:
         worker_config = self._config.worker_config
         worker_manager_config = self._config.worker_manager_config
 
@@ -430,12 +405,10 @@ set +e
 
 """
 
-        # --max-task-concurrency is not passed: scaler_worker_manager defaults to cpu_count - 1 workers,
-        # where cpu_count is determined by the machine type the user configured in the ORB template.
         backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
         wm_id = shlex.quote(worker_manager_config.worker_manager_id)
         script += f"""{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
-    --mode fixed \\
+    {child_link_arguments(worker_manager_config, unit_id, workers_per_instance)} \\
     --worker-type ORB \\
     --worker-manager-id {wm_id} \\
     --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \\

@@ -216,10 +216,6 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_shutdown(self, client_id: ClientID):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
     async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification):
         raise NotImplementedError()
 
@@ -256,6 +252,12 @@ class PolicyController(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def remove_worker(self, worker: WorkerID) -> List[TaskID]:
         """remove worker to worker collection, and return list of task_ids of removed worker"""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def drain_worker(self, worker: WorkerID) -> List[TaskID]:
+        """stop assigning and balancing tasks to worker, and return the task_ids it holds so the caller can take them
+        back"""
         raise NotImplementedError()
 
     @abc.abstractmethod

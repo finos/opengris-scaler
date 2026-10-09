@@ -9,7 +9,7 @@ instances, or container orchestrators.
     For more details on Scaler configuration, see :doc:`../commands`.
 
 .. note::
-    By default, the scheduler starts with the ``no`` scaling policy, meaning no workers are provisioned automatically. To enable auto-scaling, pass ``--policy-content`` (``-pc``) to the scheduler.
+    By default, the scheduler uses ``allocate=even_load; scaling=vanilla``, which scales workers with the load. To choose another policy, pass ``--policy-content`` (``-pc``) to the scheduler.
 
 Enabling Auto-Scaling
 ---------------------
@@ -55,7 +55,7 @@ Worker Managers Overview
      - AWS ECS Fargate
    * - :doc:`Baremetal Native <baremetal_native>`
      - Spawns workers as local subprocesses. The simplest worker manager and the recommended starting point.
-     - Dynamic or fixed
+     - Dynamic (scheduler-driven)
      - Local machine
    * - :doc:`Symphony <symphony>`
      - Offloads tasks to IBM Spectrum Symphony via the SOAM API.

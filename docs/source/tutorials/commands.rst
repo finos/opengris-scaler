@@ -105,7 +105,6 @@ Scaler examples
             type = "baremetal_native"
             scheduler_address = "tcp://127.0.0.1:6378"
             worker_manager_id = "wm-native"
-            mode = "dynamic"
             max_task_concurrency = 8
             event_loop = "builtin"
             io_threads = 2
@@ -189,7 +188,7 @@ Scheduler examples
             # advertised_object_storage_address = "tcp://203.0.113.10:6379"
             monitor_address = "tcp://127.0.0.1:6380"
             policy_engine_type = "simple"
-            policy_content = "allocate=even_load; scaling=no"
+            policy_content = "allocate=even_load; scaling=static"
             logging_level = "INFO"
 
         Run command:
@@ -207,7 +206,7 @@ Scheduler examples
                 --advertised-object-storage-address tcp://203.0.113.10:6379 \
                 --monitor-address tcp://127.0.0.1:6380 \
                 --policy-engine-type simple \
-                --policy-content "allocate=even_load; scaling=no" \
+                --policy-content "allocate=even_load; scaling=static" \
                 --logging-level INFO
 
 Scheduler arguments
@@ -433,6 +432,27 @@ Arguments (shared by all subcommands)
      - No
      - ``os.cpu_count() - 1``
      - Max workers/jobs (``-1`` means no limit where supported).
+   * - ``-drt``, ``--drain-timeout-seconds``
+     - No
+     - ``300``
+     - Seconds a unit may take to finish its running tasks after it is told to drain, before it is destroyed by force.
+   * - ``-uts``, ``--unit-timeout-seconds``
+     - No
+     - ``60``
+     - Seconds a unit may go without a heartbeat before the worker manager counts it as lost, destroys it by force, and replaces it.
+   * - ``-ca``, ``--children-address``
+     - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``
+     - A free loopback port
+     - Address the worker manager binds for its units to dial. Must be reachable from provisioned resources.
+   * - ``-pa``, ``--parent-address``
+     - No
+     - ``None``
+     - Parent worker manager to take the desired task concurrency from, instead of the scheduler. Set by a cloud
+       worker manager in its child's command, together with ``--unit-id``.
+   * - ``--unit-id``
+     - With ``--parent-address``
+     - ``None``
+     - Identity of this worker manager on the parent link.
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty
@@ -515,12 +535,12 @@ Death timeout
 
 .. code-block:: bash
 
-    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-fixed --mode fixed --max-task-concurrency 10 -dts 300
+    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-native --max-task-concurrency 10 -dts 300
 
 Subcommand: ``baremetal_native``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers).
+Local-process worker manager: runs as many worker processes as the scheduler asks for.
 
 .. code-block:: bash
 
@@ -536,7 +556,6 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
             type = "baremetal_native"
             scheduler_address = "tcp://127.0.0.1:6378"
             worker_manager_id = "wm-native"
-            mode = "dynamic"
             max_task_concurrency = 8
 
         Run command:
@@ -551,7 +570,6 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
 
             scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 \
                 --worker-manager-id wm-native \
-                --mode dynamic \
                 --max-task-concurrency 8
 
 .. list-table::
@@ -561,18 +579,18 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
      - Required
      - Default
      - Description
-   * - ``--mode``
-     - No
-     - ``DYNAMIC``
-     - ``DYNAMIC`` or ``FIXED`` native worker manager mode.
    * - ``--worker-type``
      - No
-     - Auto
+     - ``NAT``
      - Worker ID prefix override.
    * - ``-n``, ``--num-of-workers``
      - No
      - -
      - Backward-compatible alias for ``--max-task-concurrency``.
+   * - ``--ready-file``
+     - No
+     - ``None``
+     - Path of a file that holds the manager's pid while it is in service. See :doc:`worker_managers/baremetal_native`.
 
 Subcommand: ``symphony``
 ~~~~~~~~~~~~~~~~~~~~~~~~

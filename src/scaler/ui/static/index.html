@@ -92,6 +92,7 @@
                             <th title="Since the manager's last heartbeat">Last Seen</th>
                             <th title="Tasks one of this manager's workers runs at once">Max Concurrency</th>
                             <th>Workers</th>
+                            <th title="Units as the manager reports them, active / pending / draining. A unit is a worker, or a resource that runs a child manager">Units</th>
                             <th title="Summed over every worker this manager has, not only the page shown below">Σ CPU %</th>
                             <th title="Summed over every worker this manager has, not only the page shown below">Σ PSS (MB)</th>
                             <th title="Summed queue slots left across this manager's workers">Σ Free</th>
@@ -118,6 +119,7 @@
                     <thead>
                         <tr>
                             <th>Worker</th>
+                            <th title="A draining worker takes no new task, and exits once its running tasks finish">State</th>
                             <th>Manager</th>
                             <th>Host</th>
                             <th title="Task on a processor right now, or a count when several are">Task</th>

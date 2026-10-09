@@ -1,12 +1,8 @@
 import logging
-import multiprocessing
 import time
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
-from scaler.config.common.logging import LoggingConfig
-from scaler.config.common.worker import WorkerConfig
-from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -17,12 +13,10 @@ from scaler.config.defaults import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
-from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.types.address import AddressConfig
-from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.worker_manager.native.worker_manager import NativeWorkerManager
+from scaler.worker.worker import Worker
 from tests.utility.utility import logging_test_name
 
 # This is a manual test because it can loop infinitely if it fails
@@ -34,37 +28,30 @@ class TestDeathTimeout(unittest.TestCase):
         logging_test_name(self)
 
     def test_no_scheduler(self):
-        logging.info("test with no scheduler")
-        # Test 1: Spinning up a cluster with no scheduler. Death timeout should apply
-        manager = NativeWorkerManager(
-            NativeWorkerManagerConfig(
-                worker_manager_config=WorkerManagerConfig(
-                    scheduler_address=AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
-                    worker_manager_id="test_manager",
-                    object_storage_address=None,
-                    max_task_concurrency=2,
-                ),
-                mode=NativeWorkerManagerMode.FIXED,
-                worker_config=WorkerConfig(
-                    per_worker_capabilities=WorkerCapabilities({}),
-                    per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
-                    heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-                    garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-                    trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-                    task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-                    death_timeout_seconds=10,
-                    hard_processor_suspend=False,
-                    io_threads=DEFAULT_IO_THREADS,
-                    event_loop="builtin",
-                ),
-                logging_config=LoggingConfig(
-                    paths=DEFAULT_LOGGING_PATHS, level=DEFAULT_LOGGING_LEVEL, config_file=None
-                ),
-            )
+        """A worker that never reaches a scheduler quits once its death timeout passes."""
+        worker = Worker(
+            event_loop="builtin",
+            name="no_scheduler",
+            address=AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+            object_storage_address=None,
+            preload=None,
+            capabilities={},
+            io_threads=DEFAULT_IO_THREADS,
+            task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
+            heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+            garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+            trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+            task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
+            death_timeout_seconds=10,
+            hard_processor_suspend=False,
+            logging_paths=DEFAULT_LOGGING_PATHS,
+            logging_level=DEFAULT_LOGGING_LEVEL,
+            worker_manager_id=b"test_manager",
+            worker_manager_address=AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+            unit_id="no_scheduler",
         )
-        process = multiprocessing.get_context("spawn").Process(target=manager.run)
-        process.start()
-        process.join()
+        worker.start()
+        worker.join()
 
     def test_shutdown(self):
         logging.info("test with explicitly shutdown")
