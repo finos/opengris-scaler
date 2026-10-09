@@ -1,6 +1,6 @@
 from typing import List
 
-from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
+from scaler.scheduler.policies.scaling.waterfall.types import WaterfallRule
 
 
 def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:

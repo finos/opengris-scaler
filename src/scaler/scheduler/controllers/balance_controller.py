@@ -4,7 +4,8 @@ from typing import Dict, List, Optional
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import StateBalanceAdvice
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
-from scaler.scheduler.controllers.mixins import PolicyController, TaskController
+from scaler.scheduler.controllers.mixins import TaskController
+from scaler.scheduler.policies.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.mixins import Looper
 
@@ -12,10 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 class VanillaBalanceController(Looper):
-    def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
+    def __init__(self, config_controller: VanillaConfigController, allocation_policy: TaskAllocatePolicy):
         self._config_controller = config_controller
 
-        self._policy_controller = policy_controller
+        self._allocation_policy = allocation_policy
 
         self._last_balance_advice: Dict[WorkerID, List[TaskID]] = dict()
         self._same_load_balance_advice_count = 0
@@ -32,7 +33,7 @@ class VanillaBalanceController(Looper):
         self._task_controller = task_controller
 
     async def routine(self):
-        current_advice = self._policy_controller.balance()
+        current_advice = self._allocation_policy.balance()
         if not self.__should_balance(current_advice):
             return
 

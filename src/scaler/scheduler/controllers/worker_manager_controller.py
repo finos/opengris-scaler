@@ -12,9 +12,10 @@ from scaler.protocol.capnp import (
 )
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
-from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status
+from scaler.scheduler.policies.mixins import ScalingPolicy
+from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.snapshot import InformationSnapshot
@@ -25,9 +26,9 @@ UINT16_MAX = 2**16 - 1
 
 
 class WorkerManagerController(Looper, Reporter):
-    def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
+    def __init__(self, config_controller: VanillaConfigController, scaling_policy: ScalingPolicy):
         self._config_controller = config_controller
-        self._policy_controller = policy_controller
+        self._scaling_policy = scaling_policy
 
         self._binder: Optional[AsyncBinder] = None
         self._task_controller: Optional[TaskController] = None
@@ -71,7 +72,7 @@ class WorkerManagerController(Looper, Reporter):
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
         worker_manager_snapshots = self._build_manager_snapshots()
 
-        commands = self._policy_controller.get_scaling_commands(
+        commands = self._scaling_policy.get_scaling_commands(
             information_snapshot, heartbeat, managed_worker_ids, worker_manager_snapshots
         )
 
