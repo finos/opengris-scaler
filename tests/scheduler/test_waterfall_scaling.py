@@ -5,12 +5,10 @@ from typing import Dict, Optional
 
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
-from scaler.scheduler.controllers.policies.library.utility import create_policy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
-from scaler.scheduler.controllers.policies.waterfall_v1.scaling.utility import parse_waterfall_rules
-from scaler.scheduler.controllers.policies.waterfall_v1.scaling.waterfall import WaterfallScalingPolicy
-from scaler.scheduler.controllers.policies.waterfall_v1.waterfall_v1_policy import WaterfallV1Policy
+from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
+from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy, parse_waterfall_rules
+from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
@@ -485,7 +483,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
 
 class TestWaterfallV1Policy(unittest.TestCase):
-    """Unit tests for WaterfallV1Policy config parsing and scaling delegation."""
+    """Unit tests for WaterfallScalingPolicy config parsing and scaling delegation."""
 
     def setUp(self):
         setup_logger()
@@ -497,8 +495,9 @@ class TestWaterfallV1Policy(unittest.TestCase):
 
     def test_config_parsing_via_factory(self):
         """Verify the factory parses waterfall_v1 policy config correctly."""
-        policy = create_policy("waterfall_v1", "1,manager_a,10\n2,manager_b,20")
-        self.assertIsInstance(policy, WaterfallV1Policy)
+        allocate_policy, scaling_policy = create_policies("waterfall_v1", "1,manager_a,10\n2,manager_b,20")
+        self.assertIsInstance(allocate_policy, CapabilityAllocatePolicy)
+        self.assertIsInstance(scaling_policy, WaterfallScalingPolicy)
 
     def test_config_parsing_with_comments(self):
         """Comments and blank lines should be ignored."""
@@ -510,8 +509,8 @@ class TestWaterfallV1Policy(unittest.TestCase):
                 "2,manager_b,20  # overflow tier",
             ]
         )
-        policy = WaterfallV1Policy(policy_content)
-        self.assertIsInstance(policy, WaterfallV1Policy)
+        _, scaling_policy = create_policies("waterfall_v1", policy_content)
+        self.assertIsInstance(scaling_policy, WaterfallScalingPolicy)
 
     def test_config_parsing_without_max_task_concurrency(self):
         """max_task_concurrency may be omitted; the rule's field is then None."""
@@ -522,43 +521,43 @@ class TestWaterfallV1Policy(unittest.TestCase):
     def test_invalid_config_empty(self):
         """Empty policy content should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("")
+            create_policies("waterfall_v1", "")
 
     def test_invalid_config_comments_only(self):
         """Policy content with only comments should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("# just a comment\n# another comment")
+            create_policies("waterfall_v1", "# just a comment\n# another comment")
 
     def test_invalid_config_wrong_field_count(self):
         """Lines with too few or too many fields should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("manager_a_only")
+            create_policies("waterfall_v1", "manager_a_only")
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("1,manager_a,10,extra")
+            create_policies("waterfall_v1", "1,manager_a,10,extra")
 
     def test_invalid_config_non_integer_priority(self):
         """Non-integer priority should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("high,manager_a,10")
+            create_policies("waterfall_v1", "high,manager_a,10")
 
     def test_invalid_config_non_integer_max_task_concurrency(self):
         """Non-integer max_task_concurrency should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("1,manager_a,many")
+            create_policies("waterfall_v1", "1,manager_a,many")
 
     def test_invalid_config_empty_worker_manager_id(self):
         """Empty worker_manager_id should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("1,,10")
+            create_policies("waterfall_v1", "1,,10")
 
     def test_invalid_config_duplicate_worker_manager_id(self):
         """Duplicate worker_manager_id should raise ValueError."""
         with self.assertRaisesRegex(ValueError, "duplicate worker_manager_id"):
-            WaterfallV1Policy("1,mgr_a,10\n2,mgr_a,20")
+            create_policies("waterfall_v1", "1,mgr_a,10\n2,mgr_a,20")
 
     def test_policy_delegates_to_scaling_policy(self):
-        """Policy controller delegates declarative emission to its scaling policy."""
-        policy = WaterfallV1Policy("1,manager_a,10\n2,manager_b,20")
+        """Scaling policy emits declarative commands based on waterfall rules."""
+        _, scaling_policy = create_policies("waterfall_v1", "1,manager_a,10\n2,manager_b,20")
 
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
@@ -568,29 +567,29 @@ class TestWaterfallV1Policy(unittest.TestCase):
         }
 
         heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
-        commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, [], manager_snapshots)
+        commands_a = scaling_policy.get_scaling_commands(snapshot, heartbeat_a, [], manager_snapshots)
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 1)
 
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
-        commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
+        commands_b = scaling_policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
         # Higher-priority A absorbs all 1 desired worker; B's share is 0 -> emits setDesired(0).
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
     def test_scaling_status(self):
-        """get_scaling_status should return a ScalingManagerStatus."""
-        policy = WaterfallV1Policy("1,manager_a,10")
+        """get_status should return a ScalingManagerStatus."""
+        _, scaling_policy = create_policies("waterfall_v1", "1,manager_a,10")
 
         from scaler.protocol.capnp import ScalingManagerStatus
 
         managed_workers = {b"mgr-1": [WorkerID(b"worker-1")]}
-        status = policy.get_scaling_status(managed_workers)
+        status = scaling_policy.get_status(managed_workers)
         self.assertIsInstance(status, ScalingManagerStatus)
 
 
 class TestWaterfallV1PolicyAssignmentWithCapabilities(unittest.TestCase):
-    """Tests that WaterfallV1Policy.assign_task respects task capabilities."""
+    """Tests that the waterfall_v1 policy engine's assign_task respects task capabilities."""
 
     def setUp(self):
         setup_logger()
@@ -601,18 +600,18 @@ class TestWaterfallV1PolicyAssignmentWithCapabilities(unittest.TestCase):
 
     def test_task_with_capability_assigned_to_capable_worker(self):
         """Task requiring {"gpu": -1} must land on a worker that has gpu."""
-        policy = WaterfallV1Policy("1,manager_a,10\n2,manager_b,20")
+        allocation_policy, _ = create_policies("waterfall_v1", "1,manager_a,10\n2,manager_b,20")
 
         worker_no_gpu = WorkerID(b"worker-no-gpu")
         worker_gpu = WorkerID(b"worker-gpu")
 
         # Insertion order matters: the no-gpu worker is queued first, so an
         # even-load allocator will hand it out first when both have count 0.
-        self.assertTrue(policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
-        self.assertTrue(policy.add_worker(worker_gpu, capabilities={"gpu": -1}, queue_size=10))
+        self.assertTrue(allocation_policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
+        self.assertTrue(allocation_policy.add_worker(worker_gpu, capabilities={"gpu": -1}, queue_size=10))
 
         task = _create_mock_task(TaskID.generate_task_id(), capabilities={"gpu": -1})
-        assigned = policy.assign_task(task)
+        assigned = allocation_policy.assign_task(task)
 
         self.assertEqual(
             assigned, worker_gpu, f"task requiring gpu was assigned to {assigned!r}, expected {worker_gpu!r}"
@@ -620,13 +619,13 @@ class TestWaterfallV1PolicyAssignmentWithCapabilities(unittest.TestCase):
 
     def test_task_with_capability_not_assigned_when_no_capable_worker(self):
         """Task requiring gpu must not be assigned if no worker has gpu."""
-        policy = WaterfallV1Policy("1,manager_a,10")
+        allocation_policy, _ = create_policies("waterfall_v1", "1,manager_a,10")
 
         worker_no_gpu = WorkerID(b"worker-no-gpu")
-        self.assertTrue(policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
+        self.assertTrue(allocation_policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
 
         task = _create_mock_task(TaskID.generate_task_id(), capabilities={"gpu": -1})
-        assigned = policy.assign_task(task)
+        assigned = allocation_policy.assign_task(task)
 
         self.assertEqual(
             assigned,
@@ -636,13 +635,13 @@ class TestWaterfallV1PolicyAssignmentWithCapabilities(unittest.TestCase):
 
     def test_has_available_worker_respects_capabilities(self):
         """has_available_worker({"gpu": -1}) must be False if no worker has gpu."""
-        policy = WaterfallV1Policy("1,manager_a,10")
+        allocation_policy, _ = create_policies("waterfall_v1", "1,manager_a,10")
 
         worker_no_gpu = WorkerID(b"worker-no-gpu")
-        self.assertTrue(policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
+        self.assertTrue(allocation_policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
 
         self.assertFalse(
-            policy.has_available_worker({"gpu": -1}),
+            allocation_policy.has_available_worker({"gpu": -1}),
             "has_available_worker should return False when no worker has the requested capability",
         )
 
