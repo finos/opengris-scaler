@@ -24,7 +24,7 @@ def cpu_task(x: float) -> float:
 
 def main():
     cluster = SchedulerClusterCombo(
-        n_workers=2, scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=no")
+        n_workers=2, scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=static")
     )
 
     base_config = cluster._worker_manager.config
