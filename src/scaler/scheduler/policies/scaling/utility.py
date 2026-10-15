@@ -1,7 +1,6 @@
-from typing import Dict, Iterable, List, Optional, Tuple, TypeVar
+from typing import Dict, Iterable, List, Tuple, TypeVar
 
-from scaler.protocol import capnp
-from scaler.protocol.capnp import ScalingManagerStatus, TaskCapability, WorkerManagerCommand
+from scaler.protocol.capnp import TaskCapability, WorkerManagerCommand
 
 StateT = TypeVar("StateT")
 
@@ -17,31 +16,6 @@ def forget_departed_managers(state_by_manager: Dict[bytes, StateT], live_manager
     live_ids = set(live_manager_ids)
     for departed_id in [manager_id for manager_id in state_by_manager if manager_id not in live_ids]:
         del state_by_manager[departed_id]
-
-
-def build_scaling_manager_status(
-    managed_workers: Dict[bytes, list], worker_manager_details: Optional[List[dict]] = None
-) -> ScalingManagerStatus:
-    details = worker_manager_details or []
-    return capnp.ScalingManagerStatus(
-        managedWorkers=[
-            capnp.ScalingManagerStatus.Pair(
-                workerManagerID=worker_manager_id, workerIDs=[bytes(worker_id) for worker_id in worker_ids]
-            )
-            for worker_manager_id, worker_ids in managed_workers.items()
-        ],
-        workerManagerDetails=[
-            capnp.ScalingManagerStatus.WorkerManagerDetail(
-                workerManagerID=d["worker_manager_id"],
-                identity=d["identity"],
-                lastSeenSeconds=d["last_seen_seconds"],
-                maxTaskConcurrency=d["max_task_concurrency"],
-                capabilities=d.get("capabilities", ""),
-                pendingWorkers=d.get("pending_workers", 0),
-            )
-            for d in details
-        ],
-    )
 
 
 def build_set_desired_command(desired_per_capset: List[Tuple[Dict[str, int], int]]) -> WorkerManagerCommand:

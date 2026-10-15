@@ -5,10 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, ErrorCode
 from scaler.protocol.capnp import Task, WorkerDisconnectNotification
-from scaler.scheduler.controllers.mixins import ConfigController, PolicyController, TaskController
+from scaler.scheduler.controllers.mixins import ConfigController, TaskController
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
-from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
+from scaler.scheduler.policies.mixins import TaskAllocatePolicy
+from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
@@ -24,10 +25,10 @@ class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsync
         logging_test_name(self)
 
         config_controller = MagicMock(spec=ConfigController)
-        self.policy_controller = MagicMock(spec=PolicyController)
-        self.policy_controller.remove_worker.return_value = []
+        self.allocation_policy = MagicMock(spec=TaskAllocatePolicy)
+        self.allocation_policy.remove_worker.return_value = []
 
-        self.controller = VanillaWorkerController(config_controller, self.policy_controller)
+        self.controller = VanillaWorkerController(config_controller, self.allocation_policy)
 
         self.binder = AsyncMock()
         self.binder_monitor = AsyncMock()
@@ -64,7 +65,7 @@ class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsync
         self.assertIn(other_id, self.controller._worker_alive_since)
 
     async def test_on_disconnect_notification_re_dispatches_in_flight_tasks(self) -> None:
-        self.policy_controller.remove_worker.return_value = [_TASK_ID]
+        self.allocation_policy.remove_worker.return_value = [_TASK_ID]
 
         await self.controller.on_disconnect_notification(_WORKER_ID, WorkerDisconnectNotification())
 
@@ -119,8 +120,8 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
     def test_mass_eviction_is_handled_without_crashing(self):
         config = MagicMock()
         config.get_config.side_effect = lambda key: 0 if key == "worker_timeout_seconds" else MagicMock()
-        policy = VanillaPolicyController("simple", "allocate=capability; scaling=vanilla")
-        worker_controller = VanillaWorkerController(config, policy)
+        allocation_policy, _ = create_policies("simple", "allocate=capability; scaling=vanilla")
+        worker_controller = VanillaWorkerController(config, allocation_policy)
         task_controller = VanillaTaskController(config)
 
         binder = _DeadableBinder()
@@ -149,7 +150,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
         manager_id = b"worker-manager"
         for i in range(self.N_WORKERS):
             worker_id = WorkerID(f"worker-{i}".encode())
-            policy.add_worker(worker_id, {"capA": -1}, 10)
+            allocation_policy.add_worker(worker_id, {"capA": -1}, 10)
             worker_controller._worker_alive_since[worker_id] = (time.time() - 3600, None)
             worker_controller._worker_to_manager[worker_id] = manager_id
             worker_controller._manager_to_workers.setdefault(manager_id, set()).add(worker_id)
@@ -166,7 +167,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
         _run(scenario())
 
         # Every dead worker was disconnected; none is left registered.
-        self.assertEqual(len(policy.get_worker_ids()), 0)
+        self.assertEqual(len(allocation_policy.get_worker_ids()), 0)
 
 
 if __name__ == "__main__":

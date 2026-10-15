@@ -2,11 +2,11 @@ import logging
 from math import ceil
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
-from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
-from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status, build_set_desired_command
+from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.policies.mixins import ScalingPolicy
+from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.utility import build_set_desired_command
+from scaler.scheduler.policies.scaling.waterfall.types import WaterfallRule
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -50,9 +50,6 @@ class WaterfallScalingPolicy(ScalingPolicy):
             rule, information_snapshot, worker_manager_heartbeat, worker_manager_snapshots
         )
         return [build_set_desired_command(desired_per_capset)]
-
-    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return build_scaling_manager_status(managed_workers)
 
     def _find_rule(self, manager_id: bytes) -> Optional[WaterfallRule]:
         """Find the rule whose worker manager ID matches *manager_id*."""

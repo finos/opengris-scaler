@@ -33,8 +33,8 @@ from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
-from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
+from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
+from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -322,9 +322,8 @@ class TestAtCapacityEmission(unittest.TestCase):
 
     def test_waterfall_at_cap_emits_current(self):
         """Waterfall: when the manager is full per the priority chain, it still emits setDesired(current)."""
-        from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-        from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
-        from scaler.scheduler.controllers.policies.waterfall_v1.scaling.waterfall import WaterfallScalingPolicy
+        from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+        from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy
 
         rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
@@ -457,14 +456,6 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertEqual(set(capabilities_to_dict(requests[0].capabilities).keys()), {"gpu"})
         self.assertEqual(requests[0].taskConcurrency, 1)
 
-    def test_get_status_returns_scaling_manager_status(self):
-        """CapabilityScalingPolicy.get_status returns a ScalingManagerStatus object."""
-        from scaler.protocol.capnp import ScalingManagerStatus
-
-        managed_workers = {b"mgr": [WorkerID(b"w0")]}
-        status = self.policy.get_status(managed_workers)
-        self.assertIsInstance(status, ScalingManagerStatus)
-
 
 class TestVanillaDeclarativeEquivalents(unittest.TestCase):
     """Declarative equivalents of the master-branch vanilla shutdown tests."""
@@ -519,14 +510,6 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
         self.assertEqual(requests[0].taskConcurrency, 5)
 
-    def test_get_status_returns_scaling_manager_status(self):
-        """VanillaScalingPolicy.get_status returns a ScalingManagerStatus object."""
-        from scaler.protocol.capnp import ScalingManagerStatus
-
-        managed_workers = {b"mgr": [WorkerID(b"w0")]}
-        status = self.policy.get_status(managed_workers)
-        self.assertIsInstance(status, ScalingManagerStatus)
-
 
 class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
     """Declarative equivalents of the master-branch capability shutdown tests."""
@@ -561,11 +544,10 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
         setup_logger()
         config_controller = MagicMock()
-        policy_controller = MagicMock()
-        policy_controller.get_scaling_status.return_value = MagicMock(managed_workers={})
+        scaling_policy = MagicMock()
 
-        self.controller = WorkerManagerController(config_controller, policy_controller)
-        self.policy_controller = policy_controller
+        self.controller = WorkerManagerController(config_controller, scaling_policy)
+        self.scaling_policy = scaling_policy
 
         binder = AsyncMock()
         task_controller = MagicMock()
@@ -577,14 +559,14 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
     async def test_pending_equals_desired_minus_connected(self):
         """pendingWorkers = max(0, last_desired_total - connected_count)."""
-        from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
+        from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 
         source = b"mgr-src"
         manager_id = b"mgr-id"
         heartbeat = _create_worker_manager_heartbeat(manager_id)
 
         # Policy returns a setDesired command totaling 5 workers for this manager (empty caps).
-        self.policy_controller.get_scaling_commands.return_value = [build_set_desired_command([({}, 5)])]
+        self.scaling_policy.get_scaling_commands.return_value = [build_set_desired_command([({}, 5)])]
         # 2 workers are currently connected to this manager.
         self.worker_controller.get_workers_by_manager_id.return_value = [WorkerID(b"w0"), WorkerID(b"w1")]
 
@@ -596,13 +578,13 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
     async def test_pending_clamped_at_zero(self):
         """If more workers are connected than desired, pendingWorkers is 0 (never negative)."""
-        from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
+        from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 
         source = b"mgr-src"
         manager_id = b"mgr-id"
         heartbeat = _create_worker_manager_heartbeat(manager_id)
 
-        self.policy_controller.get_scaling_commands.return_value = [build_set_desired_command([({}, 1)])]
+        self.scaling_policy.get_scaling_commands.return_value = [build_set_desired_command([({}, 1)])]
         self.worker_controller.get_workers_by_manager_id.return_value = [WorkerID(b"w0"), WorkerID(b"w1")]
 
         await self.controller.on_heartbeat(source, heartbeat)
@@ -613,7 +595,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
     async def test_pending_only_counts_capsets_this_manager_can_serve(self):
         """A capset whose capabilities are not a subset of the manager's capabilities is excluded."""
-        from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
+        from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 
         source = b"mgr-src"
         manager_id = b"mgr-id"
@@ -621,7 +603,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         heartbeat = WorkerManagerHeartbeat(maxTaskConcurrency=10, capabilities={"cpu": -1}, workerManagerID=manager_id)
 
         # Generic (empty caps, wildcard) -> 2; gpu-only -> 4 (not servable); cpu-only -> 3 (servable).
-        self.policy_controller.get_scaling_commands.return_value = [
+        self.scaling_policy.get_scaling_commands.return_value = [
             build_set_desired_command([({}, 2), ({"gpu": -1}, 4), ({"cpu": -1}, 3)])
         ]
         self.worker_controller.get_workers_by_manager_id.return_value = []

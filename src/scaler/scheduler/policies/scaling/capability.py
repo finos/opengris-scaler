@@ -3,14 +3,10 @@ from collections import defaultdict
 from math import ceil
 from typing import Dict, FrozenSet, List, Tuple
 
-from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-from scaler.scheduler.controllers.worker_manager_utilties import (
-    build_scaling_manager_status,
-    build_set_desired_command,
-    forget_departed_managers,
-)
+from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.policies.mixins import ScalingPolicy
+from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -71,9 +67,6 @@ class CapabilityScalingPolicy(ScalingPolicy):
 
             task_count = len(tasks_by_capability[frozenset(capabilities.keys())])
             logger.info(f"scaling {manager_id!r}: tasks={task_count}, capabilities={capabilities} -> desired={desired}")
-
-    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return build_scaling_manager_status(managed_workers)
 
     def _group_tasks_by_capability(
         self, information_snapshot: InformationSnapshot

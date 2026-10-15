@@ -2,14 +2,10 @@ import logging
 from math import ceil
 from typing import Dict, List, Tuple
 
-from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-from scaler.scheduler.controllers.worker_manager_utilties import (
-    build_scaling_manager_status,
-    build_set_desired_command,
-    forget_departed_managers,
-)
+from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.policies.mixins import ScalingPolicy
+from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -42,9 +38,6 @@ class VanillaScalingPolicy(ScalingPolicy):
         desired = self._compute_desired_worker_count(information_snapshot, worker_manager_heartbeat, managed_worker_ids)
         desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
         return [build_set_desired_command(desired_per_capset)]
-
-    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return build_scaling_manager_status(managed_workers)
 
     def _compute_desired_worker_count(
         self,

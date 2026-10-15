@@ -17,7 +17,7 @@ class TestBalanceControllerTriggersOnce(unittest.TestCase):
     def _controller(trigger_times: int) -> VanillaBalanceController:
         config = MagicMock()
         config.get_config.return_value = trigger_times
-        return VanillaBalanceController(config_controller=config, policy_controller=MagicMock())
+        return VanillaBalanceController(config_controller=config, allocation_policy=MagicMock())
 
     def test_stable_advice_triggers_exactly_once(self):
         balancer = self._controller(trigger_times=2)

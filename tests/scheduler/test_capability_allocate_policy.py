@@ -3,9 +3,7 @@ import unittest
 from typing import Dict, Optional, Set
 
 from scaler.protocol.capnp import Task
-from scaler.scheduler.controllers.policies.simple_policy.allocation.capability_allocate_policy import (
-    CapabilityAllocatePolicy,
-)
+from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name

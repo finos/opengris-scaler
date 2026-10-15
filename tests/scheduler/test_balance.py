@@ -129,7 +129,7 @@ class TestBalance(unittest.TestCase):
             address=address,
             n_workers=1,
             # A single-task worker has nothing "excess" to balance away (see
-            # even_load_allocate_policy.py), so it needs two tasks queued to be a candidate.
+            # policies/allocation/even_load.py), so it needs two tasks queued to be a candidate.
             per_worker_task_queue_size=2,
             worker_timeout_seconds=WORKER_TIMEOUT_SECONDS,
             heartbeat_interval_seconds=HEARTBEAT_INTERVAL_SECONDS,

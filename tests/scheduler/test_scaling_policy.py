@@ -1,14 +1,14 @@
 import unittest
 from unittest.mock import MagicMock
 
-from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
+from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
+from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import WorkerID
 
 MANAGER_ID = b"manager"
 OTHER_MANAGER_ID = b"other-manager"
-VANILLA_LOGGER = "scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla"
-CAPABILITY_LOGGER = "scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling"
+VANILLA_LOGGER = "scaler.scheduler.policies.scaling.vanilla"
+CAPABILITY_LOGGER = "scaler.scheduler.policies.scaling.capability"
 
 
 def _heartbeat(manager_id: bytes = MANAGER_ID) -> MagicMock:

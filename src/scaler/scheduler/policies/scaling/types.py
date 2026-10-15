@@ -1,5 +1,4 @@
 import dataclasses
-import enum
 from typing import Dict
 
 
@@ -12,12 +11,3 @@ class WorkerManagerSnapshot:
     worker_count: int
     last_seen_at: float  # time.time() epoch seconds of the last heartbeat
     capabilities: Dict[str, int] = dataclasses.field(default_factory=dict)
-
-
-class ScalingPolicyStrategy(enum.Enum):
-    NO = "no"
-    VANILLA = "vanilla"
-    CAPABILITY = "capability"
-
-    def __str__(self):
-        return self.name
