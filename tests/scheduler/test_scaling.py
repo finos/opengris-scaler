@@ -33,6 +33,8 @@ from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.static import StaticScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.utility import create_scaling_policy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
@@ -158,6 +160,55 @@ class TestScaling(unittest.TestCase):
 
         manager_process.terminate()
         manager_process.join()
+
+
+class TestScalingStringParsing(unittest.TestCase):
+    def test_a_colon_without_an_argument_is_refused(self):
+        """`name:` is a missing argument, not the bare name."""
+        for scaling in ["static:", "vanilla:", "capability:"]:
+            with self.subTest(scaling=scaling):
+                with self.assertRaises(ValueError):
+                    create_scaling_policy(scaling)
+
+    def test_only_ascii_digits_are_counts(self):
+        """Unicode digits are refused with the parser's message, not converted or crashed on in `int()`."""
+        for scaling in ["static:\u00b2", "static:\u0663", "static[a:\u00b2]", "static[a:\u0663]"]:
+            with self.subTest(scaling=scaling):
+                with self.assertRaisesRegex(ValueError, "is not a non-negative task concurrency"):
+                    create_scaling_policy(scaling)
+
+    def test_whitespace_around_separators_is_ignored(self):
+        """Spaces around the name, the argument, and the entries parse the same as none."""
+        static = create_scaling_policy(" static : 4 ")
+        assert isinstance(static, StaticScalingPolicy)
+        self.assertEqual(static._task_concurrency, 4)
+
+        static = create_scaling_policy("static [native:8]")
+        assert isinstance(static, StaticScalingPolicy)
+        self.assertEqual(static._task_concurrency_by_manager, {b"native": 8})
+
+    def test_an_argument_with_entries_is_refused_as_such(self):
+        with self.assertRaisesRegex(ValueError, "an argument or entries, not both"):
+            create_scaling_policy("static:2[native:4]")
+
+    def test_an_unknown_name_lists_the_known_ones(self):
+        with self.assertRaisesRegex(ValueError, "expected one of static, vanilla, capability"):
+            create_scaling_policy("nope")
+
+    def test_unclosed_entries_report_the_expected_shape(self):
+        """A missing `]` is a malformed string, whatever the policy takes."""
+        for scaling in ["capability[x", "static[native:4"]:
+            with self.subTest(scaling=scaling):
+                with self.assertRaisesRegex(
+                    ValueError, "scaling must be 'name', 'name:argument', or 'name\\[entries\\]'"
+                ):
+                    create_scaling_policy(scaling)
+
+    def test_a_worker_manager_id_with_a_bracket_is_refused(self):
+        for scaling in ["static[[native:4]", "static[nat]ive:4]"]:
+            with self.subTest(scaling=scaling):
+                with self.assertRaises(ValueError):
+                    create_scaling_policy(scaling)
 
 
 class TestAtCapacityEmission(unittest.TestCase):
