@@ -88,6 +88,7 @@ struct WorkerHeartbeat {
     hostname @10 :Text;   # machine this worker runs on, so the monitor can group workers by host
     netSentBytes @11 :UInt64;  # host-wide counters, identical for workers sharing a host; the monitor
     netRecvBytes @12 :UInt64;  # reads them once per hostname rather than summing them
+    draining @13 :Bool;        # set once the worker starts to drain, never cleared: it takes no new task
 }
 
 struct WorkerHeartbeatEcho {

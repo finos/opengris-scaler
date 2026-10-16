@@ -17,6 +17,10 @@ class ScalerPolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def drain_worker(self, worker: WorkerID) -> List[TaskID]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def get_worker_ids(self) -> Set[WorkerID]:
         raise NotImplementedError()
 

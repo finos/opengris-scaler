@@ -66,6 +66,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         return worker
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat) -> None:
+        previous = self._worker_alive_since.get(worker_id)
+        started_draining = info.draining and (previous is None or not previous[1].draining)
+
         info.capabilities = capabilities_to_dict(info.capabilities)
         if self._policy_controller.add_worker(worker_id, info.capabilities, info.queueSize):
             logger.info(f"worker {worker_id!r} connected")
@@ -83,6 +86,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             self._manager_to_workers.setdefault(info.workerManagerID, set()).add(worker_id)
 
         self._worker_alive_since[worker_id] = (time.time(), info)
+
+        if started_draining:
+            await self.__drain_worker(worker_id)
 
         object_storage_address = self._config_controller.get_config("advertised_object_storage_address")
         await self._binder.send(
@@ -220,6 +226,13 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         logger.warning(f"{worker_id!r} disconnected ({reason}): rerouting/failing {len(task_ids)} task(s)")
         for task_id in task_ids:
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
+
+    async def __drain_worker(self, worker_id: WorkerID) -> None:
+        # The worker refuses to give up the task it runs, so only its queued tasks move.
+        task_ids = self._policy_controller.drain_worker(worker_id)
+        logger.info(f"{worker_id!r} is draining: taking back {len(task_ids)} task(s)")
+        for task_id in task_ids:
+            await self._task_controller.on_task_balance_cancel(task_id)
 
     async def __shutdown_worker(self, worker_id: WorkerID) -> None:
         await self._binder.send(

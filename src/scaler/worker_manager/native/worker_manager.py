@@ -132,7 +132,16 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         await self._capacity_coordinator.set_desired_unit_count(task_concurrency)
 
     def active_unit_count(self) -> int:
+        self._reap_exited_workers()
         return len(self._workers)
+
+    def _reap_exited_workers(self) -> None:
+        for worker in [worker for worker in self._workers if not worker.is_alive()]:
+            worker.join()
+            self._workers.remove(worker)
+            logger.warning(
+                f"native worker {worker.identity!r} exited on its own (exitcode={describe_exitcode(worker.exitcode)})"
+            )
 
     async def start_units(self, count: int) -> None:
         for _ in range(count):

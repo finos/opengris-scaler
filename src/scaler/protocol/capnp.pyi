@@ -239,6 +239,7 @@ class WorkerHeartbeat(BaseMessage):
     hostname: str
     netSentBytes: int
     netRecvBytes: int
+    draining: bool
 
 class WorkerHeartbeatEcho(BaseMessage):
     objectStorageAddress: ObjectStorageAddress

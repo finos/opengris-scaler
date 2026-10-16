@@ -8,11 +8,13 @@ def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:
 
     Expected format (one rule per line, ``#`` comments supported)::
 
-        #priority,worker_manager_id[,max_task_concurrency]
-        1,native
+        #priority,worker_manager_id[,max_task_concurrency[,min_task_concurrency]]
+        1,native,8,8
         2,ecs,20
+        3,orb,,2
 
-    When ``max_task_concurrency`` is omitted, the manager's heartbeat-reported capacity is used.
+    When ``max_task_concurrency`` is omitted or empty, the manager's heartbeat-reported capacity is used.
+    When ``min_task_concurrency`` is omitted, the floor is 0.
 
     Raises ``ValueError`` on malformed input.
     """
@@ -24,23 +26,36 @@ def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:
             continue
 
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) not in (2, 3):
+        if len(parts) not in (2, 3, 4):
             raise ValueError(
                 f"waterfall_v1 policy_content line {line_number}: "
-                f"expected 'priority,worker_manager_id[,max_task_concurrency]', got {raw_line.strip()!r}"
+                "expected 'priority,worker_manager_id[,max_task_concurrency[,min_task_concurrency]]', "
+                f"got {raw_line.strip()!r}"
             )
 
         raw_priority, worker_manager_id = parts[0], parts[1]
-        raw_max_task_concurrency = parts[2] if len(parts) == 3 else None
+        raw_max_task_concurrency = parts[2] if len(parts) >= 3 else ""
+        raw_min_task_concurrency = parts[3] if len(parts) == 4 else "0"
 
         if not worker_manager_id:
             raise ValueError(f"waterfall_v1 policy_content line {line_number}: worker_manager_id cannot be empty")
+
+        max_task_concurrency = int(raw_max_task_concurrency) if raw_max_task_concurrency else None
+        min_task_concurrency = int(raw_min_task_concurrency)
+        if min_task_concurrency < 0:
+            raise ValueError(f"waterfall_v1 policy_content line {line_number}: min_task_concurrency cannot be negative")
+        if max_task_concurrency is not None and min_task_concurrency > max_task_concurrency:
+            raise ValueError(
+                f"waterfall_v1 policy_content line {line_number}: "
+                "min_task_concurrency cannot exceed max_task_concurrency"
+            )
 
         rules.append(
             WaterfallRule(
                 priority=int(raw_priority),
                 worker_manager_id=worker_manager_id.encode(),
-                max_task_concurrency=int(raw_max_task_concurrency) if raw_max_task_concurrency is not None else None,
+                max_task_concurrency=max_task_concurrency,
+                min_task_concurrency=min_task_concurrency,
             )
         )
 

@@ -69,7 +69,7 @@ class WorkerManagerController(Looper, Reporter):
 
         information_snapshot = self._build_snapshot()
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
-        worker_manager_snapshots = self._build_manager_snapshots()
+        worker_manager_snapshots = self._build_manager_snapshots(information_snapshot)
 
         commands = self._policy_controller.get_scaling_commands(
             information_snapshot, heartbeat, managed_worker_ids, worker_manager_snapshots
@@ -117,12 +117,19 @@ class WorkerManagerController(Looper, Reporter):
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
         await self._binder.send(source, command, detached=True)
 
-    def _build_manager_snapshots(self) -> Dict[bytes, WorkerManagerSnapshot]:
-        """Build cross-manager snapshots from all known managers, keyed by worker_manager_id."""
+    def _build_manager_snapshots(self, information_snapshot: InformationSnapshot) -> Dict[bytes, WorkerManagerSnapshot]:
+        """Build cross-manager snapshots from all known managers, keyed by worker_manager_id.
+
+        A manager's worker count leaves out its draining workers: they take no new task, and the manager does not
+        count them as supply either."""
         snapshots: Dict[bytes, WorkerManagerSnapshot] = {}
         for source, (last_seen, heartbeat) in self._manager_alive_since.items():
             manager_id = heartbeat.workerManagerID
-            worker_count = len(self._worker_controller.get_workers_by_manager_id(manager_id))
+            worker_count = sum(
+                1
+                for worker_id in self._worker_controller.get_workers_by_manager_id(manager_id)
+                if not information_snapshot.workers[worker_id].draining
+            )
             snapshots[manager_id] = WorkerManagerSnapshot(
                 worker_manager_id=manager_id,
                 max_task_concurrency=heartbeat.maxTaskConcurrency,

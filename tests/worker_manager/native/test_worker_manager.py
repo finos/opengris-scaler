@@ -46,3 +46,19 @@ class TestNativeWorkerProvisionerStopUnits(unittest.IsolatedAsyncioTestCase):
         with patch("os.kill"), patch("psutil.Process"):
             await provisioner.stop_units(5)
         self.assertEqual(provisioner._workers, [])
+
+
+class TestNativeWorkerProvisionerActiveUnitCount(unittest.IsolatedAsyncioTestCase):
+    async def test_worker_that_exits_on_its_own_leaves_the_count(self) -> None:
+        """A worker that dies without stop_units no longer counts as an active unit."""
+        provisioner = _make_provisioner()
+        workers = [_make_worker(pid=4000 + i) for i in range(2)]
+        with patch.object(provisioner, "_create_worker", side_effect=workers):
+            await provisioner.start_units(2)
+
+        workers[0].is_alive.return_value = False
+        workers[0].exitcode = 1
+        workers[1].is_alive.return_value = True
+
+        self.assertEqual(provisioner.active_unit_count(), 1)
+        workers[0].join.assert_called_once()
