@@ -94,7 +94,9 @@ class TestWorkerManagerLink(unittest.IsolatedAsyncioTestCase):
             worker.start()
             await asyncio.wait_for(manager.heartbeat.wait(), TIMEOUT_SECONDS)
 
-            worker.terminate()
+            # Closing the scheduler ends the worker through its teardown on every platform; terminate() would not on
+            # Windows, where it is TerminateProcess.
+            await loop.run_in_executor(None, combo.shutdown)
             await asyncio.wait_for(manager.disconnected.wait(), TIMEOUT_SECONDS)
             await loop.run_in_executor(None, worker.join, TIMEOUT_SECONDS)
         finally:
