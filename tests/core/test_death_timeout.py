@@ -47,6 +47,8 @@ class TestDeathTimeout(unittest.TestCase):
             logging_paths=DEFAULT_LOGGING_PATHS,
             logging_level=DEFAULT_LOGGING_LEVEL,
             worker_manager_id=b"test_manager",
+            worker_manager_address=AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+            unit_id="no_scheduler",
         )
         worker.start()
         worker.join()

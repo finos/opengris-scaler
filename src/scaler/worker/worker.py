@@ -69,6 +69,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         logging_paths: Tuple[str, ...],
         logging_level: str,
         worker_manager_id: bytes,
+        worker_manager_address: AddressConfig,
+        unit_id: str,
         deterministic_worker_ids: bool = False,
         security_config: Optional[SecurityConfig] = None,
     ):
@@ -102,9 +104,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
         self._worker_manager_id = worker_manager_id
+        self._worker_manager_address = worker_manager_address
+        self._unit_id = unit_id
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
+        self._connector_manager: Optional[AsyncConnector] = None
         self._binder_internal: Optional[AsyncBinder] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._task_manager: Optional[VanillaTaskManager] = None
@@ -204,6 +209,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             identity=self._ident, callback=self.__on_receive_external
         )
 
+        # The manager knows this worker by the unit id it chose, not by the worker id the scheduler sees.
+        self._connector_manager = self._backend.create_async_connector(
+            identity=self._unit_id.encode(), callback=self.__on_receive_manager
+        )
+
         self._binder_internal = self._backend.create_async_binder(
             identity=self._ident, callback=self.__on_receive_internal
         )
@@ -239,6 +249,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_manager.register(connector=self._connector_external, processor_manager=self._processor_manager)
         self._heartbeat_manager.register(
             connector_external=self._connector_external,
+            connector_manager=self._connector_manager,
             connector_storage=self._connector_storage,
             worker_task_manager=self._task_manager,
             timeout_manager=self._timeout_manager,
@@ -279,6 +290,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         raise TypeError(f"Unknown {message=}")
 
+    async def __on_receive_manager(self, message: BaseMessage) -> None:
+        if isinstance(message, WorkerHeartbeatEcho):
+            return
+
+        logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
+
     async def __on_receive_internal(self, processor_id_bytes: bytes, message: BaseMessage):
         processor_id = ProcessorID(processor_id_bytes)
 
@@ -304,6 +321,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         await self._connector_external.connect(
             self._address, ConnectorRemoteType.Binder, security_config=self._security_config
         )
+        await self._connector_manager.connect(
+            self._worker_manager_address, ConnectorRemoteType.Binder, security_config=self._security_config
+        )
         await self._binder_internal.bind(self._address_internal)
 
         if self._object_storage_address is not None:
@@ -313,6 +333,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         await asyncio.gather(
             self._processor_manager.initialize(),
             create_async_loop_routine(self._connector_external.routine, 0),
+            create_async_loop_routine(self._connector_manager.routine, 0),
             create_async_loop_routine(self._connector_storage.routine, 0),
             create_async_loop_routine(self._binder_internal.routine, 0),
             create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
@@ -324,11 +345,13 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     async def __teardown(self) -> None:
         # Guarded with `is not None` throughout: this runs even when __initialize failed partway
         # through, so some of these may never have been created.
-        await self.__notify_scheduler_of_exit()
+        await self.__notify_of_exit()
 
         destroyables: List[Tuple[str, Callable[[], None]]] = []
         if self._connector_external is not None:
             destroyables.append(("connector_external", self._connector_external.destroy))
+        if self._connector_manager is not None:
+            destroyables.append(("connector_manager", self._connector_manager.destroy))
         if self._processor_manager is not None:
             destroyables.append(("processor_manager", lambda: self._processor_manager.destroy("quit")))
         if self._binder_internal is not None:
@@ -359,25 +382,30 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __register_signal(self):
         install_async_shutdown_handler(self._loop, self.__destroy)
 
-    async def __notify_scheduler_of_exit(self) -> None:
-        """Tell the scheduler this worker is leaving, so it re-dispatches our tasks instead of
-        waiting out the heartbeat timeout. Runs on every exit path, not just on a signal.
+    async def __notify_of_exit(self) -> None:
+        """Tell the scheduler and the manager this worker is leaving: the scheduler re-dispatches our tasks instead of
+        waiting out the heartbeat timeout, and the manager reaps this process at once. Runs on every exit path.
         """
-        if self._connector_external is None:
+        await asyncio.gather(
+            self.__send_exit_notification(self._connector_external, "scheduler"),
+            self.__send_exit_notification(self._connector_manager, "manager"),
+        )
+
+    async def __send_exit_notification(self, connector: Optional[AsyncConnector], peer: str) -> None:
+        if connector is None:
             return
 
         try:
             await asyncio.wait_for(
-                self._connector_external.send(WorkerDisconnectNotification(), detached=False),
-                WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS,
+                connector.send(WorkerDisconnectNotification(), detached=False), WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
             )
         except ymq.YMQException as e:
             if e.code not in _EXPECTED_TEARDOWN_ERROR_CODES:
                 raise
-            logger.info(f"{self.identity!r}: could not notify the scheduler of exit: {e}")
+            logger.info(f"{self.identity!r}: could not notify the {peer} of exit: {e}")
         except asyncio.TimeoutError:
             logger.warning(
-                f"{self.identity!r}: could not notify the scheduler of exit within "
+                f"{self.identity!r}: could not notify the {peer} of exit within "
                 f"{WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS}s, quitting anyway"
             )
 
