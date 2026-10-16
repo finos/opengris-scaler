@@ -137,6 +137,8 @@ How It Works
 
 The worker manager connects to the scheduler and waits for scaling commands. On every heartbeat the scheduler sends a ``setDesiredTaskConcurrency`` command that declares the desired worker count per capability set. The worker manager spawns or terminates worker subprocesses to converge toward that target, and replaces a worker that dies on its own.
 
+A worker that exits tells its manager, which replaces it at once. A worker that is killed or hangs sends nothing, and is replaced once it misses heartbeats for ``--unit-timeout-seconds``.
+
 Configuration Reference
 ------------------------
 

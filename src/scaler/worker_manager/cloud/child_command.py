@@ -4,6 +4,9 @@ from typing import Dict
 from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 
+# A resource boots and installs scaler before its child manager sends the first heartbeat.
+CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS = 600
+
 
 def load_requirements_content(requirements_txt: str) -> str:
     """Return requirements file content, reading from disk if requirements_txt is a file path."""

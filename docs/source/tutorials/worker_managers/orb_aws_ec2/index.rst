@@ -302,7 +302,7 @@ For a full list of common parameters including networking (``--worker-manager-id
 .. note::
     For the ORB AWS EC2 manager, ``--max-task-concurrency`` is the total number of workers, not the number of instances. Each EC2 instance runs one worker per vCPU, so the number of instances launched is ``ceil(max_task_concurrency / vcpus_per_instance)``. The vCPU count is retrieved automatically from the AWS EC2 API for the configured ``--instance-type``.
 
-    **Example** — ``--max-task-concurrency 10`` with ``--instance-type c5.xlarge`` (4 vCPUs): ``ceil(10 / 4) = 3`` instances are launched, yielding 12 active workers.
+    **Example** — ``--max-task-concurrency 10`` with ``--instance-type c5.xlarge`` (4 vCPUs): ``ceil(10 / 4) = 3`` instances are launched. The first two run 4 workers each and the last runs 2, so 10 workers are active.
 
 Cleanup
 -------
