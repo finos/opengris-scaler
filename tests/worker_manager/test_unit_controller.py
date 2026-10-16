@@ -3,6 +3,7 @@ import unittest
 from typing import Dict, List, Set
 
 from scaler.config.constants import WORKER_MANAGER_UNIT_STABLE_SECONDS
+from scaler.config.defaults import DRAIN_TIMEOUT_DESTROY_AT_ONCE, DRAIN_TIMEOUT_NONE
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController, UnitState
@@ -72,12 +73,16 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.controller = self.__make_controller(self.provisioner)
 
     @staticmethod
-    def __make_controller(provisioner: UnitProvisioner, scale_down_cooldown_seconds: float = 0) -> UnitController:
+    def __make_controller(
+        provisioner: UnitProvisioner,
+        scale_down_cooldown_seconds: float = 0,
+        drain_timeout_seconds: float = DRAIN_TIMEOUT_SECONDS,
+    ) -> UnitController:
         return UnitController(
             provisioner,
             scale_down_cooldown_seconds=scale_down_cooldown_seconds,
             unit_timeout_seconds=UNIT_TIMEOUT_SECONDS,
-            drain_timeout_seconds=DRAIN_TIMEOUT_SECONDS,
+            drain_timeout_seconds=drain_timeout_seconds,
             restart_backoff_seconds=RESTART_BACKOFF_SECONDS,
         )
 
@@ -258,6 +263,34 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.controller._units[unit_id].drain_deadline = 0
         await self.__tick(self.controller)
         self.assertEqual(self.provisioner.destroyed, [unit_id])
+
+    async def test_a_drain_without_a_deadline_lasts_until_the_unit_finishes(self) -> None:
+        self.controller = self.__make_controller(self.provisioner, drain_timeout_seconds=DRAIN_TIMEOUT_NONE)
+        (unit_id,) = await self.__active_units(1)
+        self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+
+        self.controller._units[unit_id].state_since -= 365 * 24 * 3600  # a year of draining
+        self.__heartbeat_all(self.controller, self.provisioner)
+        await self.__tick(self.controller)
+        self.assertEqual(self.__states(self.controller), {UnitState.draining: 1})
+        self.assertEqual(self.provisioner.destroyed, [])
+
+        self.controller.on_unit_disconnect(unit_id)
+        await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
+
+    async def test_a_zero_drain_timeout_destroys_a_shed_unit_without_a_drain(self) -> None:
+        self.controller = self.__make_controller(self.provisioner, drain_timeout_seconds=DRAIN_TIMEOUT_DESTROY_AT_ONCE)
+        busy, idle = await self.__active_units(2)
+        self.controller.on_unit_heartbeat(busy, TASK_CONCURRENCY_PER_UNIT, assigned_tasks=1)
+
+        self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
+        await self.__tick(self.controller)
+
+        self.assertEqual(self.provisioner.destroyed, [idle])
+        self.assertEqual(self.__states(self.controller), {UnitState.active: 1})
+        self.assertEqual(self.controller._consecutive_unit_losses, 0, "a shed unit is not a loss")
 
     async def test_a_unit_that_reports_its_fleet_gone_is_destroyed(self) -> None:
         (unit_id,) = await self.__active_units(1)

@@ -4,6 +4,7 @@ import unittest
 from typing import Optional
 
 from scaler.config.common.cloud_children import CloudChildrenConfig
+from scaler.config.defaults import DRAIN_TIMEOUT_DESTROY_AT_ONCE, DRAIN_TIMEOUT_NONE
 from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.cloud.child_command import child_link_arguments, load_requirements_content
 
@@ -61,3 +62,20 @@ class TestChildLinkArguments(unittest.TestCase):
         """Behind 1:1 NAT, an advertised address naming port 0 takes the port the manager bound."""
         arguments = self._arguments("tcp://34.228.81.179:0")
         self.assertIn("--parent-address tcp://34.228.81.179:8518 ", arguments)
+
+    def __child_drain_timeout(self, drain_timeout_seconds: int) -> str:
+        arguments = child_link_arguments(
+            AddressConfig.from_string(self.BOUND_ADDRESS), CloudChildrenConfig(), "unit-1", 4, drain_timeout_seconds
+        )
+        return arguments.split("--drain-timeout-seconds ")[1]
+
+    def test_a_drain_without_a_deadline_or_without_a_drain_passes_to_the_child_unchanged(self):
+        self.assertEqual(self.__child_drain_timeout(DRAIN_TIMEOUT_NONE), str(DRAIN_TIMEOUT_NONE))
+        self.assertEqual(self.__child_drain_timeout(DRAIN_TIMEOUT_DESTROY_AT_ONCE), str(DRAIN_TIMEOUT_DESTROY_AT_ONCE))
+
+    def test_the_child_ends_its_drain_before_the_parent_deadline(self):
+        self.assertEqual(self.__child_drain_timeout(300), "270")
+
+    def test_a_short_parent_deadline_still_gives_the_child_a_drain(self):
+        """A child timeout of 0 would mean no drain at all, so a short parent timeout leaves the child at least 1s."""
+        self.assertEqual(self.__child_drain_timeout(20), "1")

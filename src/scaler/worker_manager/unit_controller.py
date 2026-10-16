@@ -9,6 +9,7 @@ import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from scaler.config.constants import WORKER_MANAGER_MAX_RESTART_BACKOFF_DOUBLINGS, WORKER_MANAGER_UNIT_STABLE_SECONDS
+from scaler.config.defaults import DRAIN_TIMEOUT_DESTROY_AT_ONCE, DRAIN_TIMEOUT_NONE
 from scaler.utility.cooldown import Cooldown
 from scaler.utility.mixins import Looper, Reporter
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
@@ -32,7 +33,7 @@ class Unit:
     state_since: float  # time.monotonic()
     active_task_concurrency: int = 0  # task slots the unit reported
     assigned_tasks: int = 0  # queued and running tasks the unit reported
-    drain_deadline: Optional[float] = None  # time.monotonic()
+    drain_deadline: Optional[float] = None  # time.monotonic(); None while draining without a deadline
     last_heartbeat: Optional[float] = None  # time.monotonic(); None until the first heartbeat
 
 
@@ -223,8 +224,7 @@ class UnitController(Looper, Reporter):
         """Destroy each unit whose drain passed its deadline."""
         now = time.monotonic()
         for unit in self._units_in(UnitState.draining):
-            assert unit.drain_deadline is not None, "a draining unit always has a deadline"
-            if now > unit.drain_deadline:
+            if unit.drain_deadline is not None and now > unit.drain_deadline:
                 logger.warning(f"unit {unit.unit_id!r} did not drain in {self._drain_timeout_seconds}s, destroying it")
                 self._set_state(unit, UnitState.stopping)
 
@@ -256,12 +256,18 @@ class UnitController(Looper, Reporter):
 
         self._scale_down_cooldown.reset()
         for unit in self._select_units_to_shed(supply - desired_units):
-            self._begin_drain(unit)
+            self._shed(unit)
 
-    def _begin_drain(self, unit: Unit) -> None:
+    def _shed(self, unit: Unit) -> None:
+        if self._drain_timeout_seconds == DRAIN_TIMEOUT_DESTROY_AT_ONCE:
+            logger.info(f"destroying unit {unit.unit_id!r} without a drain (assigned_tasks={unit.assigned_tasks})")
+            self._set_state(unit, UnitState.stopping)
+            return
+
         logger.info(f"draining unit {unit.unit_id!r} (assigned_tasks={unit.assigned_tasks})")
         self._set_state(unit, UnitState.draining)
-        unit.drain_deadline = unit.state_since + self._drain_timeout_seconds
+        if self._drain_timeout_seconds != DRAIN_TIMEOUT_NONE:
+            unit.drain_deadline = unit.state_since + self._drain_timeout_seconds
 
     def _dispatch_create(self) -> None:
         """Add a pending unit and create it in the background, unless the crash-loop backoff is active."""

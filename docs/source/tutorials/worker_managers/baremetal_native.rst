@@ -141,7 +141,7 @@ The worker manager connects to the scheduler and waits for scaling commands. On 
 
 A worker that exits tells its manager, which replaces it at once. A worker that is killed or hangs sends nothing, and is replaced once it misses heartbeats for ``--unit-timeout-seconds``.
 
-To shed a worker, the manager drains it: the worker takes no new task, the scheduler takes back its queued tasks, and the worker exits once its running task finishes. A worker that has not finished within ``--drain-timeout-seconds`` is terminated, and its task runs again elsewhere.
+To shed a worker, the manager drains it: the worker takes no new task, the scheduler takes back its queued tasks, and the worker exits once its running task finishes. With ``--drain-timeout-seconds``, a worker that has not finished in time is terminated, and its task runs again elsewhere; ``0`` terminates a shed worker at once.
 
 Configuration Reference
 ------------------------
