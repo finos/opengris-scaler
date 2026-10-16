@@ -65,8 +65,9 @@ class CapacityCoordinator:
         heartbeat) will trigger a retry once the cooldown window has elapsed.
         """
         # An unchanged count is only a true no-op if nothing is pending: while a scale-down is
-        # deferred, we must keep signalling or it would never be retried once the cooldown ends.
-        if count == self._desired_unit_count and not self._scale_down_cooldown.is_running:
+        # deferred, we must keep signalling or it would never be retried once the cooldown ends,
+        # and a unit that exited on its own must be replaced.
+        if count == self._desired_unit_count and not self._scale_down_cooldown.is_running and self._is_converged():
             return
         if count != self._desired_unit_count:
             logger.info(f"Desired unit count changed: {self._desired_unit_count} -> {count}")
@@ -74,6 +75,12 @@ class CapacityCoordinator:
         self._reconcile_needed.set()
         if self._active_reconcile_task is None:
             self._active_reconcile_task = asyncio.create_task(self._reconcile())
+
+    def _is_converged(self) -> bool:
+        target = self._desired_unit_count
+        if self._max_unit_count != -1:
+            target = min(target, self._max_unit_count)
+        return self._active_unit_count() == target
 
     def cancel(self) -> None:
         """Stop the reconcile task. Safe to call multiple times."""
