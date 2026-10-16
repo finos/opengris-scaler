@@ -78,6 +78,15 @@ class TaskManager(Looper, TaskManagerMixin):
     def get_queued_size(self) -> int:
         return self._actor.queued_task_count
 
+    def drain(self) -> None:
+        self._actor.drain()
+
+    def is_draining(self) -> bool:
+        return self._actor.is_draining
+
+    def is_idle(self) -> bool:
+        return self._actor.is_idle
+
     def can_accept_task(self) -> bool:
         return self._actor.has_free_permit
 

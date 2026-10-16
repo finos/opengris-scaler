@@ -20,3 +20,5 @@ Shutdown behavior
 By default, the scheduler runs in protected mode. See :ref:`protected <protected>` for details.
 
 If protected mode is disabled, clients can stop the cluster by calling :py:func:`~Client.shutdown()`.
+The scheduler asks every worker manager to drain its workers: each worker finishes its running task and starts none of its queued ones.
+The scheduler exits once the last worker manager is gone.

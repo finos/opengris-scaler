@@ -11,6 +11,7 @@ from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.constants import CLUSTER_SHUTDOWN_TIMEOUT_SECONDS
 from scaler.config.defaults import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -39,8 +40,6 @@ from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 
 logger = logging.getLogger(__name__)
-
-SCHEDULER_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 10
 
 
 def _run_native_worker_manager(worker_manager: NativeWorkerManager) -> None:
@@ -120,11 +119,7 @@ class SchedulerClusterCombo:
             # object storage should be ready before starting the cluster
             self._object_storage_address = self._object_storage.wait_until_ready()
 
-            # Synthesized signal-disposition for the scheduler. multiprocessing.Process.terminate() is
-            # TerminateProcess on Windows, which never runs Python signal handlers, so the scheduler would
-            # die abruptly without sending FIN to its connected workers and the workers' connector_external
-            # would enter the YMQ retry loop. Setting this Event on shutdown lets the scheduler's daemon
-            # waiter trigger the same graceful-shutdown path that SIGTERM triggers on POSIX.
+            # Setting this event starts a forced shutdown of the cluster through messages, the same on every platform.
             self._scheduler_shutdown_event = multiprocessing.get_context("spawn").Event()
 
             scheduler = SchedulerProcess(
@@ -200,6 +195,19 @@ class SchedulerClusterCombo:
         self._shutdown_called = True
 
         logger.info(f"{self.__get_prefix()} shutdown")
+
+        # The scheduler stops the worker manager, which stops its workers, and quits last.
+        # Skip the event.set() if the scheduler is already dead: multiprocessing.Event.set()
+        # internally calls Condition.notify_all(), which waits for the sleeper to release the
+        # woken_count counter. If the daemon waiter died with the scheduler (e.g. when the
+        # test_scheduler_crash test deliberately crashes the scheduler), set() hangs forever
+        # because no one is left to release that counter.
+        if self._scheduler is not None and self._scheduler.is_alive():
+            self._scheduler_shutdown_event.set()
+            self._scheduler.join(timeout=CLUSTER_SHUTDOWN_TIMEOUT_SECONDS)
+            if self._worker_manager_process is not None:
+                self._worker_manager_process.join(timeout=CLUSTER_SHUTDOWN_TIMEOUT_SECONDS)
+
         self._stop_worker_manager()
         self._stop_scheduler()
 
@@ -212,14 +220,9 @@ class SchedulerClusterCombo:
             return
 
         if self._worker_manager_process.is_alive():
-            # On POSIX, multiprocessing.Process.terminate() sends SIGTERM and the worker manager's
-            # signal handler signals each child worker to stop, which in turn
-            # cleanly tears down their processors. On Windows terminate() is TerminateProcess --
-            # the handler never runs and the worker / processor children become orphaned, kept
-            # alive (and busy retrying YMQ connections) until they happen to notice the scheduler
-            # has gone away. That orphaned-but-alive period is what added ~52s teardown latency
-            # to test_cancel-style tests on the CI Windows runner. Snapshot the descendant tree
-            # before terminating so we can directly TerminateProcess the orphans afterwards.
+            logger.warning(f"{self.__get_prefix()} worker manager outlived the shutdown, terminating it")
+
+            # On Windows terminate() is TerminateProcess: the manager's children are orphaned, so terminate them too.
             descendants: List[psutil.Process] = []
             if sys.platform == "win32":
                 try:
@@ -240,29 +243,10 @@ class SchedulerClusterCombo:
         if self._scheduler is None:
             return
 
-        if sys.platform == "win32":
-            # Process.terminate() on Windows is TerminateProcess, which kills the scheduler
-            # without running its signal handler -- the BinderSocket then dies without sending
-            # FIN, and connected workers enter the YMQ reconnect retry loop. Set the shutdown
-            # event so the scheduler's daemon waiter triggers the same graceful path SIGTERM
-            # triggers on POSIX, then fall back to terminate() if the scheduler does not exit
-            # within the timeout.
-            #
-            # Skip the event.set() if the scheduler is already dead: multiprocessing.Event.set()
-            # internally calls Condition.notify_all(), which waits for the sleeper to release the
-            # woken_count counter. If the daemon waiter died with the scheduler (e.g. when the
-            # test_scheduler_crash test deliberately crashes the scheduler), set() hangs forever
-            # because no one is left to release that counter. We rely on terminate()+join() in
-            # that case.
-            if self._scheduler.is_alive():
-                self._scheduler_shutdown_event.set()
-                self._scheduler.join(timeout=SCHEDULER_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS)
-            if self._scheduler.is_alive():
-                self._scheduler.terminate()
-                self._scheduler.join()
-        else:
+        if self._scheduler.is_alive():
+            logger.warning(f"{self.__get_prefix()} scheduler outlived the shutdown, terminating it")
             self._scheduler.terminate()
-            self._scheduler.join()
+        self._scheduler.join()
 
     def get_address(self) -> str:
         return repr(self._address)

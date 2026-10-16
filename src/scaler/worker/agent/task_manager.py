@@ -41,6 +41,7 @@ class _TaskTable:
         self._waiting_task_ids: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
         self._suspended_task_ids: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
         self._runnable_added = asyncio.Event()
+        self._draining = False  # a draining table hands out only suspended tasks
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -50,6 +51,12 @@ class _TaskTable:
 
     def waiting_count(self) -> int:
         return len(self._waiting_task_ids)
+
+    def drain(self) -> None:
+        self._draining = True
+
+    def is_draining(self) -> bool:
+        return self._draining
 
     def add(self, task: Task, priority: int) -> _TaskEntry:
         entry = _TaskEntry(task=task, priority=priority, state=_TaskState.WAITING)
@@ -75,7 +82,7 @@ class _TaskTable:
 
     def __next(self) -> Optional[_TaskEntry]:
         suspended = self.__head(self._suspended_task_ids)
-        waiting = self.__head(self._waiting_task_ids)
+        waiting = None if self._draining else self.__head(self._waiting_task_ids)
         if waiting is None or (suspended is not None and suspended.priority >= waiting.priority):
             return suspended
         return waiting
@@ -158,6 +165,15 @@ class VanillaTaskManager(Looper, TaskManager):
 
     def get_queued_size(self):
         return self._tasks.waiting_count()
+
+    def drain(self) -> None:
+        self._tasks.drain()
+
+    def is_draining(self) -> bool:
+        return self._tasks.is_draining()
+
+    def is_idle(self) -> bool:
+        return len(self._tasks) == 0
 
     async def __processing_task(self):
         await self._processor_manager.wait_until_can_accept_task()

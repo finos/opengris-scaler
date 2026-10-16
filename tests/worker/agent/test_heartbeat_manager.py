@@ -25,6 +25,7 @@ class TestVanillaHeartbeatManager(unittest.IsolatedAsyncioTestCase):
         self.connector_manager = AsyncMock(spec=AsyncConnector)
         task_manager = MagicMock(spec=TaskManager)
         task_manager.get_queued_size.return_value = 0
+        task_manager.is_draining.return_value = False
         processor_manager = MagicMock(spec=ProcessorManager)
         processor_manager.processors.return_value = []
         processor_manager.can_accept_task.return_value = True

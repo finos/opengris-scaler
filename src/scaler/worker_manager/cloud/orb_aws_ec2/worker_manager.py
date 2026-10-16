@@ -412,8 +412,15 @@ set +e
 
         backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
         wm_id = shlex.quote(str(worker_manager_config.worker_manager_id))
+        link_arguments = child_link_arguments(
+            children_address,
+            self._config.cloud_children_config,
+            unit_id,
+            workers_per_instance,
+            worker_manager_config.drain_timeout_seconds,
+        )
         script += f"""{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
-    {child_link_arguments(children_address, self._config.cloud_children_config, unit_id, workers_per_instance)} \\
+    {link_arguments} \\
     --worker-type ORB \\
     --worker-manager-id {wm_id} \\
     --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \\

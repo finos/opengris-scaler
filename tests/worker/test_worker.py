@@ -53,6 +53,9 @@ class _StubCollaborator:
     def destroy(self, *args: object) -> None:
         self.destroyed = True
 
+    def is_draining(self) -> bool:
+        return False
+
 
 class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
     @staticmethod
@@ -93,6 +96,7 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
 
         worker._connector_external = _StubCollaborator()
         worker._connector_manager = _StubCollaborator()
+        worker._manager_timeout_manager = _StubCollaborator()
         worker._connector_storage = _StubCollaborator()
         worker._binder_internal = _StubCollaborator()
         worker._heartbeat_manager = _StubCollaborator()

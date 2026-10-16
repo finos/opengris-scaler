@@ -51,6 +51,17 @@ class WorkerManagerConfig(ConfigClass):
         ),
     )
 
+    drain_timeout_seconds: int = dataclasses.field(
+        default=defaults.DEFAULT_WORKER_MANAGER_DRAIN_TIMEOUT_SECONDS,
+        metadata=dict(
+            short="-drt",
+            help=(
+                "seconds a unit may take to finish its running tasks after it is told to drain, before the "
+                "worker manager destroys it by force"
+            ),
+        ),
+    )
+
     unit_timeout_seconds: int = dataclasses.field(
         default=defaults.DEFAULT_WORKER_MANAGER_UNIT_TIMEOUT_SECONDS,
         metadata=dict(
@@ -89,5 +100,7 @@ class WorkerManagerConfig(ConfigClass):
             raise ValueError("max_task_concurrency must be -1 (no limit) or a non-negative integer.")
         if self.scale_down_cooldown_seconds < 0:
             raise ValueError("scale_down_cooldown_seconds must be a non-negative number.")
+        if self.drain_timeout_seconds < 0:
+            raise ValueError("drain_timeout_seconds must be a non-negative number.")
         if self.unit_timeout_seconds <= 0:
             raise ValueError("unit_timeout_seconds must be a positive number.")

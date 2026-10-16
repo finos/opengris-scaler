@@ -6,6 +6,7 @@ from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
 from scaler.protocol.capnp import (
     ScalingManagerStatus,
+    UnitShutdown,
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
@@ -16,6 +17,7 @@ from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.controllers.worker_manager_utilities import build_scaling_manager_status
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.snapshot import InformationSnapshot
@@ -44,6 +46,9 @@ class WorkerManagerController(Looper, Reporter):
         # Used to report pendingWorkers = max(0, last_desired - connected_count) to the monitor.
         self._last_desired_total: Dict[bytes, int] = {}
 
+        self._shutting_down = False
+        self._force_shutdown = False  # set only with _shutting_down: the workers drop their running tasks
+
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
         self._task_controller = task_controller
@@ -68,6 +73,11 @@ class WorkerManagerController(Looper, Reporter):
 
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
+        if self._shutting_down:
+            # Every heartbeat, not once: a manager that connects during the shutdown must drain too.
+            await self._binder.send(source, UnitShutdown(force=self._force_shutdown), detached=True)
+            return
+
         information_snapshot = self._build_snapshot()
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
         worker_manager_snapshots = self._build_manager_snapshots(information_snapshot)
@@ -81,8 +91,27 @@ class WorkerManagerController(Looper, Reporter):
 
         self._last_desired_total[source] = _sum_desired_for_manager(commands, heartbeat.capabilities)
 
+    async def begin_shutdown(self, force: bool) -> None:
+        """Drain every worker manager, then quit. With force, the workers drop their running tasks. The scheduler
+        stays up to cancel the queued tasks of draining workers, and owns no worker's lifecycle."""
+        self._shutting_down = True
+        self._force_shutdown = self._force_shutdown or force
+
+        # At once rather than on each manager's next heartbeat, which keeps repeating it.
+        for source in self._manager_alive_since:
+            await self._binder.send(source, UnitShutdown(force=self._force_shutdown), detached=True)
+
+    async def on_disconnect_notification(self, source: bytes) -> None:
+        await self._disconnect_manager(source)
+        self._quit_if_shut_down()
+
     async def routine(self):
         await self._clean_managers()
+        self._quit_if_shut_down()
+
+    def _quit_if_shut_down(self) -> None:
+        if self._shutting_down and not self._manager_alive_since:
+            raise ClientShutdownException("every worker manager is gone, quitting")
 
     def get_status(self) -> ScalingManagerStatus:
         managed_workers = self.get_managed_workers()

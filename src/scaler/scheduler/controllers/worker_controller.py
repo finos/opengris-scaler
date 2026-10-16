@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import (
-    ClientDisconnect,
     ObjectStorageAddress,
     ProcessorStatus,
     Resource,
@@ -22,7 +21,7 @@ from scaler.protocol.helpers import capabilities_to_dict, dict_to_capabilities
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
-from scaler.utility.identifiers import ClientID, TaskID, WorkerID, WorkerManagerID
+from scaler.utility.identifiers import TaskID, WorkerID, WorkerManagerID
 from scaler.utility.mixins import Looper, Reporter
 
 logger = logging.getLogger(__name__)
@@ -100,10 +99,6 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             ),
             detached=True,
         )
-
-    async def on_client_shutdown(self, client_id: ClientID) -> None:
-        for worker in self._allocation_policy.get_worker_ids():
-            await self.__shutdown_worker(worker)
 
     async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification) -> None:
         # The notification always refers to its sender, whose identity comes from the binder and
@@ -235,9 +230,3 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         logger.info(f"{worker_id!r} is draining: taking back {len(task_ids)} task(s)")
         for task_id in task_ids:
             await self._task_controller.on_task_balance_cancel(task_id)
-
-    async def __shutdown_worker(self, worker_id: WorkerID) -> None:
-        await self._binder.send(
-            worker_id, ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown), detached=True
-        )
-        await self.__disconnect_worker(worker_id, reason="client shutdown")

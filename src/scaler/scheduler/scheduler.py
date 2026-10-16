@@ -25,6 +25,7 @@ from scaler.protocol.capnp import (
     TaskResult,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
+    WorkerManagerDisconnectNotification,
     WorkerManagerHeartbeat,
 )
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
@@ -91,7 +92,11 @@ class Scheduler:
         )
 
         self._client_manager.register(
-            self._binder, self._binder_monitor, self._object_controller, self._task_controller, self._worker_controller
+            self._binder,
+            self._binder_monitor,
+            self._object_controller,
+            self._task_controller,
+            self._worker_manager_controller,
         )
         self._object_controller.register(
             self._binder, self._binder_monitor, self._connector_storage, self._client_manager, self._worker_controller
@@ -131,6 +136,11 @@ class Scheduler:
     def address(self) -> AddressConfig:
         assert self._address is not None
         return self._address
+
+    async def force_shutdown(self) -> None:
+        """Stop the cluster through its worker managers, the workers dropping their running tasks, then quit."""
+        logger.info(f"{self.__class__.__name__}: forced shutdown, stopping every worker manager")
+        await self._worker_manager_controller.begin_shutdown(force=True)
 
     async def __initialize_network(self) -> None:
         # Scheduler's binder
@@ -259,6 +269,10 @@ class Scheduler:
         # worker manager controller
         if isinstance(message, WorkerManagerHeartbeat):
             await self._worker_manager_controller.on_heartbeat(source, message)
+            return
+
+        if isinstance(message, WorkerManagerDisconnectNotification):
+            await self._worker_manager_controller.on_disconnect_notification(source)
             return
 
         logger.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")

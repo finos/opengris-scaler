@@ -125,6 +125,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             hostname=get_hostname(),
             netSentBytes=net_sent,
             netRecvBytes=net_recv,
+            draining=self._worker_task_manager.is_draining(),
         )
         # The manager judges liveness by these heartbeats, so they never wait on the scheduler's echo.
         await self._connector_manager.send(heartbeat, detached=True)

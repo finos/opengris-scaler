@@ -1857,7 +1857,7 @@ class WebUIApp:
     def _fleet_worker_count(self) -> int:
         """Full fleet size, for the "N of M" indicator next to a bounded worker list.
 
-        Workers can run without a registered manager (a native manager in fixed mode), zeroing those totals.
+        Workers can run before their manager registers or after it times out, zeroing those totals.
         The workers this backend holds are then the fleet it knows about.
         """
         return max(self._total_workers, len(self._workers_data))

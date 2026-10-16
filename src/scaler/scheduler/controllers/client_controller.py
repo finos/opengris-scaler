@@ -14,8 +14,8 @@ from scaler.protocol.capnp import (
     TaskCancel,
 )
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
-from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController, WorkerController
-from scaler.utility.exceptions import ClientShutdownException
+from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController
+from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.one_to_many_dict import OneToManyDict
@@ -42,7 +42,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         self._binder_monitor: Optional[AsyncPublisher] = None
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
-        self._worker_controller: Optional[WorkerController] = None
+        self._worker_manager_controller: Optional[WorkerManagerController] = None
 
         self._connected_clients: Dict[ClientID, _ConnectedClient] = dict()
 
@@ -52,13 +52,13 @@ class VanillaClientController(ClientController, Looper, Reporter):
         binder_monitor: AsyncPublisher,
         object_controller: ObjectController,
         task_controller: TaskController,
-        worker_controller: WorkerController,
+        worker_manager_controller: WorkerManagerController,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
         self._object_controller = object_controller
         self._task_controller = task_controller
-        self._worker_controller = worker_controller
+        self._worker_manager_controller = worker_manager_controller
 
     def get_client_task_ids(self, client_id: ClientID) -> Set[TaskID]:
         return self._client_to_task_ids.get_values(client_id)
@@ -134,9 +134,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         if self._config_controller.get_config("protected"):
             return
 
-        await self._worker_controller.on_client_shutdown(client_id)
-
-        raise ClientShutdownException(f"received client shutdown from {client_id!r}, quitting")
+        await self._worker_manager_controller.begin_shutdown(force=False)
 
     async def routine(self):
         await self.__routine_cleanup_clients()

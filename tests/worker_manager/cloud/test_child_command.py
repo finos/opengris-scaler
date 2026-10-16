@@ -31,6 +31,7 @@ class TestLoadRequirementsContent(unittest.TestCase):
 class TestChildLinkArguments(unittest.TestCase):
     BOUND_ADDRESS = "tcp://172.31.8.78:8518"
     ADVERTISED_ADDRESS = "tcp://34.228.81.179:8518"
+    DRAIN_TIMEOUT_SECONDS = 120
 
     def _arguments(self, advertised_children_address: Optional[str]) -> str:
         cloud_children_config = CloudChildrenConfig(
@@ -38,7 +39,13 @@ class TestChildLinkArguments(unittest.TestCase):
                 AddressConfig.from_string(advertised_children_address) if advertised_children_address else None
             )
         )
-        return child_link_arguments(AddressConfig.from_string(self.BOUND_ADDRESS), cloud_children_config, "unit-1", 4)
+        return child_link_arguments(
+            AddressConfig.from_string(self.BOUND_ADDRESS),
+            cloud_children_config,
+            "unit-1",
+            4,
+            self.DRAIN_TIMEOUT_SECONDS,
+        )
 
     def test_units_dial_advertised_children_address(self):
         """Units behind NAT dial the advertised address, not the address the manager binds."""

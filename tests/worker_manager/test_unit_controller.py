@@ -10,6 +10,7 @@ from tests.utility.utility import logging_test_name
 
 TASK_CONCURRENCY_PER_UNIT = 2
 RESTART_BACKOFF_SECONDS = 60
+DRAIN_TIMEOUT_SECONDS = 60
 UNIT_TIMEOUT_SECONDS = 60
 STARTUP_TIMEOUT_SECONDS = 60
 
@@ -76,6 +77,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
             provisioner,
             scale_down_cooldown_seconds=scale_down_cooldown_seconds,
             unit_timeout_seconds=UNIT_TIMEOUT_SECONDS,
+            drain_timeout_seconds=DRAIN_TIMEOUT_SECONDS,
             restart_backoff_seconds=RESTART_BACKOFF_SECONDS,
         )
 
@@ -156,6 +158,16 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         await self.__tick(self.controller)
         self.assertEqual(len(self.provisioner.created), 2)
 
+    async def test_a_silent_draining_unit_is_destroyed_before_its_deadline_without_backoff(self) -> None:
+        (unit_id,) = await self.__active_units(1)
+        self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+        self.controller._units[unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
+
+        await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
+        self.assertEqual(self.controller._consecutive_unit_losses, 0)
+
     async def test_a_unit_that_sends_heartbeats_is_not_silent(self) -> None:
         (unit_id,) = await self.__active_units(1)
         self.controller._units[unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
@@ -217,7 +229,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.__heartbeat_all(self.controller, self.provisioner)
         return list(self.controller._units)
 
-    async def test_scale_down_destroys_the_least_occupied_units(self) -> None:
+    async def test_scale_down_drains_the_least_occupied_units(self) -> None:
         busy, idle, half = await self.__active_units(3)
         self.controller.on_unit_heartbeat(busy, TASK_CONCURRENCY_PER_UNIT, assigned_tasks=2)
         self.controller.on_unit_heartbeat(half, TASK_CONCURRENCY_PER_UNIT, assigned_tasks=1)
@@ -225,20 +237,40 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
         await self.__tick(self.controller)
 
-        self.assertEqual(sorted(self.provisioner.destroyed), sorted([idle, half]))
-        self.assertEqual(list(self.controller._units), [busy])
+        self.assertFalse(self.controller.is_unit_serving(idle))
+        self.assertFalse(self.controller.is_unit_serving(half))
+        self.assertTrue(self.controller.is_unit_serving(busy))
+        self.assertEqual(self.provisioner.destroyed, [], "a drain destroys nothing")
 
-    async def test_a_stopping_unit_is_not_supply(self) -> None:
-        """A slow destroy does not make each routine destroy one more unit."""
+    async def test_a_draining_unit_is_not_supply(self) -> None:
+        """A long drain does not make each routine drain one more unit."""
         await self.__active_units(2)
-        self.provisioner.fail_destroys = True
         self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
         for _ in range(3):
             await self.__tick(self.controller)
-        self.assertEqual(self.__states(self.controller), {UnitState.active: 1, UnitState.stopping: 1})
+        self.assertEqual(self.__states(self.controller), {UnitState.active: 1, UnitState.draining: 1})
+
+    async def test_a_drain_past_its_deadline_destroys_the_unit(self) -> None:
+        (unit_id,) = await self.__active_units(1)
+        self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+
+        self.controller._units[unit_id].drain_deadline = 0
+        await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
+
+    async def test_a_unit_that_reports_its_fleet_gone_is_destroyed(self) -> None:
+        (unit_id,) = await self.__active_units(1)
+        self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+
+        self.controller.on_unit_disconnect(unit_id)
+        await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
+        self.assertEqual(self.controller._consecutive_unit_losses, 0, "a finished drain is not a loss")
 
     async def test_a_unit_that_exits_while_serving_is_destroyed_and_counts_as_lost(self) -> None:
-        """A disconnect notification means the unit gave up on its own."""
+        """A disconnect notification from a unit nobody told to drain means it gave up on its own."""
         (unit_id,) = await self.__active_units(1)
 
         self.controller.on_unit_disconnect(unit_id)
@@ -246,6 +278,23 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.provisioner.destroyed, [unit_id])
         self.assertNotIn(unit_id, self.controller._units)
         self.assertEqual(self.controller._consecutive_unit_losses, 1)
+
+    async def test_an_unknown_unit_is_not_serving(self) -> None:
+        self.assertFalse(self.controller.is_unit_serving("unknown"))
+
+    async def test_shutdown_drains_every_unit_and_ignores_new_counts(self) -> None:
+        units = await self.__active_units(2)
+        self.controller.begin_shutdown(force=False)
+        self.controller.set_desired_task_concurrency(10 * TASK_CONCURRENCY_PER_UNIT)
+        await self.__tick(self.controller)
+        self.assertEqual(self.__states(self.controller), {UnitState.draining: 2})
+        self.assertFalse(self.controller.is_shut_down())
+
+        for unit_id in units:
+            self.controller.on_unit_disconnect(unit_id)
+        await self.__tick(self.controller)
+        self.assertTrue(self.controller.is_shut_down())
+        self.assertEqual(len(self.provisioner.created), 2)
 
     async def test_scale_down_waits_for_the_cooldown(self) -> None:
         controller = self.__make_controller(self.provisioner, scale_down_cooldown_seconds=60)
@@ -261,7 +310,9 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         await self.__active_units(1)
 
         self.provisioner.fail_destroys = True
+        (unit_id,) = self.controller._units
         self.controller.set_desired_task_concurrency(0)
+        self.controller.on_unit_disconnect(unit_id)
         await self.__tick(self.controller)
         self.assertEqual(self.__states(self.controller), {UnitState.stopping: 1})
 
@@ -271,10 +322,12 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.provisioner.destroyed), 1)
 
     async def test_a_slow_destroy_is_not_started_again(self) -> None:
-        await self.__active_units(1)
+        (unit_id,) = await self.__active_units(1)
 
         self.provisioner.hold_destroys = True
         self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+        self.controller.on_unit_disconnect(unit_id)  # the drain finished
         for _ in range(3):
             await self.__tick(self.controller)
         self.assertEqual(self.provisioner.destroy_calls, 1)
@@ -353,6 +406,8 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         (unit_id,) = await self.__active_units(1)
         self.provisioner.hold_destroys = True
         self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+        self.controller.on_unit_disconnect(unit_id)  # the drain finished
         await self.__tick(self.controller)
         self.assertEqual(self.__states(self.controller), {UnitState.destroying: 1})
 

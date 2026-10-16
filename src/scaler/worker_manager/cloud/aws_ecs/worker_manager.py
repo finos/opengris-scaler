@@ -48,6 +48,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id
         self._cloud_children_config = config.cloud_children_config
+        self._drain_timeout_seconds = config.worker_manager_config.drain_timeout_seconds
 
         aws_session = boto3.Session(
             aws_access_key_id=config.aws_access_key_id,
@@ -99,7 +100,11 @@ class ECSWorkerProvisioner(UnitProvisioner):
 
     def _build_task_command(self, unit_id: str) -> str:
         link_arguments = child_link_arguments(
-            self._children_address, self._cloud_children_config, unit_id, self._ecs_task_cpu
+            self._children_address,
+            self._cloud_children_config,
+            unit_id,
+            self._ecs_task_cpu,
+            self._drain_timeout_seconds,
         )
         command = (
             f"scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} "

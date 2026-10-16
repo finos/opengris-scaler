@@ -211,10 +211,6 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_shutdown(self, client_id: ClientID):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
     async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification):
         raise NotImplementedError()
 
