@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, List
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.desired_concurrency import extract_desired_count
+from scaler.worker_manager.local_process import local_children_address
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.proxy.aws_batch.worker import create_aws_batch_worker
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
@@ -99,13 +100,13 @@ class AWSBatchWorkerManager:
 
         provisioner = AWSBatchWorkerProvisioner(config)
         runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_aws_hpc",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=-1,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_address=local_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=config.max_concurrent_jobs,
         )

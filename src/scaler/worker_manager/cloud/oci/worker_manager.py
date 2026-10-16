@@ -14,7 +14,12 @@ import oci
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import format_capabilities, load_requirements_content
+from scaler.worker_manager.cloud.child_command import (
+    child_link_arguments,
+    cloud_children_address,
+    format_capabilities,
+    load_requirements_content,
+)
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -73,7 +78,7 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     async def start_units(self, count: int) -> None:
         for _ in range(count):
-            instance_id = await self._start_instance()
+            instance_id = await self._start_instance(uuid.uuid4().hex)
             if instance_id is not None:
                 self._instances.append(_InstanceInfo(instance_id=instance_id))
 
@@ -91,7 +96,7 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
             await self._stop_instance(info.instance_id)
         self._instances.clear()
 
-    async def _start_instance(self) -> Optional[str]:
+    async def _start_instance(self, unit_id: str) -> Optional[str]:
         config = self._config
         container_instance_config = config.container_instance_config
         num_workers = max(1, int(config.instance_ocpus))
@@ -100,9 +105,8 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
         requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
 
         command = f"""scaler_worker_manager baremetal_native {scheduler_address!r} \
---mode fixed \
+{child_link_arguments(config.worker_manager_config, unit_id, num_workers)} \
 --worker-type OCI_RAW \
---max-task-concurrency {num_workers} \
 --worker-manager-id {config.worker_manager_config.worker_manager_id} \
 --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \
 --heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} \
@@ -244,13 +248,13 @@ class OCIInstancesWorkerManager:
         max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
         provisioner = OCIInstancesWorkerProvisioner(config, max_instances)
         self._runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_oci_raw",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_instances,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_address=cloud_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=workers_per_instance,
         )

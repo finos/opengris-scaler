@@ -11,7 +11,7 @@ from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
-from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.exceptions import DisconnectedError
 from scaler.utility.logging.utility import setup_logger
@@ -34,7 +34,7 @@ def noop_sleep(sec: int):
     return sec
 
 
-def _build_fixed_worker_manager(combo: SchedulerClusterCombo, manager_id: str) -> NativeWorkerManager:
+def _build_worker_manager(combo: SchedulerClusterCombo, manager_id: str) -> NativeWorkerManager:
     base_config = combo._worker_manager.config
     base_worker_config = base_config.worker_config
     base_logging_config = base_config.logging_config
@@ -46,7 +46,6 @@ def _build_fixed_worker_manager(combo: SchedulerClusterCombo, manager_id: str) -
                 object_storage_address=combo._object_storage_address,
                 max_task_concurrency=1,
             ),
-            mode=NativeWorkerManagerMode.FIXED,
             worker_config=WorkerConfig(
                 per_worker_capabilities=WorkerCapabilities({}),
                 per_worker_task_queue_size=base_worker_config.per_worker_task_queue_size,
@@ -80,7 +79,7 @@ class TestClusterDisconnect(unittest.TestCase):
         pass
 
     def test_cluster_disconnect(self):
-        dying_manager = _build_fixed_worker_manager(self.combo, "test_manager")
+        dying_manager = _build_worker_manager(self.combo, "test_manager")
         dying_process = multiprocessing.get_context("spawn").Process(target=dying_manager.run)
         dying_process.start()
 
@@ -147,7 +146,7 @@ class TestGracefulWorkerShutdown(unittest.TestCase):
         self.combo.shutdown()
 
     def _start_manager(self, manager_id: str) -> multiprocessing.Process:
-        manager = _build_fixed_worker_manager(self.combo, manager_id)
+        manager = _build_worker_manager(self.combo, manager_id)
         proc: multiprocessing.Process = multiprocessing.get_context("spawn").Process(  # type: ignore[assignment]
             target=manager.run
         )

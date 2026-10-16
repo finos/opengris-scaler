@@ -3,13 +3,14 @@ from __future__ import annotations
 import logging
 import math
 import shlex
+import uuid
 from typing import TYPE_CHECKING, List
 
 import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import format_capabilities
+from scaler.worker_manager.cloud.child_command import child_link_arguments, cloud_children_address, format_capabilities
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -49,6 +50,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_task_memory = config.ecs_task_memory
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+        self._worker_manager_config = config.worker_manager_config
         self._units: List[str] = []  # ECS task ARNs of active units
         self._capacity_coordinator = CapacityCoordinator(
             start_units=self.start_units,
@@ -106,12 +108,11 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
             )
         self._ecs_task_definition = resp["taskDefinition"]["taskDefinitionArn"]
 
-    def _build_task_command(self) -> str:
+    def _build_task_command(self, unit_id: str) -> str:
         command = (
             f"scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} "
-            f"--mode fixed "
+            f"{child_link_arguments(self._worker_manager_config, unit_id, self._ecs_task_cpu)} "
             f"--worker-type ECS "
-            f"--max-task-concurrency {self._ecs_task_cpu} "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "
             f"--task-timeout-seconds {self._task_timeout_seconds} "
@@ -147,7 +148,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         task_concurrency = extract_desired_count(requests, self._capabilities)
         await self._capacity_coordinator.set_desired_unit_count(math.ceil(task_concurrency / self._ecs_task_cpu))
 
-    async def _start_unit(self, command: str) -> None:
+    async def _start_unit(self, unit_id: str) -> None:
         resp = self._ecs_client.run_task(
             cluster=self._ecs_cluster,
             taskDefinition=self._ecs_task_definition,
@@ -157,7 +158,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
                     {
                         "name": "scaler-container",
                         "environment": [
-                            {"name": "COMMAND", "value": command},
+                            {"name": "COMMAND", "value": self._build_task_command(unit_id)},
                             {"name": "PYTHON_REQUIREMENTS", "value": self._ecs_python_requirements},
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
                         ],
@@ -182,9 +183,8 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         logger.info(f"Started ECS task {task_arn!r}")
 
     async def start_units(self, count: int) -> None:
-        command = self._build_task_command()
         for _ in range(count):
-            await self._start_unit(command)
+            await self._start_unit(uuid.uuid4().hex)
 
     async def stop_units(self, count: int) -> None:
         to_stop = self._units[:count]
@@ -212,13 +212,13 @@ class ECSWorkerManager:
         mtc = config.worker_manager_config.max_task_concurrency
         max_instances = math.ceil(mtc / config.ecs_task_cpu) if mtc != -1 else -1
         self._runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_ecs",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_instances,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_address=cloud_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=config.ecs_task_cpu,
         )

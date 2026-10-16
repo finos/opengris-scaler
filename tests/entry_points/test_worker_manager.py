@@ -258,6 +258,23 @@ class TestWorkerManagerConfigFields(unittest.TestCase):
         self.assertEqual(config.worker_config.io_threads, WorkerConfig().io_threads)
         self.assertEqual(config.worker_config.event_loop, WorkerConfig().event_loop)
 
+    def test_native_parent_link_parsed(self) -> None:
+        from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+
+        argv = ["--worker-manager-id", "wm-test", "tcp://127.0.0.1:6378", "--parent-address", "tcp://1.2.3.4:1"]
+        config = NativeWorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager", {}, argv=[*argv, "--unit-id", "unit-1"]
+        )
+        self.assertEqual(str(config.parent_address), "tcp://1.2.3.4:1")
+        self.assertEqual(config.unit_id, "unit-1")
+
+    def test_native_parent_address_without_unit_id_raises(self) -> None:
+        from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+
+        argv = ["--worker-manager-id", "wm-test", "tcp://127.0.0.1:6378", "--parent-address", "tcp://1.2.3.4:1"]
+        with self.assertRaisesRegex(ValueError, "parent_address and unit_id"):
+            NativeWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
 
 _ORB_AWS_EC2_IMAGE_ARGV = [
     "tcp://127.0.0.1:6378",
@@ -778,6 +795,15 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
         self.assertEqual(config.python_worker_environment.python_version, "3.13")
         self.assertEqual(config.python_worker_environment.requirements_txt, "opengris-scaler>=1.26.6")
 
+    def test_orb_aws_ec2_rejects_parent_address(self) -> None:
+        """Only a native worker manager runs as a child, so a cloud one refuses the flag instead of ignoring it."""
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
+
+        with self.assertRaises(SystemExit):
+            ORBAWSEC2WorkerManagerConfig.parse_with_section(
+                "scaler_worker_manager", {}, argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--parent-address", "tcp://1.2.3.4:1"]
+            )
+
     def test_orb_aws_ec2_defaults(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
@@ -944,7 +970,9 @@ def _make_orb_config(
     aws_region: str = "us-east-1",
 ):
     wmc = WorkerManagerConfig(
-        scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"), worker_manager_id="wm-test"
+        scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"),
+        worker_manager_id="wm-test",
+        children_address=AddressConfig.from_string("tcp://203.0.113.10:6390"),
     )
     return ORBAWSEC2WorkerManagerConfig(
         worker_manager_config=wmc,
@@ -968,21 +996,21 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
 
     def test_image_id_mode_skips_install(self) -> None:
         worker_manager = self._make_worker_manager(image_id="ami-abc123")
-        script = worker_manager._create_user_data()
+        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
         self.assertNotIn("dnf", script)
         self.assertNotIn("pip install", script)
         self.assertNotIn("venv", script)
 
     def test_auto_install_mode_installs_python(self) -> None:
         worker_manager = self._make_worker_manager(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
-        script = worker_manager._create_user_data()
+        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
         self.assertIn("--python 3.13", script)
 
     def test_auto_install_mode_embeds_literal_requirements(self) -> None:
         worker_manager = self._make_worker_manager(
             python_version="3.13", requirements_txt="opengris-scaler>=1.26.6\nboto3"
         )
-        script = worker_manager._create_user_data()
+        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
         self.assertIn("opengris-scaler>=1.26.6", script)
         self.assertIn("boto3", script)
         self.assertIn("pip install -r /tmp/requirements.txt", script)
@@ -998,7 +1026,7 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
             worker_manager = self._make_worker_manager(
                 python_version="3.13", requirements_txt="/path/to/requirements.txt"
             )
-            script = worker_manager._create_user_data()
+            script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
 
         self.assertIn("opengris-scaler>=1.26.6", script)
         self.assertIn("numpy", script)
@@ -1006,12 +1034,20 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
 
     def test_image_id_mode_launches_worker_manager(self) -> None:
         worker_manager = self._make_worker_manager(image_id="ami-abc123")
-        script = worker_manager._create_user_data()
+        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
         self.assertIn("scaler_worker_manager baremetal_native", script)
+
+    def test_child_manager_dials_this_manager_as_its_unit(self) -> None:
+        worker_manager = self._make_worker_manager(image_id="ami-abc123")
+        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
+        self.assertIn("--parent-address tcp://203.0.113.10:6390", script)
+        self.assertIn("--unit-id unit-1", script)
+        self.assertIn("--max-task-concurrency 4", script)
+        self.assertNotIn("--mode", script)
 
     def test_auto_install_mode_launches_worker_manager(self) -> None:
         worker_manager = self._make_worker_manager(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
-        script = worker_manager._create_user_data()
+        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
         self.assertIn("scaler_worker_manager baremetal_native", script)
 
 

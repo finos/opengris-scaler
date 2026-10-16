@@ -63,6 +63,7 @@ Copy ``config.toml`` below, replace the placeholder values, then start services:
          type = "oci_raw"
          scheduler_address = "tcp://127.0.0.1:8516"
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         children_address = "tcp://<PUBLIC_IP>:8518"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          worker_manager_id = "wm-oci-raw"
          oci_region = "us-ashburn-1"
@@ -95,6 +96,7 @@ Copy ``config.toml`` below, replace the placeholder values, then start services:
              --policy-content "allocate=even_load; scaling=vanilla"
          scaler_worker_manager oci_raw tcp://127.0.0.1:8516 \
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --children-address tcp://<PUBLIC_IP>:8518 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --worker-manager-id wm-oci-raw \
              --oci-region us-ashburn-1 \
@@ -157,7 +159,7 @@ How It Works
 1. The OCI Raw worker manager connects to the Scaler scheduler and sends periodic heartbeats.
 2. On each heartbeat, the scheduler responds with a ``setDesiredTaskConcurrency`` command declaring the target worker count per capability set.
 3. The worker manager converges by calling the OCI Container Instances API to launch or stop container instances.
-4. Each container instance installs the packages from ``requirements_txt`` at startup, then runs ``scaler_worker_manager baremetal_native`` to spawn one or more worker processes. The number of workers per instance is determined by ``instance_ocpus``.
+4. Each container instance installs the packages from ``requirements_txt`` at startup, then runs ``scaler_worker_manager baremetal_native``, which dials ``children_address`` and runs as many workers as this worker manager asks for, up to ``instance_ocpus``.
 5. Workers connect back to the scheduler (via ``worker_scheduler_address``) and process tasks like local workers.
 
 Configuration Reference
@@ -169,6 +171,7 @@ OCI Raw Parameters
 * ``scheduler_address`` (positional, required): Address of the Scaler scheduler.
 * ``--worker-manager-id`` (``-wmi``, required): Unique identifier for this worker manager instance.
 * ``--worker-scheduler-address``: Scheduler address used by workers inside container instances. Must be reachable from OCI (default: same as ``scheduler_address``).
+* ``--children-address`` (required): Address this worker manager binds for the native worker manager inside each container instance to dial. Must be reachable from OCI.
 * ``--object-storage-address``: Object storage address used by workers. Must be reachable from OCI.
 
 Container Instance Config
