@@ -50,6 +50,7 @@ COMPLETED_TASK_STATUSES = (
     TaskState.canceledNotFound,
     TaskState.failed,
     TaskState.failedWorkerDied,
+    TaskState.failedSchedulerFault,
 )
 
 # What a task the scheduler reports running is doing on its worker, as that worker's processors report it.
@@ -639,6 +640,10 @@ class TaskStreamState:
         outline_width = 1
         if task_state in (TaskState.failed, TaskState.failedWorkerDied):
             pattern = "x"
+            outline_color = "red"
+        elif task_state == TaskState.failedSchedulerFault:
+            # a fault of the scheduler itself, drawn apart from a task that raised
+            pattern = "+"
             outline_color = "red"
         elif task_state in (TaskState.canceled, TaskState.canceledNotFound):
             pattern = "/"
@@ -1452,7 +1457,7 @@ class WebUIApp:
 
         totals = self._client_task_totals.setdefault(client_name, {"finished": 0, "failed": 0})
         totals["finished"] += 1
-        if state in (TaskState.failed, TaskState.failedWorkerDied):
+        if state in (TaskState.failed, TaskState.failedWorkerDied, TaskState.failedSchedulerFault):
             totals["failed"] += 1
 
     def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:

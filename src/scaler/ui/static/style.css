@@ -350,6 +350,14 @@ th.sort-desc::after {
     );
 }
 
+.legend-swatch.pattern-grid {
+    background: repeating-linear-gradient(
+        0deg, transparent, transparent 3px, #333 3px, #333 4px
+    ), repeating-linear-gradient(
+        90deg, transparent, transparent 3px, #333 3px, #333 4px
+    );
+}
+
 /* A legend beside a chart's title, each swatch drawn the way its series is. */
 .chart-legend {
     padding: 0;
