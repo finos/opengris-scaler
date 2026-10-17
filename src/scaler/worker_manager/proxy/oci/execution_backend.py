@@ -128,9 +128,19 @@ class OCIExecutionBackend(TaskInputLoader, ExecutionBackend):
         return asyncio.wrap_future(future)
 
     async def on_cancel(self, task_cancel: TaskCancel) -> None:
-        instance_id = self._task_id_to_instance_id.pop(task_cancel.taskId, None)
+        instance_id = self._task_id_to_instance_id.get(task_cancel.taskId)
         if instance_id is not None:
-            await self._delete_container_instance(instance_id)
+            # Raises rather than logs: the instance is still running, and a later cancel must find it to retry.
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self._container_instances_client.delete_container_instance, container_instance_id=instance_id
+                ),
+            )
+            logger.info(f"Deleted Container Instance {instance_id[-20:]}")
+            self._task_id_to_instance_id.pop(task_cancel.taskId)
+
         input_key = self._task_id_to_input_key.pop(task_cancel.taskId, None)
         if input_key:
             await self._delete_object_storage_object(input_key)
@@ -138,6 +148,11 @@ class OCIExecutionBackend(TaskInputLoader, ExecutionBackend):
     def on_cleanup(self, task_id: TaskID) -> None:
         self._task_id_to_instance_id.pop(task_id, None)
         self._task_id_to_input_key.pop(task_id, None)
+
+    def close(self) -> None:
+        # The OCI clients hold nothing that outlives the process, and the blocking calls run on the
+        # event loop's own executor, which the loop shuts down.
+        pass
 
     async def routine(self) -> None:
         pass

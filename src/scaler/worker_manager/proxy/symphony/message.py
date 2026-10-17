@@ -1,24 +1,21 @@
-import array
+from __future__ import annotations
 
-try:
-    import soamapi
-except ImportError:
-    raise ImportError("IBM Spectrum Symphony API not found, please install it with 'pip install soamapi'.")
+from typing import TYPE_CHECKING, Type
+
+from scaler.worker_manager.proxy.symphony.soamapi import soamapi_import_error
+
+if TYPE_CHECKING:
+    from scaler.worker_manager.proxy.symphony._soam.message import SoamMessage
 
 
-class SoamMessage(soamapi.Message):
-    def __init__(self, payload: bytes = b""):
-        self.__payload = payload
+def create_soam_message_class() -> Type[SoamMessage]:
+    """Return the ``soamapi.Message`` subclass that carries task payloads.
 
-    def set_payload(self, payload: bytes):
-        self.__payload = payload
+    The import is deferred to call time because ``_soam.message`` needs ``soamapi`` at its own import.
+    """
+    try:
+        from scaler.worker_manager.proxy.symphony._soam.message import SoamMessage
+    except ImportError as error:
+        raise soamapi_import_error(error) from error
 
-    def get_payload(self) -> bytes:
-        return self.__payload
-
-    def on_serialize(self, stream):
-        payload_array = array.array("b", self.get_payload())
-        stream.write_byte_array(payload_array, 0, len(payload_array))
-
-    def on_deserialize(self, stream):
-        self.set_payload(stream.read_byte_array("b"))
+    return SoamMessage

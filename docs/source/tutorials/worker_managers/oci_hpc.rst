@@ -146,7 +146,7 @@ How It Works
 2. Each task is serialized with ``cloudpickle`` and uploaded to OCI Object Storage.
 3. A new Container Instance is created for each task. The job runner script inside the container fetches the payload from Object Storage, deserializes and executes the function, and writes the result back to Object Storage.
 4. The worker manager polls for container completion, fetches the result from Object Storage, and returns it to the scheduler.
-5. A semaphore limits concurrent Container Instances (``base_concurrency``) to prevent exceeding OCI service limits.
+5. The worker manager keeps at most ``base_concurrency`` Container Instances running to prevent exceeding OCI service limits.
 
 Container instances authenticate to Object Storage via OCI Resource Principals — the container does not need credentials embedded in the image.
 
