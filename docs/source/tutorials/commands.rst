@@ -436,6 +436,10 @@ Arguments (shared by all subcommands)
      - No
      - ``60``
      - Seconds a unit may go without a heartbeat before the worker manager counts it as lost, destroys it by force, and replaces it.
+   * - ``-usts``, ``--unit-startup-timeout-seconds``
+     - No
+     - ``600``
+     - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: seconds a unit may take to send its first heartbeat before the worker manager counts it as lost.
    * - ``-ca``, ``--children-address``
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``
      - A free loopback port

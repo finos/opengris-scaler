@@ -13,7 +13,6 @@ import oci
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager.cloud.child_command import (
-    CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS,
     child_link_arguments,
     format_capabilities,
     load_requirements_content,
@@ -68,7 +67,7 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
         return max(1, int(self._config.instance_ocpus))
 
     def startup_timeout_seconds(self) -> int:
-        return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS
+        return self._config.cloud_children_config.unit_startup_timeout_seconds
 
     async def _start_instance(self, unit_id: str) -> Optional[str]:
         config = self._config

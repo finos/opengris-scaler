@@ -5,6 +5,7 @@ from typing import Optional
 from unittest.mock import mock_open, patch
 
 from scaler.config import defaults
+from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
@@ -833,6 +834,16 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--advertised-children-address", "tcp://1.2.3.4:1"],
         )
         self.assertEqual(str(config.cloud_children_config.advertised_children_address), "tcp://1.2.3.4:1")
+
+    def test_orb_aws_ec2_unit_startup_timeout_parsed(self) -> None:
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager", {}, argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--unit-startup-timeout-seconds", "1800"]
+        )
+        self.assertEqual(config.cloud_children_config.unit_startup_timeout_seconds, 1800)
+
+    def test_unit_startup_timeout_must_be_positive(self) -> None:
+        with self.assertRaises(ValueError):
+            CloudChildrenConfig(unit_startup_timeout_seconds=0)
 
     def test_orb_aws_ec2_rejects_parent_address(self) -> None:
         """Only a native worker manager runs as a child, so a cloud one refuses the flag instead of ignoring it."""

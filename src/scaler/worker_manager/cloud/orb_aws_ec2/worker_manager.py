@@ -22,7 +22,6 @@ from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerMana
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager.cloud.child_command import (
-    CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS,
     child_link_arguments,
     format_capabilities,
     load_requirements_content,
@@ -80,12 +79,14 @@ class ORBWorkerProvisioner(UnitProvisioner):
         template_kwargs: Dict[str, Any],
         user_data_for_unit: Callable[[str], str],
         workers_per_instance: int,
+        startup_timeout_seconds: int,
     ) -> None:
         self._max_instances = max_instances
         self._sdk = sdk
         self._template_kwargs = template_kwargs
         self._user_data_for_unit = user_data_for_unit
         self._workers_per_instance = workers_per_instance
+        self._startup_timeout_seconds = startup_timeout_seconds
 
     async def create_unit(self, unit_id: str) -> UnitHandle:
         template_id = f"opengris-orb-{unit_id}"
@@ -148,7 +149,7 @@ class ORBWorkerProvisioner(UnitProvisioner):
         return self._workers_per_instance
 
     def startup_timeout_seconds(self) -> int:
-        return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS
+        return self._startup_timeout_seconds
 
 
 class ORBAWSEC2WorkerManager:
@@ -242,6 +243,7 @@ class ORBAWSEC2WorkerManager:
             template_kwargs=template_kwargs,
             user_data_for_unit=functools.partial(self._create_user_data, workers_per_instance=workers_per_instance),
             workers_per_instance=workers_per_instance,
+            startup_timeout_seconds=self._config.cloud_children_config.unit_startup_timeout_seconds,
         )
         self._runner = WorkerManagerRunner(
             name="worker_manager_orb_aws_ec2",

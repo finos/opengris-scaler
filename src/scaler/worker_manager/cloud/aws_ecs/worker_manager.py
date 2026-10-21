@@ -8,11 +8,7 @@ import shlex
 import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
-from scaler.worker_manager.cloud.child_command import (
-    CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS,
-    child_link_arguments,
-    format_capabilities,
-)
+from scaler.worker_manager.cloud.child_command import child_link_arguments, format_capabilities
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
 
@@ -27,6 +23,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         self._io_threads = config.worker_config.io_threads
         self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
+        self._startup_timeout_seconds = config.cloud_children_config.unit_startup_timeout_seconds
         self._max_instances = (
             math.ceil(self._max_task_concurrency / config.ecs_task_cpu) if self._max_task_concurrency != -1 else -1
         )
@@ -185,7 +182,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         return self._ecs_task_cpu
 
     def startup_timeout_seconds(self) -> int:
-        return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS
+        return self._startup_timeout_seconds
 
 
 class ECSWorkerManager:

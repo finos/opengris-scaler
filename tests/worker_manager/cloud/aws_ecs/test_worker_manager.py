@@ -4,9 +4,12 @@ from unittest.mock import MagicMock, patch
 from scaler.worker_manager.cloud.aws_ecs.worker_manager import ECSWorkerProvisioner
 
 
-def _make_provisioner(max_task_concurrency: int = -1, ecs_task_cpu: int = 4) -> ECSWorkerProvisioner:
+def _make_provisioner(
+    max_task_concurrency: int = -1, ecs_task_cpu: int = 4, unit_startup_timeout_seconds: int = 600
+) -> ECSWorkerProvisioner:
     config = MagicMock()
     config.worker_manager_config.max_task_concurrency = max_task_concurrency
+    config.cloud_children_config.unit_startup_timeout_seconds = unit_startup_timeout_seconds
     config.ecs_task_cpu = ecs_task_cpu
     with patch("boto3.Session"):
         return ECSWorkerProvisioner(config)
@@ -20,3 +23,7 @@ class TestECSWorkerProvisioner(unittest.IsolatedAsyncioTestCase):
 
     def test_no_limit_stays_unlimited(self) -> None:
         self.assertEqual(_make_provisioner(max_task_concurrency=-1).max_units(), -1)
+
+    def test_startup_timeout_comes_from_the_config(self) -> None:
+        """A task that installs scaler from source may take longer than the default to send its first heartbeat."""
+        self.assertEqual(_make_provisioner(unit_startup_timeout_seconds=1800).startup_timeout_seconds(), 1800)

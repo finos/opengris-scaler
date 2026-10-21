@@ -17,6 +17,7 @@ class TestORBWorkerProvisioner(unittest.IsolatedAsyncioTestCase):
             template_kwargs={"image_id": "ami-1"},
             user_data_for_unit=lambda unit_id: f"user data of {unit_id}",
             workers_per_instance=16,
+            startup_timeout_seconds=1800,
         )
 
         with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -24,3 +25,4 @@ class TestORBWorkerProvisioner(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sdk.create_template.call_args.kwargs["user_data"], "user data of unit-1")
         sdk.create_request.assert_awaited_once_with(template_id="opengris-orb-unit-1", count=1)
         self.assertEqual(provisioner.task_concurrency_per_unit(), 16)
+        self.assertEqual(provisioner.startup_timeout_seconds(), 1800)
