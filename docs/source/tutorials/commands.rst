@@ -436,6 +436,11 @@ Arguments (shared by all subcommands)
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``
      - A free loopback port
      - Address the worker manager binds for its units to dial. Must be reachable from provisioned resources.
+   * - ``-aca``, ``--advertised-children-address``
+     - No
+     - ``--children-address``
+     - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: address the units dial, when they reach the worker
+       manager through NAT (e.g. an EC2 public IP).
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty

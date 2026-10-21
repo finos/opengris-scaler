@@ -258,6 +258,20 @@ class TestWorkerManagerConfigFields(unittest.TestCase):
         self.assertEqual(config.worker_config.io_threads, WorkerConfig().io_threads)
         self.assertEqual(config.worker_config.event_loop, WorkerConfig().event_loop)
 
+    def test_native_rejects_advertised_children_address(self) -> None:
+        """Only cloud worker managers write a start command, so a native one refuses the flag instead of ignoring it."""
+        from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+
+        argv = [
+            "--worker-manager-id",
+            "wm-test",
+            "tcp://127.0.0.1:6378",
+            "--advertised-children-address",
+            "tcp://1.2.3.4:1",
+        ]
+        with self.assertRaises(SystemExit):
+            NativeWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
     def test_native_parent_link_parsed(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 
@@ -794,6 +808,16 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
         self.assertIsNone(config.image_id)
         self.assertEqual(config.python_worker_environment.python_version, "3.13")
         self.assertEqual(config.python_worker_environment.requirements_txt, "opengris-scaler>=1.26.6")
+
+    def test_orb_aws_ec2_advertised_children_address_parsed(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
+
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager",
+            {},
+            argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--advertised-children-address", "tcp://1.2.3.4:1"],
+        )
+        self.assertEqual(str(config.cloud_children_config.advertised_children_address), "tcp://1.2.3.4:1")
 
     def test_orb_aws_ec2_rejects_parent_address(self) -> None:
         """Only a native worker manager runs as a child, so a cloud one refuses the flag instead of ignoring it."""

@@ -1,6 +1,7 @@
 import dataclasses
 from typing import ClassVar
 
+from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.oci_container_instance import OCIContainerInstanceConfig
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
@@ -13,6 +14,7 @@ from scaler.config.config_class import ConfigClass
 class OCIRawWorkerManagerConfig(ConfigClass):
     _tag: ClassVar[str] = "oci_raw"
     worker_manager_config: WorkerManagerConfig
+    cloud_children_config: CloudChildrenConfig = dataclasses.field(default_factory=CloudChildrenConfig)
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
     container_instance_config: OCIContainerInstanceConfig = dataclasses.field(

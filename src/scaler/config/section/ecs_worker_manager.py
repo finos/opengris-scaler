@@ -1,6 +1,7 @@
 import dataclasses
 from typing import ClassVar, List, Optional
 
+from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
@@ -12,6 +13,7 @@ class ECSWorkerManagerConfig(ConfigClass):
     _tag: ClassVar[str] = "aws_raw_ecs"
 
     worker_manager_config: WorkerManagerConfig
+    cloud_children_config: CloudChildrenConfig = dataclasses.field(default_factory=CloudChildrenConfig)
 
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)

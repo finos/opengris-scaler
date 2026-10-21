@@ -51,6 +51,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
         self._worker_manager_config = config.worker_manager_config
+        self._cloud_children_config = config.cloud_children_config
         self._units: List[str] = []  # ECS task ARNs of active units
         self._capacity_coordinator = CapacityCoordinator(
             start_units=self.start_units,
@@ -109,9 +110,12 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_task_definition = resp["taskDefinition"]["taskDefinitionArn"]
 
     def _build_task_command(self, unit_id: str) -> str:
+        link_arguments = child_link_arguments(
+            self._worker_manager_config, self._cloud_children_config, unit_id, self._ecs_task_cpu
+        )
         command = (
             f"scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} "
-            f"{child_link_arguments(self._worker_manager_config, unit_id, self._ecs_task_cpu)} "
+            f"{link_arguments} "
             f"--worker-type ECS "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "

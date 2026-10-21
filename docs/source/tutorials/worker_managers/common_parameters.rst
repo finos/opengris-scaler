@@ -30,6 +30,7 @@ Nesting
 A cloud worker manager runs a native worker manager in each resource it provisions. That child takes its desired task concurrency from its parent instead of the scheduler (see ``--parent-address`` in :doc:`baremetal_native`).
 
 * ``--children-address`` (``-ca``): Address the worker manager binds for its units to dial. Local worker processes default to a free loopback port. ORB AWS EC2, AWS Raw ECS, and OCI Raw require it: each provisioned resource runs a native worker manager that dials this address, so it must be reachable from those resources.
+* ``--advertised-children-address`` (``-aca``): ORB AWS EC2, AWS Raw ECS, and OCI Raw only. Address the units dial, written into their start command. Defaults to ``--children-address``. Set it when the units reach the worker manager through NAT, such as an EC2 public IP that is not on any local interface.
 
 Worker Behavior
 ---------------

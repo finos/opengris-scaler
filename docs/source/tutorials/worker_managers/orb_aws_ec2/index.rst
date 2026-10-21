@@ -172,7 +172,8 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
          scheduler_address = "tcp://<SCHEDULER_IP>:8516"
          worker_manager_id = "wm-orb"
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
-         children_address = "tcp://<PUBLIC_IP>:8518"
+         children_address = "tcp://0.0.0.0:8518"
+         advertised_children_address = "tcp://<PUBLIC_IP>:8518"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          instance_type = "t3.medium"
          python_version = "3.14"
@@ -196,7 +197,8 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
          scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
              --worker-manager-id wm-orb \
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
-             --children-address tcp://<PUBLIC_IP>:8518 \
+             --children-address tcp://0.0.0.0:8518 \
+             --advertised-children-address tcp://<PUBLIC_IP>:8518 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --instance-type t3.medium \
              --python-version 3.14 \
@@ -206,7 +208,8 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
          scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
              --worker-manager-id wm-orb \
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
-             --children-address tcp://<PUBLIC_IP>:8518 \
+             --children-address tcp://0.0.0.0:8518 \
+             --advertised-children-address tcp://<PUBLIC_IP>:8518 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --instance-type t3.medium \
              --python-version 3.14 \
@@ -231,7 +234,8 @@ worker environment must be tightly controlled.
          scheduler_address = "tcp://<SCHEDULER_IP>:8516"
          worker_manager_id = "wm-orb"
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
-         children_address = "tcp://<PUBLIC_IP>:8518"
+         children_address = "tcp://0.0.0.0:8518"
+         advertised_children_address = "tcp://<PUBLIC_IP>:8518"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          instance_type = "t3.medium"
          image_id = "ami-0123456789abcdef0"
@@ -249,7 +253,8 @@ worker environment must be tightly controlled.
          scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
              --worker-manager-id wm-orb \
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
-             --children-address tcp://<PUBLIC_IP>:8518 \
+             --children-address tcp://0.0.0.0:8518 \
+             --advertised-children-address tcp://<PUBLIC_IP>:8518 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --instance-type t3.medium \
              --image-id ami-0123456789abcdef0
@@ -286,7 +291,8 @@ ORB AWS EC2 Template Configuration
 *   ``--key-name``: AWS key pair name for the instances. If not provided, a temporary key pair will be created and deleted on cleanup.
 *   ``--subnet-id``: AWS subnet ID where the instances will be launched. If not provided, it attempts to discover the default subnet in the default VPC.
 *   ``--security-group-ids``: Comma-separated list of AWS security group IDs. They must allow each instance to reach the scheduler and ``--children-address``.
-*   ``--children-address`` (required): Address this worker manager binds for the native worker manager on each instance to dial. Must be reachable from the instances.
+*   ``--children-address`` (required): Address this worker manager binds for the native worker manager on each instance to dial.
+*   ``--advertised-children-address``: Address the instances dial, when they reach this worker manager through NAT. Must be reachable from the instances (default: same as ``--children-address``).
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~

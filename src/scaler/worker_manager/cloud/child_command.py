@@ -1,6 +1,7 @@
 import os
 from typing import Dict
 
+from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
 
@@ -37,10 +38,12 @@ def cloud_children_address(worker_manager_config: WorkerManagerConfig) -> Addres
     return worker_manager_config.children_address
 
 
-def child_link_arguments(worker_manager_config: WorkerManagerConfig, unit_id: str, task_concurrency: int) -> str:
+def child_link_arguments(
+    worker_manager_config: WorkerManagerConfig,
+    cloud_children_config: CloudChildrenConfig,
+    unit_id: str,
+    task_concurrency: int,
+) -> str:
     """The command line arguments that make a child native manager serve this manager as unit `unit_id`."""
-    return (
-        f"--parent-address {cloud_children_address(worker_manager_config)} "
-        f"--unit-id {unit_id} "
-        f"--max-task-concurrency {task_concurrency}"
-    )
+    parent_address = cloud_children_config.advertised_children_address or cloud_children_address(worker_manager_config)
+    return f"--parent-address {parent_address} --unit-id {unit_id} --max-task-concurrency {task_concurrency}"
