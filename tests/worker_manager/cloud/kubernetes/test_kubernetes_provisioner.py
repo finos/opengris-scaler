@@ -48,6 +48,7 @@ for _mod in _STUBS:
 import asyncio  # noqa: E402  (must come after stubs so asyncio itself is real)
 
 import kubernetes.client.exceptions  # noqa: E402
+from kubernetes.client import ApiClient  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # The module under test - imported *after* stubs are in place so that every
@@ -116,9 +117,14 @@ def _make_provisioner(config: KubernetesWorkerManagerConfig | None = None, **con
     return provisioner, core_v1
 
 
+def _created_pod(core_v1: MagicMock, call_index: int = 0) -> dict:
+    """Return the *call_index*-th created pod as the camelCase dict sent to the API server."""
+    return ApiClient().sanitize_for_serialization(core_v1.create_namespaced_pod.call_args_list[call_index].args[1])
+
+
 def _get_command(core_v1: MagicMock, call_index: int = 0) -> str:
     """Return the COMMAND env-var value from the *call_index*-th created pod."""
-    pod = core_v1.create_namespaced_pod.call_args_list[call_index].args[1]
+    pod = _created_pod(core_v1, call_index)
     for env_var in pod["spec"]["containers"][0]["env"]:
         if env_var["name"] == "COMMAND":
             return env_var["value"]
@@ -318,11 +324,11 @@ class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
     """Tests for the COMMAND env var injected into the pod spec."""
 
     def _env_names(self, core_v1: MagicMock, call_index: int = 0) -> list[str]:
-        pod = core_v1.create_namespaced_pod.call_args_list[call_index].args[1]
+        pod = _created_pod(core_v1, call_index)
         return [env_var["name"] for env_var in pod["spec"]["containers"][0]["env"]]
 
     def _env_value(self, core_v1: MagicMock, name: str, call_index: int = 0) -> str:
-        pod = core_v1.create_namespaced_pod.call_args_list[call_index].args[1]
+        pod = _created_pod(core_v1, call_index)
         for env_var in pod["spec"]["containers"][0]["env"]:
             if env_var["name"] == name:
                 return env_var["value"]

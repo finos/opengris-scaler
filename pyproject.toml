@@ -54,7 +54,7 @@ oci = [
     "oci==2.185.1",
 ]
 kubernetes = [
-    "kubernetes>=28.0.0",
+    "kubernetes>=37.0.0",
 ]
 all = [
     "opengris-scaler[aws]",

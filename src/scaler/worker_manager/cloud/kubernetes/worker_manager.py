@@ -238,7 +238,8 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                 spec["restartPolicy"] = "Never"
 
                 await loop.run_in_executor(
-                    None, functools.partial(self._core_v1.create_namespaced_pod, config.namespace, pod_dict)
+                    None,
+                    functools.partial(self._core_v1.create_namespaced_pod, config.namespace, V1Pod.from_dict(pod_dict)),
                 )
                 self._pods.append(pod_name)
                 logger.info(f"Started Kubernetes pod {pod_name!r}")
