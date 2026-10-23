@@ -191,8 +191,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                     },
                 ),
                 spec=V1PodSpec(
-                    restart_policy="Never",
-                    containers=[V1Container(name="scaler-worker", image=config.pod_image)],
+                    restart_policy="Never", containers=[V1Container(name="scaler-worker", image=config.pod_image)]
                 ),
             )
 
