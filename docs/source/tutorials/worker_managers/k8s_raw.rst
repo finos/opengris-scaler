@@ -21,7 +21,7 @@ Prerequisites
 
      uv pip install opengris-scaler[kubernetes]
 
-* RBAC permissions granting the service account ``get``, ``list``, ``watch``,
+* RBAC permissions granting the worker manager's identity ``get``, ``list``, ``watch``,
   ``create``, and ``delete`` on ``pods`` in the target namespace.
   See `RBAC Example`_ below for a ready-to-apply manifest.
 
@@ -86,14 +86,6 @@ services:
          pod_image = "myregistry.example.com/scaler:latest"
          workers_per_pod = 4
          delete_grace_period_seconds = 60
-
-         [worker_manager.node_selector]
-         nodepool = "compute"
-
-         [worker_manager.resource_requests]
-         cpu = "4"
-         memory = "16Gi"
-
          requirements_txt = "opengris-scaler"
          python_version = "3.14"
 
@@ -117,7 +109,9 @@ services:
              --namespace scaler \
              --pod-image myregistry.example.com/scaler:latest \
              --workers-per-pod 4 \
-             --delete-grace-period-seconds 60
+             --delete-grace-period-seconds 60 \
+             --requirements-txt opengris-scaler \
+             --python-version 3.14
 
 After services are up, use a client to submit tasks to Kubernetes-provisioned workers:
 
@@ -185,6 +179,7 @@ Authentication
        (reads the service account token mounted at
        ``/var/run/secrets/kubernetes.io/serviceaccount``).
        Set this to a file path when running the worker manager *outside* the cluster.
+       This identity is the one that needs the permissions in `RBAC Example`_.
    * - ``namespace``
      - ``str``
      - ``"default"``
@@ -232,6 +227,7 @@ Pod Spec Fields
 Common Kubernetes pod and container settings are exposed as individual config fields.
 These are applied **after** the ``pod_template`` YAML (if any), so they override
 template values when both are set.
+The ``dict`` fields are TOML-only: the command line does not parse them.
 
 .. list-table::
    :header-rows: 1
@@ -249,7 +245,9 @@ template values when both are set.
    * - ``service_account_name``
      - ``str``
      - ``""``
-     - Kubernetes service account name for worker Pods.
+     - Kubernetes service account for worker Pods.
+       Workers do not call the Kubernetes API, so this account needs no RBAC permissions.
+       It does not set the worker manager's identity: see ``kubeconfig_path``.
    * - ``image_pull_policy``
      - ``str``
      - ``""``
@@ -310,7 +308,7 @@ element-level merge.
    workers_per_pod = 4
 
    # Common options:
-   service_account_name = "scaler-worker-manager"
+   service_account_name = "scaler-worker"
 
    [worker_manager.node_selector]
    nodepool = "compute"
@@ -421,9 +419,10 @@ worker managers, see :doc:`common_parameters`.
 RBAC Example
 ------------
 
-Apply the following manifest to grant the ``scaler-worker-manager`` service account the
-minimum permissions required in the ``scaler`` namespace.  Adjust ``namespace`` and
-``name`` to match your deployment:
+The worker manager creates, watches, and deletes worker Pods, so its own identity needs permissions on ``pods``.
+Worker Pods need none.
+The manifest below grants the ``scaler-worker-manager`` service account the minimum permissions in the ``scaler`` namespace.
+Adjust ``namespace`` and ``name`` to match your deployment:
 
 .. code-block:: yaml
    :caption: scaler-rbac.yaml
@@ -458,11 +457,10 @@ Apply it with:
 
    kubectl apply -f scaler-rbac.yaml
 
-Then reference it in your config:
+Then run the worker manager with that identity:
 
-.. code-block:: toml
-
-   service_account_name = "scaler-worker-manager"
+* Inside the cluster: set ``serviceAccountName: scaler-worker-manager`` on the Pod running ``scaler_worker_manager k8s_raw`` and leave ``kubeconfig_path`` empty.
+* Outside the cluster: set ``kubeconfig_path`` to a kubeconfig whose user is bound to the Role.
 
 .. note::
    The manifest above grants permissions scoped to a single namespace using a
@@ -511,8 +509,9 @@ For locally-loaded KinD images that bypass a registry entirely, set
 ``image_pull_policy = "Never"``.
 
 **Permission denied when creating pods:**
-Apply the RBAC manifest in `RBAC Example`_ and confirm ``service_account_name``
-matches the deployed service account.
+Apply the RBAC manifest in `RBAC Example`_ and confirm the worker manager runs as the bound identity.
+Inside the cluster, that is the ``serviceAccountName`` of the worker manager's own Pod, not ``service_account_name``.
+Outside the cluster, that is the user in ``kubeconfig_path``.
 
 **``scaler_worker_manager`` not found in container:**
 Ensure ``requirements_txt`` includes ``opengris-scaler`` (or at minimum the package
