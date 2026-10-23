@@ -18,6 +18,7 @@ exercised through a live cluster (API errors, FIFO ordering, etc.).
 from __future__ import annotations
 
 import sys
+import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -330,6 +331,21 @@ class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provisioner._exit_backoff_seconds, 10.0)
         provisioner._backoff_reconcile_task.cancel()
 
+    async def test_watch_waits_before_reconnecting_after_an_error(self) -> None:
+        """A failing watch waits before reconnecting instead of retrying in a tight loop, and still stops at once."""
+        provisioner, core_v1 = _make_provisioner()
+        core_v1.list_namespaced_pod.side_effect = kubernetes.client.exceptions.ApiException(status=403)
+        provisioner._start_pod_watch()
+        watch_thread = provisioner._watch_thread
+        await asyncio.sleep(0.5)
+
+        stop_started_at = time.monotonic()
+        provisioner._stop_pod_watch()
+
+        self.assertLess(time.monotonic() - stop_started_at, 1.0)
+        self.assertFalse(watch_thread.is_alive())
+        self.assertEqual(core_v1.list_namespaced_pod.call_count, 1)
+
     async def test_watch_started_once(self) -> None:
         """_start_pod_watch must only start the watch thread once."""
         provisioner, _ = _make_provisioner()
@@ -403,6 +419,7 @@ class TestDesiredTaskConcurrency(unittest.IsolatedAsyncioTestCase):
         )
         cfg = _make_config(worker_manager_config=wm_cfg, workers_per_pod=4)
         provisioner, _ = _make_provisioner(config=cfg)
+        self.addCleanup(provisioner._stop_pod_watch)
         request = _make_request(task_concurrency=8)
 
         with patch.object(provisioner._capacity_coordinator, "_reconcile", new_callable=AsyncMock):
@@ -419,6 +436,7 @@ class TestDesiredTaskConcurrency(unittest.IsolatedAsyncioTestCase):
         )
         cfg = _make_config(worker_manager_config=wm_cfg, workers_per_pod=4)
         provisioner, _ = _make_provisioner(config=cfg)
+        self.addCleanup(provisioner._stop_pod_watch)
         request = _make_request(task_concurrency=5)
 
         with patch.object(provisioner._capacity_coordinator, "_reconcile", new_callable=AsyncMock):

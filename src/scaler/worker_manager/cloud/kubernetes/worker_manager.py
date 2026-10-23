@@ -39,6 +39,9 @@ POD_EXIT_BACKOFF_INITIAL_SECONDS = 10.0
 POD_EXIT_BACKOFF_MAX_SECONDS = 300.0
 POD_EXIT_BACKOFF_RESET_SECONDS = 600.0
 
+# Pause before reconnecting a failed pod watch, so a persistent error (e.g. a 403) does not spin against the API server.
+WATCH_RECONNECT_DELAY_SECONDS = 5.0
+
 
 class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: KubernetesWorkerManagerConfig, max_pods: int) -> None:
@@ -110,14 +113,11 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                     elif pod.status.phase in EXITED_POD_PHASES:  # MODIFIED, or ADDED when the watch reconnects
                         logger.warning(f"Watch: pod {pod_name!r} reached {pod.status.phase}: {_describe_exit(pod)}")
                         self._loop.call_soon_threadsafe(self._handle_exited_pod, pod_name)
-            except kubernetes.client.exceptions.ApiException as e:
-                if self._watch_stop.is_set():
-                    return
-                logger.error(f"Pod watch API error (will reconnect): {e}")
             except Exception as e:
                 if self._watch_stop.is_set():
                     return
-                logger.error(f"Pod watch error (will reconnect): {e}")
+                logger.error(f"Pod watch error (reconnecting in {WATCH_RECONNECT_DELAY_SECONDS:.0f}s): {e}")
+                self._watch_stop.wait(WATCH_RECONNECT_DELAY_SECONDS)
 
     def _handle_external_pod_deletion(self, pod_name: str) -> None:
         if pod_name in self._pods:
