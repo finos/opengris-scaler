@@ -59,8 +59,14 @@ Verify your cluster access:
    kubectl cluster-info
    kubectl get namespace scaler   # or whichever namespace you plan to use
 
-Copy the ``config.toml`` below, replace the placeholder image URI, then start
-services:
+Scaler addresses must be IP addresses: the default network backend (YMQ) does not resolve hostnames such as a Service name.
+Inside the cluster, use the ClusterIP of the Service in front of the scheduler:
+
+.. code-block:: bash
+
+   kubectl get service scheduler-service -n scaler -o jsonpath='{.spec.clusterIP}'
+
+Copy the ``config.toml`` below, replace the placeholder image URI and ``<SCHEDULER_IP>``, then start services:
 
 .. tabs::
 
@@ -74,11 +80,11 @@ services:
 
          [scheduler]
          bind_address = "tcp://0.0.0.0:8516"
-         object_storage_address = "tcp://scheduler-service:8517"
+         object_storage_address = "tcp://<SCHEDULER_IP>:8517"
 
          [[worker_manager]]
          type = "k8s_raw"
-         scheduler_address = "tcp://scheduler-service:8516"
+         scheduler_address = "tcp://<SCHEDULER_IP>:8516"
          worker_manager_id = "wm-k8s-01"
          max_task_concurrency = 80
 
@@ -101,9 +107,9 @@ services:
 
          scaler_object_storage_server tcp://0.0.0.0:8517
          scaler_scheduler tcp://0.0.0.0:8516 \
-             --object-storage-address tcp://scheduler-service:8517 \
+             --object-storage-address tcp://<SCHEDULER_IP>:8517 \
              --policy-content "allocate=even_load; scaling=vanilla"
-         scaler_worker_manager k8s_raw tcp://scheduler-service:8516 \
+         scaler_worker_manager k8s_raw tcp://<SCHEDULER_IP>:8516 \
              --worker-manager-id wm-k8s-01 \
              --max-task-concurrency 80 \
              --namespace scaler \
@@ -124,8 +130,7 @@ After services are up, use a client to submit tasks to Kubernetes-provisioned wo
        return x ** 2
 
    with Client(address="tcp://<SCHEDULER_IP>:8516") as client:
-       futures = client.map(compute, range(80))
-       print([f.result() for f in futures])
+       print(client.map(compute, range(80)))
 
 Configuration Reference
 -----------------------
@@ -148,7 +153,7 @@ level of the ``[[worker_manager]]`` TOML section.
      - ``str``
      - *(required)*
      - Address of the Scaler scheduler that this worker manager connects to
-       (e.g. ``tcp://scheduler-service:8516``).
+       (e.g. ``tcp://10.96.0.50:8516``). Must be an IP address.
    * - ``worker_manager_id``
      - ``str``
      - *(required)*
@@ -499,8 +504,8 @@ Troubleshooting
 Worker Pods must be able to reach the scheduler address over the network. If the
 scheduler runs outside the cluster, ensure the address in ``scheduler_address`` is
 reachable from Pod IP space (e.g. a LoadBalancer or NodePort service, or a VPN).
-Inside a cluster, use the Kubernetes service name:
-``tcp://scheduler-service:8516``.
+The address must be an IP address: the default network backend does not resolve hostnames, so a Service name fails with ``InvalidAddressFormatError``.
+Inside a cluster, use the scheduler Service's ClusterIP.
 
 **Pods stuck in** ``Pending``:
 Check Pod events with ``kubectl describe pod <pod-name> -n scaler``. Common causes:
