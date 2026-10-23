@@ -98,3 +98,7 @@ class KubernetesWorkerManagerConfig(ConfigClass):
             raise ValueError("workers_per_pod must be >= 1.")
         if self.delete_grace_period_seconds < 0:
             raise ValueError("delete_grace_period_seconds must be >= 0.")
+        if not self.python_worker_environment.requirements_txt:
+            raise ValueError("--requirements-txt must be provided")
+        if not self.python_worker_environment.python_version:
+            raise ValueError("--python-version must be provided")
