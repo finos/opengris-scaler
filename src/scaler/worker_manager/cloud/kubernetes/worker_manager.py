@@ -226,12 +226,12 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         for _ in range(count):
             pod_name = f"scaler-worker-{uuid.uuid4().hex[:12]}"
 
-            scaler_env: List[Dict[str, str]] = [{"name": "COMMAND", "value": command}]
-            pwe = config.python_worker_environment
-            if pwe.requirements_txt is not None:
-                scaler_env.append({"name": "PYTHON_REQUIREMENTS", "value": load_file_or_inline(pwe.requirements_txt)})
-            if pwe.python_version is not None:
-                scaler_env.append({"name": "PYTHON_VERSION", "value": pwe.python_version})
+            python_environment = config.python_worker_environment
+            scaler_env: List[Dict[str, str]] = [
+                {"name": "COMMAND", "value": command},
+                {"name": "PYTHON_REQUIREMENTS", "value": load_file_or_inline(python_environment.requirements_txt)},
+                {"name": "PYTHON_VERSION", "value": python_environment.python_version},
+            ]
 
             pod_manifest = V1Pod(
                 metadata=V1ObjectMeta(

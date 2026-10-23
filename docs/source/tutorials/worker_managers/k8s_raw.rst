@@ -405,14 +405,14 @@ appear as flat keys in the ``[[worker_manager]]`` TOML section (not a sub-sectio
      - Description
    * - ``requirements_txt``
      - ``str``
-     - ``None``
+     - *(required)*
      - Python packages to install inside the container at startup. Passed as the
        ``PYTHON_REQUIREMENTS`` environment variable. Can be a path to a
        requirements.txt file or an inline string. Include any packages your task
        functions import. Must include ``opengris-scaler`` itself.
    * - ``python_version``
      - ``str``
-     - ``None``
+     - *(required)*
      - Python version string passed as the ``PYTHON_VERSION`` environment variable
        to the container entrypoint.
 

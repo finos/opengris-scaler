@@ -57,6 +57,7 @@ import scaler.worker_manager.cloud.kubernetes.worker_manager as worker_manager_m
 # The module under test - imported *after* stubs are in place so that every
 # transitive import resolves cleanly.
 # ---------------------------------------------------------------------------
+from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig  # noqa: E402
 from scaler.config.common.worker_manager import WorkerManagerConfig  # noqa: E402
 from scaler.config.section.kubernetes_worker_manager import KubernetesWorkerManagerConfig  # noqa: E402
 from scaler.config.types.address import AddressConfig  # noqa: E402
@@ -79,6 +80,9 @@ def _make_config(**overrides) -> KubernetesWorkerManagerConfig:
         workers_per_pod=2,
         namespace="test-ns",
         delete_grace_period_seconds=0,
+        python_worker_environment=PythonWorkerEnvironmentConfig(
+            python_version="3.14", requirements_txt="opengris-scaler"
+        ),
     )
     defaults.update(overrides)
     return KubernetesWorkerManagerConfig(**defaults)
@@ -459,24 +463,13 @@ class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
                 return env_var["value"]
         raise AssertionError(f"{name} env var not found in pod spec")
 
-    async def test_python_version_is_injected(self) -> None:
-        """python_version must be forwarded as PYTHON_VERSION for the dynamic entrypoint."""
-        from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
-
-        cfg = _make_config(python_worker_environment=PythonWorkerEnvironmentConfig(python_version="3.12"))
-        provisioner, core_v1 = _make_provisioner(config=cfg)
+    async def test_python_environment_is_injected(self) -> None:
+        """python_version and requirements_txt are forwarded as PYTHON_VERSION and PYTHON_REQUIREMENTS."""
+        environment = PythonWorkerEnvironmentConfig(python_version="3.12", requirements_txt="numpy\npandas")
+        provisioner, core_v1 = _make_provisioner(config=_make_config(python_worker_environment=environment))
         await provisioner.start_units(1)
         self.assertEqual(self._env_value(core_v1, "PYTHON_VERSION"), "3.12")
-
-    async def test_requirements_txt_is_injected(self) -> None:
-        """requirements_txt must be forwarded as PYTHON_REQUIREMENTS for extra task packages."""
-        from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
-
-        cfg = _make_config(python_worker_environment=PythonWorkerEnvironmentConfig(requirements_txt="numpy\npandas"))
-        provisioner, core_v1 = _make_provisioner(config=cfg)
-        await provisioner.start_units(1)
         self.assertEqual(self._env_value(core_v1, "PYTHON_REQUIREMENTS"), "numpy\npandas")
-        self.assertNotIn("PYTHON_VERSION", self._env_names(core_v1))
 
     async def test_command_contains_worker_manager_id(self) -> None:
         """COMMAND must include '--worker-manager-id test-wm'."""
@@ -576,6 +569,15 @@ class TestConfigValidation(unittest.TestCase):
     def test_negative_grace_period_raises(self) -> None:
         with self.assertRaises(ValueError, msg="delete_grace_period_seconds must be >= 0"):
             _make_config(delete_grace_period_seconds=-1)
+
+    def test_missing_python_environment_raises(self) -> None:
+        """The container entrypoint exits without PYTHON_VERSION or PYTHON_REQUIREMENTS, so both are required."""
+        for environment, message in (
+            (PythonWorkerEnvironmentConfig(python_version="3.14"), "--requirements-txt must be provided"),
+            (PythonWorkerEnvironmentConfig(requirements_txt="opengris-scaler"), "--python-version must be provided"),
+        ):
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                _make_config(python_worker_environment=environment)
 
     def test_valid_config_does_not_raise(self) -> None:
         cfg = _make_config()
