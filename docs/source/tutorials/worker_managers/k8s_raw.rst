@@ -276,8 +276,9 @@ YAML format.
 
 1. Scaler generates a base pod dict (image, env vars, ``restartPolicy: Never``).
 2. ``pod_template`` is parsed and deep-merged into the base.
-3. Config fields (``node_selector``, ``resource_requests``, etc.) are applied on
+3. Config fields (``pod_image``, ``node_selector``, ``resource_requests``, etc.) are applied on
    top, overriding any values set in the template.
+   A template ``containers`` list replaces the generated one, and ``pod_image`` is still set on its first container.
 4. ``restartPolicy`` is always re-asserted to ``Never`` last; you cannot override it.
 
 Nested dicts merge recursively. Lists *replace* the base list entirely --- no

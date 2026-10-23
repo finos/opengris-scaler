@@ -408,6 +408,26 @@ class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self._env_value(core_v1, "MY_VAR"), "kept")
 
 
+class TestPodTemplateImage(unittest.IsolatedAsyncioTestCase):
+    """Tests that pod_image survives a pod_template whose containers list replaces the generated one."""
+
+    async def test_template_containers_without_image_keep_pod_image(self) -> None:
+        """A template container without an image still runs pod_image."""
+        template = "spec:\n  containers:\n  - name: scaler-worker\n    securityContext:\n      runAsNonRoot: true\n"
+        provisioner, core_v1 = _make_provisioner(config=_make_config(pod_template=template))
+        await provisioner.start_units(1)
+        container = _created_pod(core_v1)["spec"]["containers"][0]
+        self.assertEqual(container["image"], "test-image:latest")
+        self.assertTrue(container["securityContext"]["runAsNonRoot"])
+
+    async def test_pod_image_overrides_template_image(self) -> None:
+        """pod_image wins over an image set in the template, like the other config fields."""
+        template = "spec:\n  containers:\n  - name: scaler-worker\n    image: template-image:old\n"
+        provisioner, core_v1 = _make_provisioner(config=_make_config(pod_template=template))
+        await provisioner.start_units(1)
+        self.assertEqual(_created_pod(core_v1)["spec"]["containers"][0]["image"], "test-image:latest")
+
+
 # ---------------------------------------------------------------------------
 # Config validation tests
 # ---------------------------------------------------------------------------
