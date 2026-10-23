@@ -481,9 +481,16 @@ Each Pod runs ``scaler_worker_manager baremetal_native --mode fixed``, which spa
 tasks like local workers.  When workers are no longer needed, the worker manager
 deletes the corresponding Pods, honouring ``delete_grace_period_seconds``.
 
-Every Pod is created with ``restartPolicy: Never``.  Kubernetes will never auto-restart
-a crashed pod; instead, the scheduler's worker heartbeat timeout marks the worker dead
-and re-queues its tasks.  The next scaling event launches replacement pods.
+Every Pod is created with ``restartPolicy: Never``, so Kubernetes never restarts a pod whose workers exit.
+The scheduler's worker heartbeat timeout marks those workers dead and re-queues their tasks.
+The worker manager watches its pods and handles an exit itself:
+
+1. It logs the container's exit code and reason, then deletes the pod.
+2. It waits before starting a replacement, like Kubernetes' CrashLoopBackOff: 10 seconds, doubling per exit up to 5 minutes, back to 10 seconds after 10 minutes without an exit.
+3. It starts replacement pods to match the scheduler's desired count.
+
+A deleted pod's logs are gone, so keep worker logs with cluster log collection (for example Fluent Bit or a cloud logging agent).
+A pod deleted outside Scaler (``kubectl delete pod``) is replaced without the wait.
 
 Troubleshooting
 ---------------

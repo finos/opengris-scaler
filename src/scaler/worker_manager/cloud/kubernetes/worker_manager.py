@@ -6,6 +6,7 @@ import logging
 import math
 import shlex
 import threading
+import time
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
@@ -30,6 +31,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# With restartPolicy Never, a pod in one of these phases will never run its workers again.
+EXITED_POD_PHASES = ("Failed", "Succeeded")
+
+# Delay before replacing exited pods, as the kubelet's CrashLoopBackOff: doubles per exit, resets when quiet.
+POD_EXIT_BACKOFF_INITIAL_SECONDS = 10.0
+POD_EXIT_BACKOFF_MAX_SECONDS = 300.0
+POD_EXIT_BACKOFF_RESET_SECONDS = 600.0
+
 
 class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: KubernetesWorkerManagerConfig, max_pods: int) -> None:
@@ -52,6 +61,11 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
             active_unit_count=self.active_unit_count,
             max_unit_count=max_pods,
         )
+
+        self._exit_backoff_seconds = 0.0
+        self._last_pod_exit_at = -math.inf
+        self._starts_resume_at = 0.0
+        self._backoff_reconcile_task: Optional[asyncio.Future] = None
 
         self._watch_stop = threading.Event()
         self._watch_thread: Optional[threading.Thread] = None
@@ -85,11 +99,17 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                         return
 
                     event_type = event["type"]
-                    pod_name = event["object"].metadata.name
+                    pod = event["object"]
+                    pod_name = pod.metadata.name
+                    if pod_name not in self._pods:
+                        continue
 
-                    if event_type == "DELETED" and pod_name in self._pods:
+                    if event_type == "DELETED":
                         logger.warning(f"Watch: pod {pod_name!r} was deleted externally, removing from tracking")
                         self._loop.call_soon_threadsafe(self._handle_external_pod_deletion, pod_name)
+                    elif pod.status.phase in EXITED_POD_PHASES:  # MODIFIED, or ADDED when the watch reconnects
+                        logger.warning(f"Watch: pod {pod_name!r} reached {pod.status.phase}: {_describe_exit(pod)}")
+                        self._loop.call_soon_threadsafe(self._handle_exited_pod, pod_name)
             except kubernetes.client.exceptions.ApiException as e:
                 if self._watch_stop.is_set():
                     return
@@ -103,6 +123,32 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         if pod_name in self._pods:
             self._pods.remove(pod_name)
             asyncio.ensure_future(self._capacity_coordinator.request_reconcile())
+
+    def _handle_exited_pod(self, pod_name: str) -> None:
+        # stop_units may have untracked the pod while the event was in flight.
+        if pod_name in self._pods:
+            self._pods.remove(pod_name)
+            asyncio.ensure_future(self._delete_pod(pod_name))
+            self._back_off_pod_starts()
+
+    def _back_off_pod_starts(self) -> None:
+        now = time.monotonic()
+        if now - self._last_pod_exit_at > POD_EXIT_BACKOFF_RESET_SECONDS:
+            self._exit_backoff_seconds = 0.0
+        self._last_pod_exit_at = now
+        self._exit_backoff_seconds = min(
+            max(2 * self._exit_backoff_seconds, POD_EXIT_BACKOFF_INITIAL_SECONDS), POD_EXIT_BACKOFF_MAX_SECONDS
+        )
+        self._starts_resume_at = now + self._exit_backoff_seconds
+        logger.warning(f"Delaying replacement pods by {self._exit_backoff_seconds:.0f}s after a worker pod exit")
+
+        if self._backoff_reconcile_task is not None:
+            self._backoff_reconcile_task.cancel()
+        self._backoff_reconcile_task = asyncio.ensure_future(self._reconcile_after(self._exit_backoff_seconds))
+
+    async def _reconcile_after(self, delay_seconds: float) -> None:
+        await asyncio.sleep(delay_seconds)
+        await self._capacity_coordinator.request_reconcile()
 
     def _stop_pod_watch(self) -> None:
         self._watch_stop.set()
@@ -167,6 +213,12 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         await self._capacity_coordinator.set_desired_unit_count(desired_pods)
 
     async def start_units(self, count: int) -> None:
+        # _reconcile_after requests another reconcile once the backoff ends.
+        remaining_seconds = self._starts_resume_at - time.monotonic()
+        if remaining_seconds > 0:
+            logger.info(f"Holding {count} pod start(s) for {remaining_seconds:.0f}s after a worker pod exit")
+            return
+
         config = self._config
         command = self._build_worker_command()
         loop = asyncio.get_running_loop()
@@ -249,39 +301,51 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                 logger.error(f"Failed to create Kubernetes pod {pod_name!r}: {e}")
 
     async def stop_units(self, count: int) -> None:
-        config = self._config
-        loop = asyncio.get_running_loop()
-
         to_stop = self._pods[:count]
         if len(to_stop) < count:
             logger.warning(f"Requested to stop {count} pod(s) but only {len(to_stop)} available.")
 
         for pod_name in to_stop:
-            try:
-                await loop.run_in_executor(
-                    None,
-                    functools.partial(
-                        self._core_v1.delete_namespaced_pod,
-                        pod_name,
-                        config.namespace,
-                        grace_period_seconds=config.delete_grace_period_seconds,
-                    ),
-                )
-                if pod_name in self._pods:
-                    self._pods.remove(pod_name)
-                logger.info(f"Stopped Kubernetes pod {pod_name!r}")
-            except kubernetes.client.exceptions.ApiException as e:
-                if e.status == 404:
-                    if pod_name in self._pods:
-                        self._pods.remove(pod_name)
-                    logger.warning(f"Pod {pod_name!r} not found during deletion (already gone)")
-                else:
-                    logger.error(f"Failed to delete pod {pod_name!r}: {e}")
+            if await self._delete_pod(pod_name) and pod_name in self._pods:
+                self._pods.remove(pod_name)
+
+    async def _delete_pod(self, pod_name: str) -> bool:
+        """Delete *pod_name* and return whether it is gone."""
+        config = self._config
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self._core_v1.delete_namespaced_pod,
+                    pod_name,
+                    config.namespace,
+                    grace_period_seconds=config.delete_grace_period_seconds,
+                ),
+            )
+        except kubernetes.client.exceptions.ApiException as e:
+            if e.status == 404:
+                logger.warning(f"Pod {pod_name!r} not found during deletion (already gone)")
+                return True
+            logger.error(f"Failed to delete pod {pod_name!r}: {e}")
+            return False
+        logger.info(f"Stopped Kubernetes pod {pod_name!r}")
+        return True
 
     async def terminate(self) -> None:
         self._stop_pod_watch()
+        if self._backoff_reconcile_task is not None:
+            self._backoff_reconcile_task.cancel()
         self._capacity_coordinator.cancel()
         await self.stop_units(len(self._pods))
+
+
+def _describe_exit(pod: V1Pod) -> str:
+    for container_status in pod.status.container_statuses or []:
+        terminated = container_status.state.terminated if container_status.state else None
+        if terminated is not None:
+            return f"container {container_status.name!r} exited with code {terminated.exit_code} ({terminated.reason})"
+    return "no container exit status"
 
 
 class KubernetesWorkerManager:

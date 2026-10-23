@@ -50,6 +50,8 @@ import asyncio  # noqa: E402  (must come after stubs so asyncio itself is real)
 import kubernetes.client.exceptions  # noqa: E402
 from kubernetes.client import ApiClient  # noqa: E402
 
+import scaler.worker_manager.cloud.kubernetes.worker_manager as worker_manager_module  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # The module under test - imported *after* stubs are in place so that every
 # transitive import resolves cleanly.
@@ -149,8 +151,43 @@ class TestAPIErrorHandling(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provisioner.active_unit_count(), 0)
 
 
+def _exited_pod(name: str, phase: str) -> MagicMock:
+    """Return a fake watch event object for a pod whose worker container exited with code 1."""
+    container_status = MagicMock()
+    container_status.name = "scaler-worker"
+    container_status.state.terminated.exit_code = 1
+    container_status.state.terminated.reason = "Error"
+    pod = MagicMock()
+    pod.metadata.name = name
+    pod.status.phase = phase
+    pod.status.container_statuses = [container_status]
+    return pod
+
+
+async def _run_pod_watch(provisioner, events: list[dict]) -> None:
+    """Feed *events* through the pod watch loop, then run every callback and task it scheduled."""
+    stop_event = provisioner._watch_stop
+
+    def fake_stream(*args, **kwargs):
+        yield from events
+        stop_event.set()
+
+    with patch("kubernetes.watch.Watch") as mock_watch_cls:
+        mock_watch_cls.return_value.stream = fake_stream
+        provisioner._loop = asyncio.get_running_loop()
+        provisioner._pod_watch_loop()
+
+    await asyncio.sleep(0)
+    await asyncio.gather(*(task for task in asyncio.all_tasks() if task is not asyncio.current_task()))
+
+
 class TestPodWatch(unittest.IsolatedAsyncioTestCase):
     """Tests for the pod watch that detects externally deleted pods."""
+
+    def setUp(self) -> None:
+        backoff_patch = patch.object(worker_manager_module, "POD_EXIT_BACKOFF_INITIAL_SECONDS", 0.01)
+        backoff_patch.start()
+        self.addCleanup(backoff_patch.stop)
 
     async def test_deleted_event_removes_tracked_pod(self) -> None:
         """A DELETED watch event for a tracked pod must remove it from _pods."""
@@ -209,6 +246,7 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
 
         pod_obj = MagicMock()
         pod_obj.metadata.name = pod_name
+        pod_obj.status.phase = "Running"
         stop_event = provisioner._watch_stop
 
         def fake_stream(*args, **kwargs):
@@ -222,6 +260,75 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
             provisioner._pod_watch_loop()
 
         self.assertEqual(provisioner.active_unit_count(), 1)
+
+    async def test_exited_pod_is_deleted_untracked_and_replaced(self) -> None:
+        """A tracked pod reported in Failed or Succeeded is deleted, untracked, and triggers a reconcile."""
+        for event_type, phase in (("MODIFIED", "Failed"), ("MODIFIED", "Succeeded"), ("ADDED", "Failed")):
+            with self.subTest(event_type=event_type, phase=phase):
+                provisioner, core_v1 = _make_provisioner()
+                await provisioner.start_units(2)
+                exited_name, surviving_name = provisioner._pods
+
+                with patch.object(
+                    provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock
+                ) as rec:
+                    await _run_pod_watch(provisioner, [{"type": event_type, "object": _exited_pod(exited_name, phase)}])
+
+                self.assertEqual(provisioner._pods, [surviving_name])
+                self.assertEqual([c.args[0] for c in core_v1.delete_namespaced_pod.call_args_list], [exited_name])
+                rec.assert_awaited_once()
+
+    async def test_exit_of_pod_being_scaled_down_is_ignored(self) -> None:
+        """A pod that exits after stop_units untracked it is not deleted again and not replaced."""
+        provisioner, core_v1 = _make_provisioner()
+        await provisioner.start_units(1)
+        pod_name = provisioner._pods[0]
+        await provisioner.stop_units(1)
+
+        with patch.object(provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock) as rec:
+            await _run_pod_watch(provisioner, [{"type": "MODIFIED", "object": _exited_pod(pod_name, "Failed")}])
+
+        self.assertEqual(core_v1.delete_namespaced_pod.call_count, 1)
+        rec.assert_not_awaited()
+
+
+class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
+    """Tests for the backoff that keeps a crashing pod from being replaced in a tight loop."""
+
+    async def test_pod_starts_are_held_until_backoff_ends(self) -> None:
+        """After a pod exits, start_units creates nothing until the backoff ends and a reconcile is requested."""
+        provisioner, core_v1 = _make_provisioner()
+        await provisioner.start_units(1)
+
+        with (
+            patch.object(worker_manager_module, "POD_EXIT_BACKOFF_INITIAL_SECONDS", 0.05),
+            patch.object(provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock) as rec,
+        ):
+            provisioner._handle_exited_pod(provisioner._pods[0])
+            await provisioner.start_units(1)
+            self.assertEqual(core_v1.create_namespaced_pod.call_count, 1)
+            rec.assert_not_awaited()
+
+            await provisioner._backoff_reconcile_task
+            rec.assert_awaited_once()
+            await provisioner.start_units(1)
+            self.assertEqual(core_v1.create_namespaced_pod.call_count, 2)
+
+    async def test_backoff_doubles_to_max_and_resets_after_quiet_period(self) -> None:
+        """Consecutive exits double the backoff up to the max, and an exit after a quiet period starts over."""
+        provisioner, _ = _make_provisioner()
+        await provisioner.start_units(8)
+
+        backoffs = []
+        for pod_name in list(provisioner._pods)[:7]:
+            provisioner._handle_exited_pod(pod_name)
+            backoffs.append(provisioner._exit_backoff_seconds)
+        self.assertEqual(backoffs, [10.0, 20.0, 40.0, 80.0, 160.0, 300.0, 300.0])
+
+        provisioner._last_pod_exit_at -= worker_manager_module.POD_EXIT_BACKOFF_RESET_SECONDS + 1
+        provisioner._handle_exited_pod(provisioner._pods[0])
+        self.assertEqual(provisioner._exit_backoff_seconds, 10.0)
+        provisioner._backoff_reconcile_task.cancel()
 
     async def test_watch_started_once(self) -> None:
         """_start_pod_watch must only start the watch thread once."""
