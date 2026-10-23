@@ -4,15 +4,24 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
+class ManagerInfo:
+    """Per-manager state. Not tied to a heartbeat — just the manager's current state."""
+
+    manager_id: bytes
+    max_concurrency: Optional[int]  # None = unlimited
+    worker_count: int
+    capabilities: Dict[str, int]
+
+
+@dataclass(frozen=True)
 class ClusterState:
-    """Snapshot of cluster state for scaling estimation."""
+    """Cluster-wide snapshot for scaling estimation."""
 
     n_tasks: int
     n_workers: int
-    max_concurrency: Optional[int]  # None = unlimited
     n_tasks_by_capset: Dict[FrozenSet[str], int] = field(default_factory=dict)
     capset_representatives: Dict[FrozenSet[str], Dict[str, int]] = field(default_factory=dict)
-    n_workers_by_manager: Dict[bytes, int] = field(default_factory=dict)
+    managers: Dict[bytes, ManagerInfo] = field(default_factory=dict)
 
 
 class ScalingEstimator(ABC):

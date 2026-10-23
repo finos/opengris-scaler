@@ -23,6 +23,9 @@ class RatioEstimator(ScalingEstimator):
             return []
 
         state = self._cluster_state
+        manager = state.managers.get(manager_id)
+        if manager is None:
+            return []
 
         if state.n_tasks_by_capset:
             capsets = state.n_tasks_by_capset
@@ -36,8 +39,8 @@ class RatioEstimator(ScalingEstimator):
 
             desired = max(1, ceil(task_count / self._upper_task_ratio))
 
-            if state.max_concurrency is not None:
-                desired = min(desired, state.max_concurrency)
+            if manager.max_concurrency is not None:
+                desired = min(desired, manager.max_concurrency)
 
             capabilities = state.capset_representatives.get(capset, {})
             result.append((capabilities, max(0, desired)))

@@ -1,6 +1,6 @@
 import unittest
 
-from scaler.scheduler.policies.scaling.estimator import ClusterState
+from scaler.scheduler.policies.scaling.estimator import ClusterState, ManagerInfo
 from scaler.scheduler.policies.scaling.estimators.incremental_ratio import IncrementalRatioEstimator
 from scaler.scheduler.policies.scaling.estimators.ratio import RatioEstimator
 
@@ -11,10 +11,11 @@ class TestRatioEstimator(unittest.TestCase):
     def setUp(self):
         self.estimator = RatioEstimator()
         self.manager_id = b"mgr1"
+        self.manager = ManagerInfo(manager_id=self.manager_id, max_concurrency=None, worker_count=0, capabilities={})
 
     def test_basic_ratio(self):
         """10 tasks with ratio 5 -> desired = ceil(10/5) = 2."""
-        self.estimator.update(ClusterState(n_tasks=10, n_workers=0, max_concurrency=None))
+        self.estimator.update(ClusterState(n_tasks=10, n_workers=0, managers={self.manager_id: self.manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -22,7 +23,7 @@ class TestRatioEstimator(unittest.TestCase):
 
     def test_zero_tasks_returns_empty(self):
         """Zero tasks -> empty list (no capsets with tasks)."""
-        self.estimator.update(ClusterState(n_tasks=0, n_workers=0, max_concurrency=None))
+        self.estimator.update(ClusterState(n_tasks=0, n_workers=0, managers={self.manager_id: self.manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -30,7 +31,8 @@ class TestRatioEstimator(unittest.TestCase):
 
     def test_max_concurrency_clamps(self):
         """max_concurrency limits the desired count."""
-        self.estimator.update(ClusterState(n_tasks=50, n_workers=0, max_concurrency=3))
+        manager = ManagerInfo(manager_id=self.manager_id, max_concurrency=3, worker_count=0, capabilities={})
+        self.estimator.update(ClusterState(n_tasks=50, n_workers=0, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -44,7 +46,7 @@ class TestRatioEstimator(unittest.TestCase):
             ClusterState(
                 n_tasks=15,
                 n_workers=0,
-                max_concurrency=None,
+                managers={self.manager_id: self.manager},
                 n_tasks_by_capset={gpu_capset: 10, tpu_capset: 5},
                 capset_representatives={gpu_capset: {"gpu": 1}, tpu_capset: {"tpu": 1}},
             )
@@ -65,7 +67,7 @@ class TestRatioEstimator(unittest.TestCase):
             ClusterState(
                 n_tasks=10,
                 n_workers=0,
-                max_concurrency=None,
+                managers={self.manager_id: self.manager},
                 n_tasks_by_capset={gpu_capset: 10, tpu_capset: 0},
                 capset_representatives={gpu_capset: {"gpu": 1}, tpu_capset: {"tpu": 1}},
             )
@@ -82,7 +84,7 @@ class TestRatioEstimator(unittest.TestCase):
             ClusterState(
                 n_tasks=10,
                 n_workers=0,
-                max_concurrency=None,
+                managers={self.manager_id: self.manager},
                 n_tasks_by_capset={gpu_capset: 10},
                 capset_representatives={gpu_capset: {"gpu": 2, "memory": 4096}},
             )
@@ -95,11 +97,12 @@ class TestRatioEstimator(unittest.TestCase):
     def test_per_capset_max_concurrency_clamps(self):
         """max_concurrency clamps per-capset desired counts."""
         gpu_capset = frozenset({"gpu"})
+        manager = ManagerInfo(manager_id=self.manager_id, max_concurrency=3, worker_count=0, capabilities={})
         self.estimator.update(
             ClusterState(
                 n_tasks=50,
                 n_workers=0,
-                max_concurrency=3,
+                managers={self.manager_id: manager},
                 n_tasks_by_capset={gpu_capset: 50},
                 capset_representatives={gpu_capset: {"gpu": 1}},
             )
@@ -120,11 +123,19 @@ class TestRatioEstimator(unittest.TestCase):
     def test_custom_upper_task_ratio(self):
         """Custom upper_task_ratio changes the computation."""
         estimator = RatioEstimator(upper_task_ratio=2)
-        estimator.update(ClusterState(n_tasks=10, n_workers=0, max_concurrency=None))
+        estimator.update(ClusterState(n_tasks=10, n_workers=0, managers={self.manager_id: self.manager}))
 
         result = estimator.estimate(self.manager_id)
 
         self.assertEqual(result, [({}, 5)])
+
+    def test_unknown_manager_returns_empty(self):
+        """A manager not in managers returns an empty list."""
+        self.estimator.update(ClusterState(n_tasks=10, n_workers=0, managers={}))
+
+        result = self.estimator.estimate(b"unknown")
+
+        self.assertEqual(result, [])
 
 
 class TestIncrementalRatioEstimator(unittest.TestCase):
@@ -134,11 +145,15 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
         self.estimator = IncrementalRatioEstimator()
         self.manager_id = b"mgr1"
 
+    def _make_manager(self, worker_count: int, max_concurrency: int | None = None) -> ManagerInfo:
+        return ManagerInfo(
+            manager_id=self.manager_id, max_concurrency=max_concurrency, worker_count=worker_count, capabilities={}
+        )
+
     def test_no_workers_no_tasks_returns_current(self):
         """No workers and no tasks: desired equals current managed count."""
-        self.estimator.update(
-            ClusterState(n_tasks=0, n_workers=0, max_concurrency=None, n_workers_by_manager={self.manager_id: 3})
-        )
+        manager = self._make_manager(worker_count=3)
+        self.estimator.update(ClusterState(n_tasks=0, n_workers=0, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -146,9 +161,8 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
 
     def test_no_workers_with_tasks_returns_current_plus_one(self):
         """No workers but tasks pending: desired is current + 1 to bootstrap."""
-        self.estimator.update(
-            ClusterState(n_tasks=5, n_workers=0, max_concurrency=None, n_workers_by_manager={self.manager_id: 2})
-        )
+        manager = self._make_manager(worker_count=2)
+        self.estimator.update(ClusterState(n_tasks=5, n_workers=0, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -156,9 +170,8 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
 
     def test_high_ratio_returns_current_plus_one(self):
         """Task/worker ratio above upper threshold: desired is current + 1."""
-        self.estimator.update(
-            ClusterState(n_tasks=20, n_workers=1, max_concurrency=None, n_workers_by_manager={self.manager_id: 1})
-        )
+        manager = self._make_manager(worker_count=1)
+        self.estimator.update(ClusterState(n_tasks=20, n_workers=1, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -166,9 +179,8 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
 
     def test_low_ratio_with_tasks_returns_floor(self):
         """Task/worker ratio below lower threshold with tasks: desired is max(1, ceil(tasks/upper))."""
-        self.estimator.update(
-            ClusterState(n_tasks=5, n_workers=10, max_concurrency=None, n_workers_by_manager={self.manager_id: 10})
-        )
+        manager = self._make_manager(worker_count=10)
+        self.estimator.update(ClusterState(n_tasks=5, n_workers=10, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -176,9 +188,8 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
 
     def test_low_ratio_no_tasks_returns_zero(self):
         """Task/worker ratio below lower threshold with no tasks: desired is 0."""
-        self.estimator.update(
-            ClusterState(n_tasks=0, n_workers=5, max_concurrency=None, n_workers_by_manager={self.manager_id: 5})
-        )
+        manager = self._make_manager(worker_count=5)
+        self.estimator.update(ClusterState(n_tasks=0, n_workers=5, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -186,9 +197,8 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
 
     def test_ratio_in_band_returns_current(self):
         """Task/worker ratio within [lower, upper]: desired equals current."""
-        self.estimator.update(
-            ClusterState(n_tasks=15, n_workers=5, max_concurrency=None, n_workers_by_manager={self.manager_id: 5})
-        )
+        manager = self._make_manager(worker_count=5)
+        self.estimator.update(ClusterState(n_tasks=15, n_workers=5, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -196,9 +206,8 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
 
     def test_max_concurrency_clamps_desired(self):
         """max_concurrency limits the desired count."""
-        self.estimator.update(
-            ClusterState(n_tasks=50, n_workers=1, max_concurrency=1, n_workers_by_manager={self.manager_id: 1})
-        )
+        manager = self._make_manager(worker_count=1, max_concurrency=1)
+        self.estimator.update(ClusterState(n_tasks=50, n_workers=1, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -206,9 +215,8 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
 
     def test_max_concurrency_none_means_unlimited(self):
         """max_concurrency=None does not clamp the desired count."""
-        self.estimator.update(
-            ClusterState(n_tasks=100, n_workers=1, max_concurrency=None, n_workers_by_manager={self.manager_id: 1})
-        )
+        manager = self._make_manager(worker_count=1, max_concurrency=None)
+        self.estimator.update(ClusterState(n_tasks=100, n_workers=1, managers={self.manager_id: manager}))
 
         result = self.estimator.estimate(self.manager_id)
 
@@ -217,8 +225,11 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
     def test_raises_on_capability_aware_state(self):
         """Raises NotImplementedError if the cluster state contains per-capset task counts."""
         gpu_capset = frozenset({"gpu"})
+        manager = self._make_manager(worker_count=2)
         self.estimator.update(
-            ClusterState(n_tasks=10, n_workers=2, max_concurrency=None, n_tasks_by_capset={gpu_capset: 10})
+            ClusterState(
+                n_tasks=10, n_workers=2, managers={self.manager_id: manager}, n_tasks_by_capset={gpu_capset: 10}
+            )
         )
 
         with self.assertRaises(NotImplementedError):
@@ -232,13 +243,13 @@ class TestIncrementalRatioEstimator(unittest.TestCase):
         """forget() is callable and does not raise."""
         self.estimator.forget(self.manager_id)
 
-    def test_unknown_manager_defaults_to_zero_workers(self):
-        """A manager not in n_workers_by_manager is treated as having 0 workers."""
-        self.estimator.update(ClusterState(n_tasks=5, n_workers=0, max_concurrency=None, n_workers_by_manager={}))
+    def test_unknown_manager_returns_zero(self):
+        """A manager not in managers returns [({}, 0)]."""
+        self.estimator.update(ClusterState(n_tasks=5, n_workers=0, managers={}))
 
         result = self.estimator.estimate(b"unknown")
 
-        self.assertEqual(result, [({}, 1)])
+        self.assertEqual(result, [({}, 0)])
 
 
 if __name__ == "__main__":

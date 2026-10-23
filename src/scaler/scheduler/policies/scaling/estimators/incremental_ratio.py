@@ -1,7 +1,7 @@
 from math import ceil
 from typing import Dict, List, Optional, Tuple
 
-from scaler.scheduler.policies.scaling.estimator import ClusterState, ScalingEstimator
+from scaler.scheduler.policies.scaling.estimator import ClusterState, ManagerInfo, ScalingEstimator
 
 
 class IncrementalRatioEstimator(ScalingEstimator):
@@ -30,12 +30,15 @@ class IncrementalRatioEstimator(ScalingEstimator):
         if state.n_tasks_by_capset:
             raise NotImplementedError("IncrementalRatioEstimator does not support capability-aware scaling")
 
-        return [({}, self._compute_desired(manager_id, state))]
+        manager = state.managers.get(manager_id)
+        if manager is None:
+            return [({}, 0)]
 
-    def _compute_desired(self, manager_id: bytes, state: ClusterState) -> int:
+        return [({}, self._compute_desired(manager, state))]
+
+    def _compute_desired(self, manager: ManagerInfo, state: ClusterState) -> int:
         """Compute desired worker count using incremental scaling logic."""
-
-        managed_worker_count = state.n_workers_by_manager.get(manager_id, 0)
+        managed_worker_count = manager.worker_count
 
         if state.n_workers == 0:
             desired = managed_worker_count + 1 if state.n_tasks > 0 else managed_worker_count
@@ -48,8 +51,8 @@ class IncrementalRatioEstimator(ScalingEstimator):
             else:
                 desired = managed_worker_count
 
-        if state.max_concurrency is not None:
-            desired = min(desired, state.max_concurrency)
+        if manager.max_concurrency is not None:
+            desired = min(desired, manager.max_concurrency)
 
         return max(0, desired)
 
