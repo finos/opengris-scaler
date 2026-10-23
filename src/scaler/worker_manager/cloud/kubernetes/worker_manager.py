@@ -213,6 +213,8 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                 if not containers:
                     containers.append(container)
 
+                container["image"] = config.pod_image
+
                 if config.node_selector:
                     spec["nodeSelector"] = config.node_selector
 
