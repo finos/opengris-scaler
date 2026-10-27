@@ -99,7 +99,8 @@ class SchedulerClusterCombo:
             self._object_storage_address = AddressConfig.from_string(object_storage_address)
 
         if monitor_address is None:
-            self._monitor_address = None
+            # the scheduler's default, its port + 2, can collide with the object storage port picked above
+            self._monitor_address = AddressConfig(self._address.type, self._address.host, get_available_tcp_port())
         else:
             self._monitor_address = AddressConfig.from_string(monitor_address)
 

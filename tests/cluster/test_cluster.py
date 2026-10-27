@@ -6,6 +6,9 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
+# the scheduler binds its monitor to its own port + 2 when given no monitor address
+SCHEDULER_DEFAULT_MONITOR_PORT_OFFSET = 2
+
 
 class TestCluster(unittest.TestCase):
     def setUp(self) -> None:
@@ -36,3 +39,14 @@ class TestCluster(unittest.TestCase):
             socket.create_connection(("127.0.0.1", port)).close()
         finally:
             combo.shutdown()
+
+    def test_object_storage_on_scheduler_port_plus_two(self):
+        """Without a monitor address, the combo starts when object storage holds the default monitor port."""
+        port = get_available_tcp_port()
+        object_storage_port = port + SCHEDULER_DEFAULT_MONITOR_PORT_OFFSET
+        combo = SchedulerClusterCombo(
+            address=f"tcp://127.0.0.1:{port}",
+            object_storage_address=f"tcp://127.0.0.1:{object_storage_port}",
+            n_workers=1,
+        )
+        combo.shutdown()
