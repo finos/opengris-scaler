@@ -16,3 +16,18 @@ Why this matters:
 
 * Capability constraints route tasks to compatible workers.
 * Non-constrained tasks can use general workers, improving cluster utilization.
+
+.. _client-capabilities:
+
+Client capabilities
+-------------------
+
+Pass ``capabilities`` to ``Client`` to apply them to every task it submits.
+A submission's own ``capabilities``, ``{}`` included, replaces the client's.
+A client serialized into a task keeps its capabilities.
+
+.. code:: python
+
+    with Client(address="tcp://127.0.0.1:2345", capabilities={"gpu": 1}) as client:
+        client.submit(gpu_task, 16.0)  # requires gpu
+        client.submit_verbose(cpu_task, args=(16.0,), kwargs={}, capabilities={})  # requires nothing
