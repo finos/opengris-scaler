@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 import cloudpickle
@@ -18,6 +19,7 @@ from scaler.protocol.capnp import (
     TaskResultType,
 )
 from scaler.utility.identifiers import ObjectID, TaskID
+from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
@@ -44,6 +46,7 @@ class TaskManager(Looper, TaskManagerMixin):
 
         self._task_id_to_task: Dict[TaskID, Task] = dict()
         self._task_id_to_future: bidict[TaskID, asyncio.Future] = bidict()
+        self._task_id_to_start_time: Dict[TaskID, float] = dict()
 
         self._serializers: Dict[bytes, Serializer] = dict()
 
@@ -90,7 +93,7 @@ class TaskManager(Looper, TaskManagerMixin):
                 self._task_id_to_task[task.taskId] = task
                 self._processing_task_ids.add(task.taskId)
                 # Bypass tasks intentionally exceed base_concurrency to service higher-priority requests immediately.
-                self._task_id_to_future[task.taskId] = await self._execution_backend.execute(task)
+                await self._execute(task)
                 return
 
         self._task_id_to_task[task.taskId] = task
@@ -161,6 +164,7 @@ class TaskManager(Looper, TaskManagerMixin):
         done, _ = await asyncio.wait(self._task_id_to_future.values(), return_when=asyncio.FIRST_COMPLETED)
         for future in done:
             task_id = self._task_id_to_future.inv.pop(future)
+            start_time = self._task_id_to_start_time.pop(task_id)
             task = self._task_id_to_task.get(task_id)
 
             if task is None:
@@ -179,6 +183,8 @@ class TaskManager(Looper, TaskManagerMixin):
                     result_bytes = serialize_failure(cast(Exception, future.exception()))
                     result_type = TaskResultType.failed
 
+                # the backend reports no CPU time or memory peak, only the duration the worker observed
+                profile_result = ProfileResult(duration_s=time.monotonic() - start_time)
                 result_object_id = ObjectID.generate_object_id(task.source)
 
                 await self._connector_storage.set_object(result_object_id, result_bytes)
@@ -196,7 +202,12 @@ class TaskManager(Looper, TaskManagerMixin):
                 )
 
                 await self._connector_external.send(
-                    TaskResult(taskId=task_id, resultType=result_type, metadata=b"", results=[bytes(result_object_id)]),
+                    TaskResult(
+                        taskId=task_id,
+                        resultType=result_type,
+                        metadata=profile_result.serialize(),
+                        results=[bytes(result_object_id)],
+                    ),
                     detached=True,
                 )
 
@@ -225,6 +236,10 @@ class TaskManager(Looper, TaskManagerMixin):
         self._acquiring_task_ids.add(task_id)
         self._processing_task_ids.add(task_id)
         # _queued_task_ids intentionally not cleared here; on_cancel_task and on_task_result clear it.
+        await self._execute(task)
+
+    async def _execute(self, task: Task) -> None:
+        self._task_id_to_start_time[task.taskId] = time.monotonic()
         self._task_id_to_future[task.taskId] = await self._execution_backend.execute(task)
 
     @property

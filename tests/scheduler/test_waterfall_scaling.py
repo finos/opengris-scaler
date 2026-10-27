@@ -3,11 +3,18 @@ import time
 import unittest
 from typing import Dict, Optional
 
+from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy, parse_waterfall_rules
+from scaler.scheduler.policies.scaling.waterfall.policy import (
+    allocate,
+    lower_priority_tier_above_floor,
+    target_worker_count,
+)
+from scaler.scheduler.policies.scaling.waterfall.types import Tier
 from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
@@ -316,6 +323,104 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
 
+class TestTargetWorkerCount(unittest.TestCase):
+    def test_one_worker_per_ten_tasks_rounded_up(self):
+        for task_count, target in ((0, 0), (1, 1), (10, 1), (11, 2), (200, 20)):
+            with self.subTest(task_count=task_count):
+                self.assertEqual(target_worker_count(task_count), target)
+
+
+class TestAllocate(unittest.TestCase):
+    """Floors count as supply first; the rest of the target fills tiers above their floors in priority order."""
+
+    def test_a_floor_holds_with_no_demand(self):
+        tiers = [
+            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
+            _tier(b"cloud", max_task_concurrency=100),
+        ]
+        self.assertEqual(allocate(0, tiers), {b"native": 8, b"cloud": 0})
+
+    def test_demand_under_a_floor_stays_on_the_floor_tier(self):
+        tiers = [
+            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
+            _tier(b"cloud", max_task_concurrency=100),
+        ]
+        self.assertEqual(allocate(5, tiers), {b"native": 8, b"cloud": 0})
+
+    def test_demand_above_a_full_tier_spills_to_the_next(self):
+        tiers = [
+            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
+            _tier(b"cloud", max_task_concurrency=100),
+        ]
+        self.assertEqual(allocate(20, tiers), {b"native": 8, b"cloud": 12})
+
+    def test_a_floor_below_the_cap_is_a_minimum(self):
+        self.assertEqual(
+            allocate(10, [_tier(b"native", max_task_concurrency=20, min_task_concurrency=2)]), {b"native": 10}
+        )
+
+    def test_a_floor_on_a_lower_tier_counts_as_supply_first(self):
+        tiers = [
+            _tier(b"burst", max_task_concurrency=20),
+            _tier(b"warm", max_task_concurrency=20, min_task_concurrency=8),
+        ]
+        for target, burst, warm in ((5, 0, 8), (20, 12, 8), (30, 20, 10), (50, 20, 20)):
+            with self.subTest(target=target):
+                self.assertEqual(allocate(target, tiers), {b"burst": burst, b"warm": warm})
+
+
+class TestDrainOrder(unittest.TestCase):
+    def test_a_tier_holds_while_a_lower_priority_tier_is_above_its_floor(self):
+        warm_draining = _tier(b"warm", max_task_concurrency=8, min_task_concurrency=4, worker_count=6, priority=2)
+        warm_at_floor = _tier(b"warm", max_task_concurrency=8, min_task_concurrency=4, worker_count=4, priority=2)
+        burst = _tier(b"burst", max_task_concurrency=20, worker_count=20)
+        self.assertTrue(lower_priority_tier_above_floor(burst, [burst, warm_draining]))
+        self.assertFalse(lower_priority_tier_above_floor(burst, [burst, warm_at_floor]))
+
+    def test_a_tier_of_the_same_priority_does_not_hold_it(self):
+        burst = _tier(b"burst", max_task_concurrency=20, worker_count=20)
+        peer = _tier(b"peer", max_task_concurrency=8, worker_count=6)
+        self.assertFalse(lower_priority_tier_above_floor(burst, [burst, peer]))
+
+
+class TestWaterfallFloor(unittest.TestCase):
+    """The floor reaches a manager through the policy's heartbeat and snapshot handling."""
+
+    def setUp(self):
+        setup_logger()
+
+    def test_spill_through_the_policy(self):
+        policy = WaterfallScalingPolicy(
+            [
+                WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=8, min_task_concurrency=8),
+                WaterfallRule(priority=2, worker_manager_id=b"cloud", max_task_concurrency=100),
+            ]
+        )
+        managers = {b"native": 8, b"cloud": 100}
+        desired = _desired_by_manager(policy, task_count=20 * TASKS_PER_WORKER, advertised_max_by_manager=managers)
+        self.assertEqual(desired, {b"native": 8, b"cloud": 12})
+
+    def test_a_floor_is_clamped_to_the_advertised_maximum(self):
+        policy = WaterfallScalingPolicy(
+            [WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=8, min_task_concurrency=8)]
+        )
+        self.assertEqual(_desired_by_manager(policy, 0, {b"native": 3}), {b"native": 3})
+
+    def test_a_floor_does_not_apply_to_capability_requests(self):
+        """Only the generic request carries the floor; a capability request stays driven by demand."""
+        policy = WaterfallScalingPolicy(
+            [WaterfallRule(priority=1, worker_manager_id=b"gpu", max_task_concurrency=8, min_task_concurrency=4)]
+        )
+        snapshot = InformationSnapshot(tasks=_create_tasks(5, capabilities={"gpu": 1}), workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"gpu", max_task_concurrency=8, capabilities={"gpu": 1})
+        manager_snapshots = {b"gpu": _create_manager_snapshot(b"gpu", max_task_concurrency=8, capabilities={"gpu": 1})}
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+
+        self.assertEqual(_generic_request(commands[0]).taskConcurrency, 4)
+        self.assertEqual(_capability_requests(commands[0]), [({"gpu": 1}, 1)])
+
+
 class TestWaterfallCapabilities(unittest.TestCase):
     """Capability-aware declarative emission for WaterfallScalingPolicy."""
 
@@ -518,6 +623,28 @@ class TestWaterfallConfigParsing(unittest.TestCase):
         self.assertIsNone(rules[0].max_task_concurrency)
         self.assertEqual(rules[1].max_task_concurrency, 20)
 
+    def test_config_parsing_with_min_task_concurrency(self):
+        """A fourth column sets the rule's floor; it defaults to 0."""
+        rules = parse_waterfall_rules("1,native,8,8\n2,cloud,20")
+        self.assertEqual(rules[0].min_task_concurrency, 8)
+        self.assertEqual(rules[1].min_task_concurrency, 0)
+
+    def test_config_parsing_floor_without_cap(self):
+        """An empty max_task_concurrency column leaves the cap unset while a floor is given."""
+        rules = parse_waterfall_rules("1,native,,4")
+        self.assertIsNone(rules[0].max_task_concurrency)
+        self.assertEqual(rules[0].min_task_concurrency, 4)
+
+    def test_invalid_config_floor_above_cap(self):
+        """A floor above the rule's cap should raise ValueError."""
+        with self.assertRaisesRegex(ValueError, "cannot exceed"):
+            create_policies("waterfall_v1", "1,native,4,8")
+
+    def test_invalid_config_negative_floor(self):
+        """A negative floor should raise ValueError."""
+        with self.assertRaisesRegex(ValueError, "cannot be negative"):
+            create_policies("waterfall_v1", "1,native,8,-1")
+
     def test_invalid_config_empty(self):
         """Empty policy content should raise ValueError."""
         with self.assertRaises(ValueError):
@@ -533,7 +660,7 @@ class TestWaterfallConfigParsing(unittest.TestCase):
         with self.assertRaises(ValueError):
             create_policies("waterfall_v1", "manager_a_only")
         with self.assertRaises(ValueError):
-            create_policies("waterfall_v1", "1,manager_a,10,extra")
+            create_policies("waterfall_v1", "1,manager_a,10,2,extra")
 
     def test_invalid_config_non_integer_priority(self):
         """Non-integer priority should raise ValueError."""
@@ -704,3 +831,30 @@ def _create_workers(
         worker_id = WorkerID(f"worker-{i}".encode())
         workers[worker_id] = _create_mock_worker_heartbeat(queued_tasks, capabilities=capabilities)
     return workers
+
+
+def _tier(
+    worker_manager_id: bytes,
+    max_task_concurrency: int,
+    min_task_concurrency: int = 0,
+    worker_count: int = 0,
+    priority: int = 1,
+) -> Tier:
+    return Tier(worker_manager_id, priority, max_task_concurrency, min_task_concurrency, worker_count)
+
+
+def _desired_by_manager(
+    policy: WaterfallScalingPolicy, task_count: int, advertised_max_by_manager: Dict[bytes, int]
+) -> Dict[bytes, int]:
+    """Ask the policy once per manager, as each manager's heartbeat does, with one consistent cluster view."""
+    snapshot = InformationSnapshot(tasks=_create_tasks(task_count), workers={})
+    manager_snapshots = {
+        manager_id: _create_manager_snapshot(manager_id, max_task_concurrency=advertised_max)
+        for manager_id, advertised_max in advertised_max_by_manager.items()
+    }
+    desired = {}
+    for manager_id, advertised_max in advertised_max_by_manager.items():
+        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=advertised_max)
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+        desired[manager_id] = _generic_request(commands[0]).taskConcurrency
+    return desired

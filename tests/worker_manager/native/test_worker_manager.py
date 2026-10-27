@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -46,3 +47,27 @@ class TestNativeWorkerProvisionerStopUnits(unittest.IsolatedAsyncioTestCase):
         with patch("os.kill"), patch("psutil.Process"):
             await provisioner.stop_units(5)
         self.assertEqual(provisioner._workers, [])
+
+
+class TestNativeWorkerProvisionerReapExitedWorkers(unittest.IsolatedAsyncioTestCase):
+    async def test_worker_that_exits_on_its_own_is_replaced(self) -> None:
+        """A worker that dies without stop_units is reaped and replaced on the next desired concurrency."""
+        provisioner = _make_provisioner()
+        workers = [_make_worker(pid=4000 + i) for i in range(3)]
+        for worker in workers:
+            worker.is_alive.return_value = True
+        request = _make_request(task_concurrency=2, capabilities={})
+
+        with patch.object(provisioner, "_create_worker", side_effect=workers):
+            await provisioner.set_desired_task_concurrency([request])
+            await asyncio.sleep(0)
+            self.assertEqual(provisioner._workers, workers[:2])
+
+            workers[0].is_alive.return_value = False
+            workers[0].exitcode = 1
+            await provisioner.set_desired_task_concurrency([request])
+            await asyncio.sleep(0)
+
+        workers[0].join.assert_called_once()
+        self.assertEqual(provisioner._workers, workers[1:])
+        provisioner._capacity_coordinator.cancel()

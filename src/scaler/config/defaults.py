@@ -61,6 +61,9 @@ DEFAULT_LOAD_BALANCE_TRIGGER_TIMES = 2
 # number of tasks can be queued to each worker on scheduler side
 DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 
+# tasks the waterfall scaling policy counts as one worker's load when sizing the cluster
+TASKS_PER_WORKER = 10
+
 # how long the scheduler waits for the object storage server to answer what it holds.
 # Without a bound the status routine would wedge behind a server that never answers.
 STORAGE_TOTALS_TIMEOUT_SECONDS = 5.0

@@ -60,14 +60,9 @@ class CapacityCoordinator:
     async def set_desired_unit_count(self, count: int) -> None:
         """Set the desired number of units and signal the reconcile task.
 
-        Also re-signals when *count* is unchanged but a scale-down is deferred in cooldown,
-        so callers that re-assert the same desired count on a fixed interval (e.g. every
-        heartbeat) will trigger a retry once the cooldown window has elapsed.
+        Every call signals, even with an unchanged count: the reconcile replaces units that
+        exited on their own and retries a scale-down deferred by the cooldown.
         """
-        # An unchanged count is only a true no-op if nothing is pending: while a scale-down is
-        # deferred, we must keep signalling or it would never be retried once the cooldown ends.
-        if count == self._desired_unit_count and not self._scale_down_cooldown.is_running:
-            return
         if count != self._desired_unit_count:
             logger.info(f"Desired unit count changed: {self._desired_unit_count} -> {count}")
             self._desired_unit_count = count

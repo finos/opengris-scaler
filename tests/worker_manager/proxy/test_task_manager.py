@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unittest
 from typing import Any, List, Optional, Tuple
 from unittest.mock import AsyncMock, MagicMock
@@ -15,6 +16,7 @@ from scaler.protocol.capnp import (
 )
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
 from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker.agent.mixins import HeartbeatManager
 from scaler.worker_manager.proxy.mixins import ExecutionBackend, TaskDeserializer, TaskInputLoader
@@ -382,6 +384,7 @@ class TestTaskManagerResolveTasks(unittest.IsolatedAsyncioTestCase):
         fut = asyncio.get_running_loop().create_future()
         fut.set_result("the_return_value")
         self.tm._task_id_to_future[task.taskId] = fut
+        self.tm._task_id_to_start_time[task.taskId] = time.monotonic()
         self.tm._task_id_to_task[task.taskId] = task
         self.tm._processing_task_ids.add(task.taskId)
         self.tm._acquiring_task_ids.add(task.taskId)
@@ -404,6 +407,25 @@ class TestTaskManagerResolveTasks(unittest.IsolatedAsyncioTestCase):
         self.backend.on_cleanup.assert_called_once_with(task.taskId)
         self.assertFalse(self.tm._executor_semaphore.locked())
 
+    async def test_task_result_carries_profiling_info(self) -> None:
+        """A proxy task result carries its duration, as clients such as parfun read it on every result."""
+        client_id = ClientID.generate_client_id()
+        task = _make_task(source=client_id)
+        self.tm._serializers[ObjectID.generate_serializer_object_id(client_id)] = MagicMock()
+
+        fut = asyncio.get_running_loop().create_future()
+        self.backend.execute = AsyncMock(return_value=fut)
+        await self.tm.on_task_new(task)
+        await self.tm.process_task()
+        fut.set_result("the_return_value")
+
+        await self.tm.resolve_tasks()
+
+        task_result = self.connector_external.send.call_args_list[1][0][0]
+        profile_result = retrieve_profiling_result_from_task_result(task_result)
+        self.assertIsNotNone(profile_result)
+        self.assertGreaterEqual(profile_result.duration_s, 0.0)
+
     async def test_failure_path_sends_failed_task_result(self) -> None:
         client_id = ClientID.generate_client_id()
         task = _make_task(source=client_id)
@@ -411,6 +433,7 @@ class TestTaskManagerResolveTasks(unittest.IsolatedAsyncioTestCase):
         fut = asyncio.get_running_loop().create_future()
         fut.set_exception(RuntimeError("boom"))
         self.tm._task_id_to_future[task.taskId] = fut
+        self.tm._task_id_to_start_time[task.taskId] = time.monotonic()
         self.tm._task_id_to_task[task.taskId] = task
         self.tm._processing_task_ids.add(task.taskId)
         self.tm._acquiring_task_ids.add(task.taskId)
@@ -431,6 +454,7 @@ class TestTaskManagerResolveTasks(unittest.IsolatedAsyncioTestCase):
         fut = asyncio.get_running_loop().create_future()
         fut.cancel()
         self.tm._task_id_to_future[task.taskId] = fut
+        self.tm._task_id_to_start_time[task.taskId] = time.monotonic()
         self.tm._task_id_to_task[task.taskId] = task
         self.tm._canceled_task_ids.add(task.taskId)
         self.tm._acquiring_task_ids.add(task.taskId)
