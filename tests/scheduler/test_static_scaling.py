@@ -1,8 +1,9 @@
+import time
 import unittest
 from typing import Optional
 from unittest.mock import MagicMock
 
-from scaler.protocol.capnp import WorkerManagerHeartbeat
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
 from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import WorkerManagerID
@@ -13,8 +14,20 @@ MAX_TASK_CONCURRENCY = 8
 def _desired_task_concurrency(
     policy: StaticScalingPolicy, worker_manager_id: WorkerManagerID = WorkerManagerID(b"manager")
 ) -> int:
-    heartbeat = WorkerManagerHeartbeat(maxTaskConcurrency=MAX_TASK_CONCURRENCY, workerManagerID=worker_manager_id)
-    commands = policy.get_scaling_commands(MagicMock(), heartbeat, [], {})
+    info = WorkerManagerInfo(
+        manager_id=worker_manager_id,
+        source=b"test",
+        last_seen_at=time.time(),
+        capabilities={},
+        max_task_concurrency=MAX_TASK_CONCURRENCY,
+    )
+    commands = policy.get_scaling_commands(
+        worker_manager_id=worker_manager_id,
+        information_snapshot=MagicMock(),
+        managed_worker_ids=[],
+        worker_manager_infos={worker_manager_id: info},
+        worker_count_by_manager={worker_manager_id: 0},
+    )
     (command,) = commands
     (request,) = command.setDesiredTaskConcurrencyRequests
     return request.taskConcurrency
