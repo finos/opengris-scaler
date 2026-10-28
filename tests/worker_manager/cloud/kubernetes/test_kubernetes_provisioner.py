@@ -301,11 +301,13 @@ class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
     """Tests for the backoff that keeps a crashing pod from being replaced in a tight loop."""
 
     async def test_pod_starts_are_held_until_backoff_ends(self) -> None:
-        """After a pod exits, start_units creates nothing until the backoff ends and a reconcile is requested."""
+        """After a pod exits, start_units creates nothing until the backoff sleep ends, whatever the clock reads."""
         provisioner, core_v1 = _make_provisioner()
         await provisioner.start_units(1)
 
+        # A frozen clock stands in for a timer that fires early, as asyncio's does on Windows.
         with (
+            patch.object(worker_manager_module, "time", MagicMock(monotonic=MagicMock(return_value=1000.0))),
             patch.object(worker_manager_module, "POD_EXIT_BACKOFF_INITIAL_SECONDS", 0.05),
             patch.object(provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock) as rec,
         ):
