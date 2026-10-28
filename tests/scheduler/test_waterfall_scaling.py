@@ -62,7 +62,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands = self.policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -82,7 +81,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_a = self.policy.get_scaling_commands(
             worker_manager_id=self.manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -91,7 +89,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_b = self.policy.get_scaling_commands(
             worker_manager_id=self.manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -114,7 +111,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_b = self.policy.get_scaling_commands(
             worker_manager_id=self.manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -132,7 +128,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_b = self.policy.get_scaling_commands(
             worker_manager_id=self.manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -149,7 +144,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands = self.policy.get_scaling_commands(
             worker_manager_id=self.manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -169,7 +163,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=self.manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -197,7 +190,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_a = policy.get_scaling_commands(
             worker_manager_id=self.manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -206,7 +198,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_b = policy.get_scaling_commands(
             worker_manager_id=self.manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -231,11 +222,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         worker_count_by_manager = {self.manager_id_a: 3, self.manager_id_b: 2}
 
         # manager_b (lower priority) is told to drain to 0
-        managed_b = [WorkerID(b"worker-3"), WorkerID(b"worker-4")]
         commands_b = policy.get_scaling_commands(
             worker_manager_id=self.manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=managed_b,
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -243,11 +232,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
         # manager_a (higher priority) holds its count (waiting for lower priority to drain) -> emits setDesired(3).
-        managed_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
         commands_a = policy.get_scaling_commands(
             worker_manager_id=self.manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=managed_a,
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -266,11 +253,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         manager_infos = {self.manager_id_a: _create_worker_manager_info(self.manager_id_a, max_task_concurrency=10)}
         worker_count_by_manager = {self.manager_id_a: 3}
 
-        managed_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
         commands_a = policy.get_scaling_commands(
             worker_manager_id=self.manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=managed_a,
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -293,7 +278,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -323,7 +307,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_nat = policy.get_scaling_commands(
             worker_manager_id=manager_id_nat,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -333,7 +316,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_ecs = policy.get_scaling_commands(
             worker_manager_id=manager_id_ecs,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -365,7 +347,6 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id_ecs,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -384,12 +365,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_infos = {self.manager_id_a: _create_worker_manager_info(self.manager_id_a, max_task_concurrency=20)}
         worker_count_by_manager = {self.manager_id_a: 10}
-        managed = [WorkerID(f"worker-{i}".encode()) for i in range(10)]
-
         commands = policy.get_scaling_commands(
             worker_manager_id=self.manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=managed,
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -413,11 +391,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
         worker_count_by_manager = {self.manager_id_a: 3, self.manager_id_b: 2}
 
-        managed_b = [WorkerID(b"w0"), WorkerID(b"w1")]
         commands_b = policy.get_scaling_commands(
             worker_manager_id=self.manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=managed_b,
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -557,7 +533,6 @@ class TestWaterfallFloor(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id_gpu,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -585,7 +560,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -607,7 +581,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -634,7 +607,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands_a = policy.get_scaling_commands(
             worker_manager_id=manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -643,7 +615,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands_b = policy.get_scaling_commands(
             worker_manager_id=manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -672,7 +643,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands_b = policy.get_scaling_commands(
             worker_manager_id=manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -693,7 +663,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -720,7 +689,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -743,7 +711,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -772,7 +739,6 @@ class TestWaterfallCapabilities(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -897,7 +863,6 @@ class TestWaterfallConfigParsing(unittest.TestCase):
         commands_a = scaling_policy.get_scaling_commands(
             worker_manager_id=manager_id_a,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -907,7 +872,6 @@ class TestWaterfallConfigParsing(unittest.TestCase):
         commands_b = scaling_policy.get_scaling_commands(
             worker_manager_id=manager_id_b,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )
@@ -1057,7 +1021,6 @@ def _desired_by_manager(
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager=worker_count_by_manager,
         )

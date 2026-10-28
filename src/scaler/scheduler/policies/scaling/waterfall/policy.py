@@ -8,7 +8,7 @@ from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 from scaler.scheduler.policies.scaling.waterfall.types import Tier, WaterfallRule
 from scaler.scheduler.types import WorkerManagerInfo
-from scaler.utility.identifiers import WorkerID, WorkerManagerID
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,6 @@ class WaterfallScalingPolicy(ScalingPolicy):
         self,
         worker_manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
-        managed_worker_ids: List[WorkerID],
         worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
         worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> List[WorkerManagerCommand]:

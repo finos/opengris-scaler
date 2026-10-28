@@ -242,7 +242,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=managed,
             worker_manager_infos=manager_infos,
             worker_count_by_manager={manager_id: 10},
         )
@@ -268,7 +267,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=managed,
             worker_manager_infos=manager_infos,
             worker_count_by_manager={manager_id: 1},
         )
@@ -286,7 +284,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         for _ in range(50):
             tid = TaskID.generate_task_id()
             tasks[tid] = _create_mock_task(tid, {"gpu": 1})
-        managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_infos = {
             manager_id: WorkerManagerInfo(
@@ -301,7 +298,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=managed,
             worker_manager_infos=manager_infos,
             worker_count_by_manager={manager_id: 10},
         )
@@ -327,7 +323,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=manager_infos,
             worker_count_by_manager={manager_id: 0},
         )
@@ -346,7 +341,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         policy = WaterfallScalingPolicy(rules)
         # ceil(100/10) = 10; cap=10; desired=10 -> emits setDesired(10).
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
-        managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_infos = {
             manager_id: WorkerManagerInfo(
@@ -357,7 +351,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         commands = policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=snapshot,
-            managed_worker_ids=managed,
             worker_manager_infos=manager_infos,
             worker_count_by_manager={manager_id: 10},
         )
