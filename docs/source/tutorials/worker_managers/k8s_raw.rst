@@ -289,6 +289,9 @@ YAML format.
 Nested dicts merge recursively. Lists *replace* the base list entirely --- no
 element-level merge.
 
+The worker manager parses ``pod_template`` once at startup.
+Invalid YAML, a template that is not a mapping, or a path to a missing file stops it before any pod starts.
+
 .. list-table::
    :header-rows: 1
    :widths: 30 15 15 40
