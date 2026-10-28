@@ -18,6 +18,7 @@ exercised through a live cluster (API errors, FIFO ordering, etc.).
 from __future__ import annotations
 
 import sys
+import threading
 import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -177,8 +178,7 @@ async def _run_pod_watch(provisioner, events: list[dict]) -> None:
         yield from events
         stop_event.set()
 
-    with patch("kubernetes.watch.Watch") as mock_watch_cls:
-        mock_watch_cls.return_value.stream = fake_stream
+    with patch.object(provisioner._watcher, "stream", fake_stream):
         provisioner._loop = asyncio.get_running_loop()
         provisioner._pod_watch_loop()
 
@@ -210,8 +210,7 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
             yield event
             stop_event.set()
 
-        with patch("kubernetes.watch.Watch") as mock_watch_cls:
-            mock_watch_cls.return_value.stream = fake_stream
+        with patch.object(provisioner._watcher, "stream", fake_stream):
             provisioner._loop = asyncio.get_running_loop()
             provisioner._pod_watch_loop()
 
@@ -236,8 +235,7 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
             yield event
             stop_event.set()
 
-        with patch("kubernetes.watch.Watch") as mock_watch_cls:
-            mock_watch_cls.return_value.stream = fake_stream
+        with patch.object(provisioner._watcher, "stream", fake_stream):
             provisioner._loop = asyncio.get_running_loop()
             provisioner._pod_watch_loop()
 
@@ -259,8 +257,7 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
             yield {"type": "MODIFIED", "object": pod_obj}
             stop_event.set()
 
-        with patch("kubernetes.watch.Watch") as mock_watch_cls:
-            mock_watch_cls.return_value.stream = fake_stream
+        with patch.object(provisioner._watcher, "stream", fake_stream):
             provisioner._loop = asyncio.get_running_loop()
             provisioner._pod_watch_loop()
 
@@ -347,10 +344,37 @@ class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
 
         stop_started_at = time.monotonic()
         provisioner._stop_pod_watch()
+        watch_thread.join(timeout=1.0)
 
         self.assertLess(time.monotonic() - stop_started_at, 1.0)
         self.assertFalse(watch_thread.is_alive())
         self.assertEqual(core_v1.list_namespaced_pod.call_count, 1)
+
+    async def test_stop_unblocks_watch_without_waiting_for_it(self) -> None:
+        """Stopping returns at once and stop() on the watch releases a thread blocked reading the stream."""
+        provisioner, _ = _make_provisioner()
+        stream_opened = threading.Event()
+        stream_released = threading.Event()
+
+        def blocking_stream(*args, **kwargs):
+            stream_opened.set()
+            stream_released.wait()
+            yield from ()
+
+        with (
+            patch.object(provisioner._watcher, "stream", blocking_stream),
+            patch.object(provisioner._watcher, "stop", side_effect=stream_released.set),
+        ):
+            provisioner._start_pod_watch()
+            watch_thread = provisioner._watch_thread
+            self.assertTrue(stream_opened.wait(timeout=1.0))
+
+            stop_started_at = time.monotonic()
+            provisioner._stop_pod_watch()
+            self.assertLess(time.monotonic() - stop_started_at, 0.1)
+
+            watch_thread.join(timeout=1.0)
+            self.assertFalse(watch_thread.is_alive())
 
     async def test_watch_started_once(self) -> None:
         """_start_pod_watch must only start the watch thread once."""
