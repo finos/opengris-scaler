@@ -448,6 +448,25 @@ class TestDesiredTaskConcurrency(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(provisioner._capacity_coordinator._desired_unit_count, 2)  # ceil(5/4)
 
+    async def test_scale_down_cooldown_comes_from_config(self) -> None:
+        """scale_down_cooldown_seconds=0 stops surplus pods on the first lower desired count."""
+        wm_cfg = WorkerManagerConfig(
+            scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
+            worker_manager_id="test-wm",
+            max_task_concurrency=8,
+            scale_down_cooldown_seconds=0,
+        )
+        provisioner, _ = _make_provisioner(config=_make_config(worker_manager_config=wm_cfg))
+        self.addCleanup(provisioner._capacity_coordinator.cancel)
+        coordinator = provisioner._capacity_coordinator
+
+        await coordinator.set_desired_unit_count(2)
+        await asyncio.sleep(0.05)
+        await coordinator.set_desired_unit_count(0)
+        await asyncio.sleep(0.05)
+
+        self.assertEqual(provisioner.active_unit_count(), 0)
+
 
 class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
     """Tests for the COMMAND env var injected into the pod spec."""
