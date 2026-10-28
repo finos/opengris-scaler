@@ -71,6 +71,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._starts_held = False
         self._backoff_reconcile_task: Optional[asyncio.Future] = None
 
+        self._watcher = kubernetes.watch.Watch()
         self._watch_stop = threading.Event()
         self._watch_thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -88,18 +89,16 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     def _pod_watch_loop(self) -> None:
         label_selector = f"scaler/worker-manager-id={self._config.worker_manager_config.worker_manager_id}"
-        watcher = kubernetes.watch.Watch()
 
         while not self._watch_stop.is_set():
             try:
-                for event in watcher.stream(
+                for event in self._watcher.stream(
                     self._core_v1.list_namespaced_pod,
                     self._config.namespace,
                     label_selector=label_selector,
                     timeout_seconds=300,
                 ):
                     if self._watch_stop.is_set():
-                        watcher.stop()
                         return
 
                     event_type = event["type"]
@@ -153,10 +152,10 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         await self._capacity_coordinator.request_reconcile()
 
     def _stop_pod_watch(self) -> None:
+        # No join: stream() drops a stop() that lands before it connects, and the read then blocks until the next event.
         self._watch_stop.set()
-        if self._watch_thread is not None:
-            self._watch_thread.join(timeout=5)
-            self._watch_thread = None
+        self._watcher.stop()
+        self._watch_thread = None
 
     # ------------------------------------------------------------------
     # Internal helpers
