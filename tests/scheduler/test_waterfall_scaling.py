@@ -6,7 +6,6 @@ from typing import Dict, Optional
 from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
-from scaler.scheduler.types import WorkerManagerInfo
 from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
 from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy, parse_waterfall_rules
 from scaler.scheduler.policies.scaling.waterfall.policy import (
@@ -16,6 +15,7 @@ from scaler.scheduler.policies.scaling.waterfall.policy import (
 )
 from scaler.scheduler.policies.scaling.waterfall.types import Tier
 from scaler.scheduler.policies.utility import create_policies
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot

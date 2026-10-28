@@ -32,12 +32,12 @@ from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
-from scaler.scheduler.types import WorkerManagerInfo
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.scheduler.policies.utility import create_scaling_policy
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port

@@ -3,7 +3,6 @@ import unittest
 from typing import Dict, Optional
 
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat
-from scaler.scheduler.types import WorkerManagerInfo
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
 from scaler.scheduler.policies.scaling.vanilla import (
     VanillaScalingPolicy,
@@ -12,6 +11,7 @@ from scaler.scheduler.policies.scaling.vanilla import (
     ratio_target,
 )
 from scaler.scheduler.policies.utility import create_scaling_policy
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
