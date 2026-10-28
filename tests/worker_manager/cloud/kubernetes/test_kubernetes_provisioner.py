@@ -9,7 +9,7 @@ Heavy transitive dependencies of the module under test (the compiled
 pre-stubbed before the first import of the module, keeping this test suite
 self-contained and fast.
 
-Pod spec construction, labels, tolerations, and template deep-merge are
+Pod spec construction, labels, tolerations, and pod_template layering are
 tested against a real KinD cluster in test_kind_integration.py.  This file
 focuses on pure logic, error handling, and code paths that cannot be
 exercised through a live cluster (API errors, FIFO ordering, etc.).
@@ -653,6 +653,34 @@ class TestPodTemplate(unittest.IsolatedAsyncioTestCase):
         for template in ("- not\n- a mapping\n", "spec: [unclosed", "/no/such/pod-template.yaml"):
             with self.subTest(template=template), self.assertRaises((ValueError, yaml.YAMLError)):
                 _make_provisioner(config=_make_config(pod_template=template))
+
+    async def test_template_cannot_override_pod_identity(self) -> None:
+        """Name, namespace, and Scaler's labels win over the template, so the watch finds the pod; other labels stay."""
+        template = (
+            "metadata:\n"
+            "  name: fixed-name\n"
+            "  namespace: other-ns\n"
+            "  labels:\n"
+            "    app: other-app\n"
+            "    scaler/worker-manager-id: other-wm\n"
+            "    team: research\n"
+        )
+        provisioner, core_v1 = _make_provisioner(config=_make_config(pod_template=template))
+        await provisioner.start_units(1)
+
+        metadata = _created_pod(core_v1)["metadata"]
+        self.assertEqual(metadata["name"], provisioner._pods[0])
+        self.assertEqual(metadata["namespace"], "test-ns")
+        self.assertEqual(
+            metadata["labels"], {"app": "scaler-worker", "scaler/worker-manager-id": "test-wm", "team": "research"}
+        )
+
+    async def test_template_container_without_name_gets_one(self) -> None:
+        """A template container without a name is named scaler-worker, as the API server requires a name."""
+        template = "spec:\n  containers:\n  - securityContext:\n      runAsNonRoot: true\n"
+        provisioner, core_v1 = _make_provisioner(config=_make_config(pod_template=template))
+        await provisioner.start_units(1)
+        self.assertEqual(_created_pod(core_v1)["spec"]["containers"][0]["name"], "scaler-worker")
 
 
 # ---------------------------------------------------------------------------

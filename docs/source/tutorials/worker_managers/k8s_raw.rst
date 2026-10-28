@@ -279,15 +279,14 @@ YAML format.
 
 **Layering order:**
 
-1. Scaler generates a base pod dict (image, env vars, ``restartPolicy: Never``).
-2. ``pod_template`` is parsed and deep-merged into the base.
-3. Config fields (``pod_image``, ``node_selector``, ``resource_requests``, etc.) are applied on
-   top, overriding any values set in the template.
-   A template ``containers`` list replaces the generated one, and ``pod_image`` is still set on its first container.
-4. ``restartPolicy`` is always re-asserted to ``Never`` last; you cannot override it.
+1. ``pod_template`` is the base pod.
+2. Scaler sets the pod's ``metadata.name`` and ``metadata.namespace``, and its ``app`` and ``scaler/worker-manager-id`` labels.
+   Other template labels are kept.
+3. Scaler sets the first container's ``image`` from ``pod_image``, and its ``name`` to ``scaler-worker`` if the template sets none.
+4. Config fields (``node_selector``, ``resource_requests``, etc.) override the template's values.
+5. ``restartPolicy`` is always ``Never``; you cannot override it.
 
-Nested dicts merge recursively. Lists *replace* the base list entirely --- no
-element-level merge.
+Scaler's settings for the worker container go on the template's first container.
 
 The worker manager parses ``pod_template`` once at startup.
 Invalid YAML, a template that is not a mapping, or a path to a missing file stops it before any pod starts.
@@ -305,7 +304,7 @@ Invalid YAML, a template that is not a mapping, or a path to a missing file stop
      - ``""``
      - Partial Kubernetes pod template in YAML format, either as an inline TOML
        multi-line string or a path to a YAML file. Parsed with ``yaml.safe_load``
-       and deep-merged into the generated pod dict. Use standard camelCase
+       and used as the base of every worker pod. Use standard camelCase
        Kubernetes field names.
 
 .. code-block:: toml
