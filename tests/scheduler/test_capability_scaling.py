@@ -4,8 +4,8 @@ from typing import Dict, Optional
 
 from scaler.protocol.capnp import Task
 from scaler.protocol.helpers import capabilities_to_dict
-from scaler.scheduler.types import WorkerManagerInfo
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot

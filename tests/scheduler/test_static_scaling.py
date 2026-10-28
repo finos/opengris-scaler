@@ -3,9 +3,9 @@ import unittest
 from typing import Optional
 from unittest.mock import MagicMock
 
-from scaler.scheduler.types import WorkerManagerInfo
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
 from scaler.scheduler.policies.utility import create_policies
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import WorkerManagerID
 
 MAX_TASK_CONCURRENCY = 8

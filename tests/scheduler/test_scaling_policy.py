@@ -2,9 +2,9 @@ import time
 import unittest
 from unittest.mock import MagicMock
 
-from scaler.scheduler.types import WorkerManagerInfo
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 
 MANAGER_ID = WorkerManagerID(b"manager")
