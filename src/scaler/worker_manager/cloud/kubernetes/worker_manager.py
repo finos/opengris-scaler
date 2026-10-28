@@ -94,32 +94,54 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
         while not self._watch_stop.is_set():
             try:
+                # A watch only reports changes after its start, so list first to catch those made while unwatched.
+                resource_version = self._report_listed_pods(label_selector)
                 for event in self._watcher.stream(
                     self._core_v1.list_namespaced_pod,
                     self._config.namespace,
                     label_selector=label_selector,
+                    resource_version=resource_version,
                     timeout_seconds=300,
                 ):
                     if self._watch_stop.is_set():
                         return
 
-                    event_type = event["type"]
                     pod = event["object"]
-                    pod_name = pod.metadata.name
-                    if pod_name not in self._pods:
-                        continue
-
-                    if event_type == "DELETED":
-                        logger.warning(f"Watch: pod {pod_name!r} was deleted externally, removing from tracking")
-                        self._loop.call_soon_threadsafe(self._handle_external_pod_deletion, pod_name)
-                    elif pod.status.phase in EXITED_POD_PHASES:  # MODIFIED, or ADDED when the watch reconnects
-                        logger.warning(f"Watch: pod {pod_name!r} reached {pod.status.phase}: {_describe_exit(pod)}")
-                        self._loop.call_soon_threadsafe(self._handle_exited_pod, pod_name)
+                    if event["type"] == "DELETED":
+                        self._report_deleted_pod(pod.metadata.name)
+                    else:
+                        self._report_pod_phase(pod)
             except Exception as e:
                 if self._watch_stop.is_set():
                     return
                 logger.error(f"Pod watch error (reconnecting in {WATCH_RECONNECT_DELAY_SECONDS:.0f}s): {e}")
                 self._watch_stop.wait(WATCH_RECONNECT_DELAY_SECONDS)
+
+    def _report_listed_pods(self, label_selector: str) -> str:
+        """Report tracked pods that are missing or exited in a fresh pod list, and return its resourceVersion."""
+        # Snapshot before the list: a pod whose creation finishes during the list is not missing.
+        tracked_pod_names = set(self._pods)
+        pod_list = self._core_v1.list_namespaced_pod(self._config.namespace, label_selector=label_selector)
+
+        listed_pod_names = {pod.metadata.name for pod in pod_list.items}
+        for pod_name in tracked_pod_names - listed_pod_names:
+            self._report_deleted_pod(pod_name)
+        for pod in pod_list.items:
+            self._report_pod_phase(pod)
+        return pod_list.metadata.resource_version
+
+    def _report_deleted_pod(self, pod_name: str) -> None:
+        if pod_name not in self._pods:
+            return
+        logger.warning(f"Watch: pod {pod_name!r} was deleted externally, removing from tracking")
+        self._loop.call_soon_threadsafe(self._handle_external_pod_deletion, pod_name)
+
+    def _report_pod_phase(self, pod: V1Pod) -> None:
+        pod_name = pod.metadata.name
+        if pod_name not in self._pods or pod.status.phase not in EXITED_POD_PHASES:
+            return
+        logger.warning(f"Watch: pod {pod_name!r} reached {pod.status.phase}: {_describe_exit(pod)}")
+        self._loop.call_soon_threadsafe(self._handle_exited_pod, pod_name)
 
     def _handle_external_pod_deletion(self, pod_name: str) -> None:
         if pod_name in self._pods:
