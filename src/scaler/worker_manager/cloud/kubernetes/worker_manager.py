@@ -68,7 +68,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
         self._exit_backoff_seconds = 0.0
         self._last_pod_exit_at = -math.inf
-        self._starts_resume_at = 0.0
+        self._starts_held = False
         self._backoff_reconcile_task: Optional[asyncio.Future] = None
 
         self._watch_stop = threading.Event()
@@ -140,7 +140,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._exit_backoff_seconds = min(
             max(2 * self._exit_backoff_seconds, POD_EXIT_BACKOFF_INITIAL_SECONDS), POD_EXIT_BACKOFF_MAX_SECONDS
         )
-        self._starts_resume_at = now + self._exit_backoff_seconds
+        self._starts_held = True
         logger.warning(f"Delaying replacement pods by {self._exit_backoff_seconds:.0f}s after a worker pod exit")
 
         if self._backoff_reconcile_task is not None:
@@ -149,6 +149,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     async def _reconcile_after(self, delay_seconds: float) -> None:
         await asyncio.sleep(delay_seconds)
+        self._starts_held = False
         await self._capacity_coordinator.request_reconcile()
 
     def _stop_pod_watch(self) -> None:
@@ -215,9 +216,8 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     async def start_units(self, count: int) -> None:
         # _reconcile_after requests another reconcile once the backoff ends.
-        remaining_seconds = self._starts_resume_at - time.monotonic()
-        if remaining_seconds > 0:
-            logger.info(f"Holding {count} pod start(s) for {remaining_seconds:.0f}s after a worker pod exit")
+        if self._starts_held:
+            logger.info(f"Holding {count} pod start(s) until the worker pod exit backoff ends")
             return
 
         config = self._config
