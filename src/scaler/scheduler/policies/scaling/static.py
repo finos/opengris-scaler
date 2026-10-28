@@ -1,9 +1,9 @@
 from typing import Dict, List, Optional
 
-from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
-from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -21,15 +21,15 @@ class StaticScalingPolicy(ScalingPolicy):
 
     def get_scaling_commands(
         self,
+        worker_manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
+        worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
+        worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> List[WorkerManagerCommand]:
-        desired = worker_manager_heartbeat.maxTaskConcurrency
-        task_concurrency = self._task_concurrency_by_manager.get(
-            worker_manager_heartbeat.workerManagerID, self._task_concurrency
-        )
+        info = worker_manager_infos[worker_manager_id]
+        desired = info.max_task_concurrency
+        task_concurrency = self._task_concurrency_by_manager.get(worker_manager_id, self._task_concurrency)
         if task_concurrency is not None:
             desired = min(task_concurrency, desired)
         return [build_set_desired_command([({}, desired)])]

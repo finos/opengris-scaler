@@ -3,10 +3,11 @@ from math import ceil
 from typing import Dict, List, Tuple
 
 from scaler.config.constants import VANILLA_LOWER_TASK_RATIO, VANILLA_UPPER_TASK_RATIO
-from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
-from scaler.scheduler.policies.scaling.types import WorkerManagerBounds, WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -27,46 +28,37 @@ class VanillaScalingPolicy(ScalingPolicy):
 
     def get_scaling_commands(
         self,
+        worker_manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
+        worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
+        worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> List[WorkerManagerCommand]:
-        # the manager being answered counts as live even if no snapshot was built for it
-        live_manager_ids = set(worker_manager_snapshots) | {worker_manager_heartbeat.workerManagerID}
-        forget_departed_managers(self._logged_desired_by_manager, live_manager_ids)
+        forget_departed_managers(self._logged_desired_by_manager, set(worker_manager_infos))
 
         desired = self._compute_desired_worker_count(
-            information_snapshot, worker_manager_heartbeat, managed_worker_ids, worker_manager_snapshots
+            worker_manager_id, information_snapshot, managed_worker_ids, worker_manager_infos, worker_count_by_manager
         )
         desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
         return [build_set_desired_command(desired_per_capset)]
 
     def _compute_desired_worker_count(
         self,
+        manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
+        worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
+        worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> int:
-        """Compute the target worker count for this manager from current task and worker observations.
-
-        A draining worker is not supply: it takes no new task, and its manager does not count it either."""
-        manager_id = worker_manager_heartbeat.workerManagerID
-        serving_worker_ids = {
-            worker_id for worker_id, heartbeat in information_snapshot.workers.items() if not heartbeat.draining
-        }
-        current = sum(1 for worker_id in managed_worker_ids if worker_id in serving_worker_ids)
+        """Compute the target worker count for this manager from current task and worker observations."""
+        current = len(managed_worker_ids)
         task_count = len(information_snapshot.tasks)
-        worker_count = len(serving_worker_ids)
-        worker_count_by_manager = {
-            other_id: snapshot.worker_count for other_id, snapshot in worker_manager_snapshots.items()
-        }
+        worker_count = len(information_snapshot.workers)
 
         floor_held = floor_held_worker_count(manager_id, self._bounds, worker_count_by_manager)
         desired = ratio_target(current, task_count, worker_count, floor_held)
         bounds = self._bounds.get(manager_id, WorkerManagerBounds(max_task_concurrency=None))
-        desired = clamp_to_bounds(desired, bounds, worker_manager_heartbeat.maxTaskConcurrency)
+        desired = clamp_to_bounds(desired, bounds, worker_manager_infos[manager_id].max_task_concurrency)
         self.__log_decision(manager_id, task_count, worker_count, current, desired)
         return desired
 

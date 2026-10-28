@@ -1,6 +1,8 @@
+import time
 import unittest
 from unittest.mock import MagicMock
 
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
@@ -11,11 +13,10 @@ VANILLA_LOGGER = "scaler.scheduler.policies.scaling.vanilla"
 CAPABILITY_LOGGER = "scaler.scheduler.policies.scaling.capability"
 
 
-def _heartbeat(manager_id: WorkerManagerID = MANAGER_ID) -> MagicMock:
-    heartbeat = MagicMock()
-    heartbeat.workerManagerID = manager_id
-    heartbeat.maxTaskConcurrency = -1
-    return heartbeat
+def _info(manager_id: WorkerManagerID = MANAGER_ID) -> WorkerManagerInfo:
+    return WorkerManagerInfo(
+        manager_id=manager_id, source=b"test", last_seen_at=time.time(), capabilities={}, max_task_concurrency=-1
+    )
 
 
 def _snapshot(task_count: int, worker_count: int) -> MagicMock:
@@ -41,7 +42,7 @@ class TestVanillaScalingPolicyLogging(unittest.TestCase):
 
     def __decide(self, task_count: int, worker_count: int) -> int:
         return self.policy._compute_desired_worker_count(
-            _snapshot(task_count, worker_count), _heartbeat(), self.workers, {}
+            MANAGER_ID, _snapshot(task_count, worker_count), self.workers, {MANAGER_ID: _info()}, {MANAGER_ID: 1}
         )
 
     def test_a_standing_request_is_logged_once(self):
@@ -73,7 +74,13 @@ class TestCapabilityScalingPolicyLogging(unittest.TestCase):
     def __decide(self, capabilities: dict, task_count: int) -> None:
         snapshot = MagicMock()
         snapshot.tasks = {index: MagicMock(capabilities=capabilities) for index in range(task_count)}
-        self.policy.get_scaling_commands(snapshot, _heartbeat(), self.workers, {})
+        self.policy.get_scaling_commands(
+            worker_manager_id=MANAGER_ID,
+            information_snapshot=snapshot,
+            managed_worker_ids=self.workers,
+            worker_manager_infos={MANAGER_ID: _info()},
+            worker_count_by_manager={MANAGER_ID: len(self.workers)},
+        )
 
     def test_a_standing_request_is_logged_once_per_capability_set(self):
         with self.assertLogs(CAPABILITY_LOGGER) as logs:
@@ -108,19 +115,29 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
     """
 
     @staticmethod
-    def _snapshots(*manager_ids: WorkerManagerID) -> dict:
-        return {manager_id: MagicMock() for manager_id in manager_ids}
+    def _infos(*manager_ids: WorkerManagerID) -> dict:
+        return {manager_id: _info(manager_id) for manager_id in manager_ids}
 
     def test_vanilla_forgets_a_manager_the_scheduler_no_longer_knows(self):
         policy = VanillaScalingPolicy({})
         workers = [WorkerID(b"worker")]
 
         # asks each manager for one more worker, which is what gets remembered
-        policy.get_scaling_commands(_snapshot(100, 1), _heartbeat(MANAGER_ID), workers, self._snapshots(MANAGER_ID))
+        policy.get_scaling_commands(
+            worker_manager_id=MANAGER_ID,
+            information_snapshot=_snapshot(100, 1),
+            managed_worker_ids=workers,
+            worker_manager_infos=self._infos(MANAGER_ID),
+            worker_count_by_manager={MANAGER_ID: 1},
+        )
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID})
 
         policy.get_scaling_commands(
-            _snapshot(100, 1), _heartbeat(OTHER_MANAGER_ID), workers, self._snapshots(OTHER_MANAGER_ID)
+            worker_manager_id=OTHER_MANAGER_ID,
+            information_snapshot=_snapshot(100, 1),
+            managed_worker_ids=workers,
+            worker_manager_infos=self._infos(OTHER_MANAGER_ID),
+            worker_count_by_manager={OTHER_MANAGER_ID: 1},
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {OTHER_MANAGER_ID})
 
@@ -129,20 +146,44 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
         snapshot = MagicMock()
         snapshot.tasks = {0: MagicMock(capabilities={"gpu": 1})}
 
-        policy.get_scaling_commands(snapshot, _heartbeat(MANAGER_ID), [], self._snapshots(MANAGER_ID))
+        policy.get_scaling_commands(
+            worker_manager_id=MANAGER_ID,
+            information_snapshot=snapshot,
+            managed_worker_ids=[],
+            worker_manager_infos=self._infos(MANAGER_ID),
+            worker_count_by_manager={MANAGER_ID: 0},
+        )
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID})
 
-        policy.get_scaling_commands(snapshot, _heartbeat(OTHER_MANAGER_ID), [], self._snapshots(OTHER_MANAGER_ID))
+        policy.get_scaling_commands(
+            worker_manager_id=OTHER_MANAGER_ID,
+            information_snapshot=snapshot,
+            managed_worker_ids=[],
+            worker_manager_infos=self._infos(OTHER_MANAGER_ID),
+            worker_count_by_manager={OTHER_MANAGER_ID: 0},
+        )
         self.assertEqual(set(policy._logged_desired_by_manager), {OTHER_MANAGER_ID})
 
     def test_a_manager_still_heartbeating_is_kept(self):
         policy = CapabilityScalingPolicy()
         snapshot = MagicMock()
         snapshot.tasks = {0: MagicMock(capabilities={"gpu": 1})}
-        known = self._snapshots(MANAGER_ID, OTHER_MANAGER_ID)
+        known = self._infos(MANAGER_ID, OTHER_MANAGER_ID)
 
-        policy.get_scaling_commands(snapshot, _heartbeat(MANAGER_ID), [], known)
-        policy.get_scaling_commands(snapshot, _heartbeat(OTHER_MANAGER_ID), [], known)
+        policy.get_scaling_commands(
+            worker_manager_id=MANAGER_ID,
+            information_snapshot=snapshot,
+            managed_worker_ids=[],
+            worker_manager_infos=known,
+            worker_count_by_manager={MANAGER_ID: 0, OTHER_MANAGER_ID: 0},
+        )
+        policy.get_scaling_commands(
+            worker_manager_id=OTHER_MANAGER_ID,
+            information_snapshot=snapshot,
+            managed_worker_ids=[],
+            worker_manager_infos=known,
+            worker_count_by_manager={MANAGER_ID: 0, OTHER_MANAGER_ID: 0},
+        )
 
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID, OTHER_MANAGER_ID})
 
