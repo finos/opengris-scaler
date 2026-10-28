@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import functools
 import logging
 import math
@@ -8,7 +9,7 @@ import shlex
 import threading
 import time
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import kubernetes
 import kubernetes.client
@@ -16,10 +17,9 @@ import kubernetes.client.exceptions
 import kubernetes.config
 import kubernetes.watch
 import yaml
-from kubernetes.client import ApiClient, V1Container, V1ObjectMeta, V1Pod, V1PodSpec
+from kubernetes.client import V1Pod
 
 from scaler.config.section.kubernetes_worker_manager import KubernetesWorkerManagerConfig
-from scaler.utility.dict_utils import deep_merge
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.cloud.child_command import format_capabilities, load_file_or_inline
 from scaler.worker_manager.desired_concurrency import extract_desired_count
@@ -257,59 +257,52 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                 {"name": "PYTHON_VERSION", "value": python_environment.python_version},
             ]
 
-            pod_manifest = V1Pod(
-                metadata=V1ObjectMeta(
-                    name=pod_name,
-                    namespace=config.namespace,
-                    labels={
-                        "app": "scaler-worker",
-                        "scaler/worker-manager-id": config.worker_manager_config.worker_manager_id,
-                    },
-                ),
-                spec=V1PodSpec(
-                    restart_policy="Never", containers=[V1Container(name="scaler-worker", image=config.pod_image)]
-                ),
-            )
+            # pod_template is the base layer: every field below overrides it.
+            pod_dict: Dict[str, Any] = copy.deepcopy(self._pod_template)
+
+            # The watch finds pods by these labels, and stop_units deletes them by this name and namespace.
+            metadata = pod_dict.setdefault("metadata", {})
+            metadata["name"] = pod_name
+            metadata["namespace"] = config.namespace
+            metadata["labels"] = {
+                **metadata.get("labels", {}),
+                "app": "scaler-worker",
+                "scaler/worker-manager-id": config.worker_manager_config.worker_manager_id,
+            }
+
+            spec = pod_dict.setdefault("spec", {})
+            containers = spec.setdefault("containers", [])
+            if not containers:
+                containers.append({})
+            container = containers[0]
+            container.setdefault("name", "scaler-worker")
+            container["image"] = config.pod_image
+
+            if config.node_selector:
+                spec["nodeSelector"] = config.node_selector
+
+            if config.service_account_name:
+                spec["serviceAccountName"] = config.service_account_name
+
+            if config.image_pull_policy:
+                container["imagePullPolicy"] = config.image_pull_policy
+
+            if config.resource_requests or config.resource_limits:
+                resources = container.setdefault("resources", {})
+                if config.resource_requests:
+                    resources["requests"] = config.resource_requests
+                if config.resource_limits:
+                    resources["limits"] = config.resource_limits
+
+            # Merge env vars: Scaler's vars override template vars by name.
+            scaler_env_names = {e["name"] for e in scaler_env}
+            template_env = [e for e in container.get("env", []) if e.get("name") not in scaler_env_names]
+            container["env"] = template_env + scaler_env
+
+            # Invariant: restartPolicy must always be Never.
+            spec["restartPolicy"] = "Never"
 
             try:
-                pod_dict: Dict[str, Any] = cast(Dict[str, Any], ApiClient().sanitize_for_serialization(pod_manifest))
-
-                # Layer 1: pod_template YAML — deep-merged as a base layer.
-                pod_dict = deep_merge(pod_dict, self._pod_template)
-
-                # Config fields override the template.
-                spec = pod_dict.setdefault("spec", {})
-                containers = spec.setdefault("containers", [{}])
-                container = containers[0] if containers else {}
-                if not containers:
-                    containers.append(container)
-
-                container["image"] = config.pod_image
-
-                if config.node_selector:
-                    spec["nodeSelector"] = config.node_selector
-
-                if config.service_account_name:
-                    spec["serviceAccountName"] = config.service_account_name
-
-                if config.image_pull_policy:
-                    container["imagePullPolicy"] = config.image_pull_policy
-
-                if config.resource_requests or config.resource_limits:
-                    resources = container.setdefault("resources", {})
-                    if config.resource_requests:
-                        resources["requests"] = config.resource_requests
-                    if config.resource_limits:
-                        resources["limits"] = config.resource_limits
-
-                # Merge env vars: Scaler's vars override template vars by name.
-                scaler_env_names = {e["name"] for e in scaler_env}
-                template_env = [e for e in container.get("env", []) if e.get("name") not in scaler_env_names]
-                container["env"] = template_env + scaler_env
-
-                # Invariant: restartPolicy must always be Never.
-                spec["restartPolicy"] = "Never"
-
                 await loop.run_in_executor(
                     None,
                     functools.partial(self._core_v1.create_namespaced_pod, config.namespace, V1Pod.from_dict(pod_dict)),

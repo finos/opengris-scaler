@@ -55,9 +55,9 @@ class KubernetesWorkerManagerConfig(ConfigClass):
         metadata=dict(
             help=(
                 "Partial Kubernetes pod template in YAML format, either as an inline TOML multi-line "
-                "string or a path to a YAML file. Parsed with yaml.safe_load and deep-merged into the "
-                "generated pod dict. Explicit config fields (node_selector, resource_requests, etc.) "
-                "override values from this template."
+                "string or a path to a YAML file. Parsed with yaml.safe_load and used as the base of every "
+                "worker pod. Scaler's pod name, namespace, labels, env vars, and explicit config fields "
+                "(node_selector, resource_requests, etc.) override values from this template."
             )
         ),
     )
