@@ -24,7 +24,6 @@ def _desired_task_concurrency(
     commands = policy.get_scaling_commands(
         worker_manager_id=worker_manager_id,
         information_snapshot=MagicMock(),
-        managed_worker_ids=[],
         worker_manager_infos={worker_manager_id: info},
         worker_count_by_manager={worker_manager_id: 0},
     )

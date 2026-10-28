@@ -69,13 +69,11 @@ class WorkerManagerController(Looper, Reporter):
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
         information_snapshot = self._build_snapshot()
-        managed_worker_ids = self._worker_controller.get_workers_by_manager_id(manager_id)
         worker_count_by_manager = self._build_worker_count_by_manager()
 
         commands = self._scaling_policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=information_snapshot,
-            managed_worker_ids=managed_worker_ids,
             worker_manager_infos=self._managers,
             worker_count_by_manager=worker_count_by_manager,
         )

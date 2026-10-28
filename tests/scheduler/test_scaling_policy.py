@@ -42,7 +42,7 @@ class TestVanillaScalingPolicyLogging(unittest.TestCase):
 
     def __decide(self, task_count: int, worker_count: int) -> int:
         return self.policy._compute_desired_worker_count(
-            MANAGER_ID, _snapshot(task_count, worker_count), self.workers, {MANAGER_ID: _info()}, {MANAGER_ID: 1}
+            MANAGER_ID, _snapshot(task_count, worker_count), {MANAGER_ID: _info()}, {MANAGER_ID: 1}
         )
 
     def test_a_standing_request_is_logged_once(self):
@@ -77,7 +77,6 @@ class TestCapabilityScalingPolicyLogging(unittest.TestCase):
         self.policy.get_scaling_commands(
             worker_manager_id=MANAGER_ID,
             information_snapshot=snapshot,
-            managed_worker_ids=self.workers,
             worker_manager_infos={MANAGER_ID: _info()},
             worker_count_by_manager={MANAGER_ID: len(self.workers)},
         )
@@ -120,13 +119,11 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
 
     def test_vanilla_forgets_a_manager_the_scheduler_no_longer_knows(self):
         policy = VanillaScalingPolicy({})
-        workers = [WorkerID(b"worker")]
 
         # asks each manager for one more worker, which is what gets remembered
         policy.get_scaling_commands(
             worker_manager_id=MANAGER_ID,
             information_snapshot=_snapshot(100, 1),
-            managed_worker_ids=workers,
             worker_manager_infos=self._infos(MANAGER_ID),
             worker_count_by_manager={MANAGER_ID: 1},
         )
@@ -135,7 +132,6 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
         policy.get_scaling_commands(
             worker_manager_id=OTHER_MANAGER_ID,
             information_snapshot=_snapshot(100, 1),
-            managed_worker_ids=workers,
             worker_manager_infos=self._infos(OTHER_MANAGER_ID),
             worker_count_by_manager={OTHER_MANAGER_ID: 1},
         )
@@ -149,7 +145,6 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
         policy.get_scaling_commands(
             worker_manager_id=MANAGER_ID,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=self._infos(MANAGER_ID),
             worker_count_by_manager={MANAGER_ID: 0},
         )
@@ -158,7 +153,6 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
         policy.get_scaling_commands(
             worker_manager_id=OTHER_MANAGER_ID,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=self._infos(OTHER_MANAGER_ID),
             worker_count_by_manager={OTHER_MANAGER_ID: 0},
         )
@@ -173,14 +167,12 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
         policy.get_scaling_commands(
             worker_manager_id=MANAGER_ID,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=known,
             worker_count_by_manager={MANAGER_ID: 0, OTHER_MANAGER_ID: 0},
         )
         policy.get_scaling_commands(
             worker_manager_id=OTHER_MANAGER_ID,
             information_snapshot=snapshot,
-            managed_worker_ids=[],
             worker_manager_infos=known,
             worker_count_by_manager={MANAGER_ID: 0, OTHER_MANAGER_ID: 0},
         )

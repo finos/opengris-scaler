@@ -8,7 +8,7 @@ from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
 from scaler.scheduler.types import WorkerManagerInfo
-from scaler.utility.identifiers import WorkerID, WorkerManagerID
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
@@ -30,14 +30,13 @@ class VanillaScalingPolicy(ScalingPolicy):
         self,
         worker_manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
-        managed_worker_ids: List[WorkerID],
         worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
         worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> List[WorkerManagerCommand]:
         forget_departed_managers(self._logged_desired_by_manager, set(worker_manager_infos))
 
         desired = self._compute_desired_worker_count(
-            worker_manager_id, information_snapshot, managed_worker_ids, worker_manager_infos, worker_count_by_manager
+            worker_manager_id, information_snapshot, worker_manager_infos, worker_count_by_manager
         )
         desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
         return [build_set_desired_command(desired_per_capset)]
@@ -46,12 +45,11 @@ class VanillaScalingPolicy(ScalingPolicy):
         self,
         manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
-        managed_worker_ids: List[WorkerID],
         worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
         worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> int:
         """Compute the target worker count for this manager from current task and worker observations."""
-        current = len(managed_worker_ids)
+        current = worker_count_by_manager[manager_id]
         task_count = len(information_snapshot.tasks)
         worker_count = len(information_snapshot.workers)
 
