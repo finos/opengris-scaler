@@ -123,7 +123,26 @@ def _make_provisioner(config: KubernetesWorkerManagerConfig | None = None, **con
         provisioner = KubernetesWorkerProvisioner(cfg, max_pods=max_pods)
 
     provisioner._core_v1 = core_v1
+    core_v1.list_namespaced_pod.side_effect = lambda *args, **kwargs: _pod_list(
+        [_pod(pod_name, "Running") for pod_name in provisioner._pods]
+    )
     return provisioner, core_v1
+
+
+def _pod(name: str, phase: str) -> MagicMock:
+    """Return a fake pod in *phase*."""
+    pod = MagicMock()
+    pod.metadata.name = name
+    pod.status.phase = phase
+    return pod
+
+
+def _pod_list(pods: list, resource_version: str = "1") -> MagicMock:
+    """Return a fake list_namespaced_pod result holding *pods*."""
+    pod_list = MagicMock()
+    pod_list.items = pods
+    pod_list.metadata.resource_version = resource_version
+    return pod_list
 
 
 def _created_pod(core_v1: MagicMock, call_index: int = 0) -> dict:
@@ -171,11 +190,13 @@ def _exited_pod(name: str, phase: str) -> MagicMock:
     return pod
 
 
-async def _run_pod_watch(provisioner, events: list[dict]) -> None:
-    """Feed *events* through the pod watch loop, then run every callback and task it scheduled."""
+async def _run_pod_watch(provisioner, events: list[dict]) -> list[dict]:
+    """Feed *events* through the pod watch loop, run every callback and task it scheduled, and return stream kwargs."""
     stop_event = provisioner._watch_stop
+    stream_kwargs = []
 
     def fake_stream(*args, **kwargs):
+        stream_kwargs.append(kwargs)
         yield from events
         stop_event.set()
 
@@ -185,6 +206,7 @@ async def _run_pod_watch(provisioner, events: list[dict]) -> None:
 
     await asyncio.sleep(0)
     await asyncio.gather(*(task for task in asyncio.all_tasks() if task is not asyncio.current_task()))
+    return stream_kwargs
 
 
 class TestPodWatch(unittest.IsolatedAsyncioTestCase):
@@ -280,6 +302,37 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(provisioner._pods, [surviving_name])
                 self.assertEqual([c.args[0] for c in core_v1.delete_namespaced_pod.call_args_list], [exited_name])
                 rec.assert_awaited_once()
+
+    async def test_watch_starts_from_a_pod_list(self) -> None:
+        """Each connect lists pods, handles tracked pods deleted or exited while unwatched, and watches from there."""
+        provisioner, core_v1 = _make_provisioner()
+        await provisioner.start_units(3)
+        deleted_name, exited_name, running_name = provisioner._pods
+        core_v1.list_namespaced_pod.side_effect = None
+        core_v1.list_namespaced_pod.return_value = _pod_list(
+            [_pod(exited_name, "Failed"), _pod(running_name, "Running")], resource_version="42"
+        )
+
+        with patch.object(provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock):
+            stream_kwargs = await _run_pod_watch(provisioner, [])
+
+        self.assertEqual(provisioner._pods, [running_name])
+        self.assertEqual([c.args[0] for c in core_v1.delete_namespaced_pod.call_args_list], [exited_name])
+        self.assertEqual(stream_kwargs[0]["resource_version"], "42")
+
+    async def test_pod_created_during_the_list_stays_tracked(self) -> None:
+        """A pod whose creation finishes while the list is in flight is not mistaken for a deleted one."""
+        provisioner, core_v1 = _make_provisioner()
+
+        def list_while_a_pod_is_created(*args, **kwargs):
+            provisioner._pods.append("scaler-worker-created-during-list")
+            return _pod_list([])
+
+        core_v1.list_namespaced_pod.side_effect = list_while_a_pod_is_created
+
+        await _run_pod_watch(provisioner, [])
+
+        self.assertEqual(provisioner._pods, ["scaler-worker-created-during-list"])
 
     async def test_exit_of_pod_being_scaled_down_is_ignored(self) -> None:
         """A pod that exits after stop_units untracked it is not deleted again and not replaced."""
