@@ -1,6 +1,7 @@
 from typing import List
 
 from scaler.scheduler.policies.scaling.waterfall.types import WaterfallRule
+from scaler.utility.identifiers import WorkerManagerID
 
 
 def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:
@@ -53,7 +54,7 @@ def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:
         rules.append(
             WaterfallRule(
                 priority=int(raw_priority),
-                worker_manager_id=worker_manager_id.encode(),
+                worker_manager_id=WorkerManagerID.from_string(worker_manager_id),
                 max_task_concurrency=max_task_concurrency,
                 min_task_concurrency=min_task_concurrency,
             )

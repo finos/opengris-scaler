@@ -106,3 +106,16 @@ class ObjectID(bytes):
 
     def __repr__(self) -> str:
         return f"ObjectID(owner_hash={self.owner_hash().hex()}, object_tag={self.object_tag().hex()})"
+
+
+class WorkerManagerID(Identifier):
+    """Logical ID of a worker manager."""
+
+    def __repr__(self) -> str:
+        return f"WorkerManagerID({self.decode()})"
+
+    @staticmethod
+    def from_string(name: str) -> "WorkerManagerID":
+        if not name:
+            raise ValueError("worker manager ID cannot be empty")
+        return WorkerManagerID(name.encode())

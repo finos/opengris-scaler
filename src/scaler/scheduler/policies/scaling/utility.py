@@ -1,11 +1,14 @@
 from typing import Dict, Iterable, List, Tuple, TypeVar
 
 from scaler.protocol.capnp import TaskCapability, WorkerManagerCommand
+from scaler.utility.identifiers import WorkerManagerID
 
 StateT = TypeVar("StateT")
 
 
-def forget_departed_managers(state_by_manager: Dict[bytes, StateT], live_manager_ids: Iterable[bytes]) -> None:
+def forget_departed_managers(
+    state_by_manager: Dict[WorkerManagerID, StateT], live_manager_ids: Iterable[WorkerManagerID]
+) -> None:
     """Drops per-manager state for managers the scheduler no longer knows about.
 
     A policy is only ever told about a manager that is heartbeating, so anything it remembers per manager id

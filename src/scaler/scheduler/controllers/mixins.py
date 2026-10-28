@@ -16,7 +16,7 @@ from scaler.protocol.capnp import (
     WorkerDisconnectNotification,
     WorkerHeartbeat,
 )
-from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.mixins import Reporter
 
 
@@ -231,7 +231,7 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_workers_by_manager_id(self, manager_id: bytes) -> List[WorkerID]:
+    def get_workers_by_manager_id(self, manager_id: WorkerManagerID) -> List[WorkerID]:
         """get all worker ids belonging to a specific worker manager"""
         raise NotImplementedError()
 

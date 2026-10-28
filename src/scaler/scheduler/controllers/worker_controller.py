@@ -22,7 +22,7 @@ from scaler.protocol.helpers import capabilities_to_dict, dict_to_capabilities
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
-from scaler.utility.identifiers import ClientID, TaskID, WorkerID
+from scaler.utility.identifiers import ClientID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.mixins import Looper, Reporter
 
 logger = logging.getLogger(__name__)
@@ -40,8 +40,8 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._task_controller: Optional[TaskController] = None
 
         self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
-        self._worker_to_manager: Dict[WorkerID, bytes] = dict()
-        self._manager_to_workers: Dict[bytes, Set[WorkerID]] = dict()
+        self._worker_to_manager: Dict[WorkerID, WorkerManagerID] = dict()
+        self._manager_to_workers: Dict[WorkerManagerID, Set[WorkerID]] = dict()
         self._allocation_policy = allocation_policy
 
     def register(self, binder: AsyncBinder, binder_monitor: AsyncPublisher, task_controller: TaskController) -> None:
@@ -170,7 +170,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     def get_worker_ids(self) -> Set[WorkerID]:
         return self._allocation_policy.get_worker_ids()
 
-    def get_workers_by_manager_id(self, manager_id: bytes) -> List[WorkerID]:
+    def get_workers_by_manager_id(self, manager_id: WorkerManagerID) -> List[WorkerID]:
         return list(self._manager_to_workers.get(manager_id, set()))
 
     async def __clean_workers(self) -> None:
