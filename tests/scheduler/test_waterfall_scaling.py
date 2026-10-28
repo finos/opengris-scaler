@@ -16,7 +16,7 @@ from scaler.scheduler.policies.scaling.waterfall.policy import (
 )
 from scaler.scheduler.policies.scaling.waterfall.types import Tier
 from scaler.scheduler.policies.utility import create_policies
-from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -44,17 +44,18 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def setUp(self):
         setup_logger()
         self.rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"manager_b"), max_task_concurrency=20),
         ]
         self.policy = WaterfallScalingPolicy(self.rules)
 
     def test_unknown_manager_emits_no_commands(self):
         """Manager with unknown worker_manager_id receives no scaling commands."""
+        manager_id = WorkerManagerID(b"unknown")
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        manager_snapshots = {b"unknown": _create_manager_snapshot(b"unknown", max_task_concurrency=10, worker_count=0)}
-        heartbeat = _create_worker_manager_heartbeat(b"unknown", max_task_concurrency=10)
+        manager_snapshots = {manager_id: _create_manager_snapshot(manager_id, max_task_concurrency=10, worker_count=0)}
+        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=10)
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
@@ -65,15 +66,19 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=0),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0),
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=10, worker_count=0
+            ),
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), max_task_concurrency=20, worker_count=0
+            ),
         }
 
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        heartbeat_a = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), max_task_concurrency=10)
         commands_a = self.policy.get_scaling_commands(snapshot, heartbeat_a, [], manager_snapshots)
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 1)
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), max_task_concurrency=20)
         commands_b = self.policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
         # Manager B's share is 0 (chain consumes the whole 1 worker at manager_a); emits setDesired(0).
         self.assertEqual(len(commands_b), 1)
@@ -86,11 +91,15 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         # manager_a is full so its capacity (10) is consumed; remainder (5) goes to manager_b.
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=10),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0),
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=10, worker_count=10
+            ),
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), max_task_concurrency=20, worker_count=0
+            ),
         }
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), max_task_concurrency=20)
         commands_b = self.policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
 
         # total_desired = ceil(150/10) = 15. Manager_a's cap is 10 -> consumed 10. Remaining for B = 5.
@@ -101,10 +110,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0)
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), max_task_concurrency=20, worker_count=0
+            )
         }
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), max_task_concurrency=20)
         commands_b = self.policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
 
         # Higher-priority is offline (absent) so its capacity contributes 0; lower picks up all of it.
@@ -113,8 +124,8 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def test_no_tasks_emits_desired_zero(self):
         """No tasks: desired is 0 -> policy unconditionally emits setDesired(0)."""
         snapshot = InformationSnapshot(tasks={}, workers={})
-        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a")}
-        heartbeat = _create_worker_manager_heartbeat(b"manager_a")
+        manager_snapshots = {WorkerManagerID(b"manager_a"): _create_manager_snapshot(WorkerManagerID(b"manager_a"))}
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"))
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
@@ -123,14 +134,16 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
     def test_max_task_concurrency_clamps_via_heartbeat(self):
         """The manager's heartbeat-reported maxTaskConcurrency clamps its allocation."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=20)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=20)]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(50)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=3, worker_count=3)
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=3, worker_count=3
+            )
         }
-        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=3)
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), max_task_concurrency=3)
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
@@ -140,24 +153,28 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def test_same_priority_share_capacity(self):
         """Two managers at the same priority each absorb a portion of the desired load."""
         rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
-            WaterfallRule(priority=1, worker_manager_id=b"manager_b", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_b"), max_task_concurrency=10),
         ]
         policy = WaterfallScalingPolicy(rules)
         # 100 tasks -> total_desired = 10
         tasks = _create_tasks(100)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=0),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=10, worker_count=0),
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=10, worker_count=0
+            ),
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), max_task_concurrency=10, worker_count=0
+            ),
         }
 
         # Sorting by priority is stable; with equal priority the iteration order is the rules' input order.
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        heartbeat_a = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), max_task_concurrency=10)
         commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, [], manager_snapshots)
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 10)
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=10)
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), max_task_concurrency=10)
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
         # First manager consumed all of its capacity; nothing left for the second at same priority.
         # Desired is 0 -> emits setDesired(0).
@@ -168,26 +185,30 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         """When demand drops to zero, the lower-priority manager drains first;
         the higher-priority manager holds its workers until the lower-priority manager is empty."""
         rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"manager_b"), max_task_concurrency=20),
         ]
         policy = WaterfallScalingPolicy(rules)
         snapshot = InformationSnapshot(tasks={}, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=3),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=2),
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=10, worker_count=3
+            ),
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), max_task_concurrency=20, worker_count=2
+            ),
         }
 
         # manager_b (lower priority) is told to drain to 0
         managed_b = [WorkerID(b"worker-3"), WorkerID(b"worker-4")]
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), max_task_concurrency=20)
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, managed_b, manager_snapshots)
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
         # manager_a (higher priority) holds its count (waiting for lower priority to drain) -> emits setDesired(3).
         managed_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        heartbeat_a = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), max_task_concurrency=10)
         commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, managed_a, manager_snapshots)
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 3)
@@ -196,17 +217,19 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         """If the lower-priority manager is offline (not in snapshots), the higher-priority
         manager is allowed to drain immediately -- there is no lower priority to wait on."""
         rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"manager_b"), max_task_concurrency=20),
         ]
         policy = WaterfallScalingPolicy(rules)
         snapshot = InformationSnapshot(tasks={}, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=3)
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=10, worker_count=3
+            )
         }
 
         managed_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        heartbeat_a = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), max_task_concurrency=10)
         commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, managed_a, manager_snapshots)
 
         # No lower-priority manager to wait on -- emit setDesired(0) to drain.
@@ -216,12 +239,13 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def test_unknown_manager_id_returns_no_commands(self):
         """A heartbeat from a worker manager whose ID is not in the waterfall rules
         receives no scaling commands at all (not even an empty setDesired)."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
+        manager_id = WorkerManagerID(b"unknown")
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"unknown", max_task_concurrency=10)
-        manager_snapshots = {b"unknown": _create_manager_snapshot(b"unknown", max_task_concurrency=10, worker_count=0)}
+        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=10)
+        manager_snapshots = {manager_id: _create_manager_snapshot(manager_id, max_task_concurrency=10, worker_count=0)}
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
@@ -231,25 +255,29 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         """Worker manager IDs like NAT|12345 must match rules by exact bytes; a heartbeat
         from a manager whose ID matches a rule receives the allocation for that rule."""
         rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"NAT|12345", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_manager_id=b"ECS|67890", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"NAT|12345"), max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"ECS|67890"), max_task_concurrency=20),
         ]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(50)  # ceil(50/10) = 5; first manager absorbs all of it
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"NAT|12345": _create_manager_snapshot(b"NAT|12345", max_task_concurrency=10, worker_count=0),
-            b"ECS|67890": _create_manager_snapshot(b"ECS|67890", max_task_concurrency=20, worker_count=0),
+            WorkerManagerID(b"NAT|12345"): _create_manager_snapshot(
+                WorkerManagerID(b"NAT|12345"), max_task_concurrency=10, worker_count=0
+            ),
+            WorkerManagerID(b"ECS|67890"): _create_manager_snapshot(
+                WorkerManagerID(b"ECS|67890"), max_task_concurrency=20, worker_count=0
+            ),
         }
 
         # NAT manager gets the allocation since it has capacity and the priority chain
         # consumes it first.
-        heartbeat_nat = _create_worker_manager_heartbeat(b"NAT|12345", max_task_concurrency=10)
+        heartbeat_nat = _create_worker_manager_heartbeat(WorkerManagerID(b"NAT|12345"), max_task_concurrency=10)
         commands_nat = policy.get_scaling_commands(snapshot, heartbeat_nat, [], manager_snapshots)
         self.assertEqual(_generic_request(commands_nat[0]).taskConcurrency, 5)
 
         # ECS manager gets nothing since NAT has absorbed everything; desired=0 -> emits setDesired(0).
-        heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|67890", max_task_concurrency=20)
+        heartbeat_ecs = _create_worker_manager_heartbeat(WorkerManagerID(b"ECS|67890"), max_task_concurrency=20)
         commands_ecs = policy.get_scaling_commands(snapshot, heartbeat_ecs, [], manager_snapshots)
         self.assertEqual(len(commands_ecs), 1)
         self.assertEqual(_generic_request(commands_ecs[0]).taskConcurrency, 0)
@@ -258,21 +286,27 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         """When multiple worker managers share the same higher priority, the lower-priority
         manager is allocated nothing until *all* higher-priority capacity is consumed."""
         rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"NAT|111", max_task_concurrency=10),
-            WaterfallRule(priority=1, worker_manager_id=b"NAT|222", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_manager_id=b"ECS|333", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"NAT|111"), max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"NAT|222"), max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"ECS|333"), max_task_concurrency=20),
         ]
         policy = WaterfallScalingPolicy(rules)
         # 5 tasks -> total_desired = ceil(5/10) = 1. Chain absorbs the 1 at NAT|111 entirely.
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"NAT|111": _create_manager_snapshot(b"NAT|111", max_task_concurrency=10, worker_count=10),
-            b"NAT|222": _create_manager_snapshot(b"NAT|222", max_task_concurrency=10, worker_count=5),
-            b"ECS|333": _create_manager_snapshot(b"ECS|333", max_task_concurrency=20, worker_count=0),
+            WorkerManagerID(b"NAT|111"): _create_manager_snapshot(
+                WorkerManagerID(b"NAT|111"), max_task_concurrency=10, worker_count=10
+            ),
+            WorkerManagerID(b"NAT|222"): _create_manager_snapshot(
+                WorkerManagerID(b"NAT|222"), max_task_concurrency=10, worker_count=5
+            ),
+            WorkerManagerID(b"ECS|333"): _create_manager_snapshot(
+                WorkerManagerID(b"ECS|333"), max_task_concurrency=20, worker_count=0
+            ),
         }
 
-        heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|333", max_task_concurrency=20)
+        heartbeat_ecs = _create_worker_manager_heartbeat(WorkerManagerID(b"ECS|333"), max_task_concurrency=20)
         commands = policy.get_scaling_commands(snapshot, heartbeat_ecs, [], manager_snapshots)
 
         # ECS allocation = 0 (higher-priority chain absorbs all demand); emits setDesired(0).
@@ -282,16 +316,18 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def test_greedy_shutdown_partial_with_tasks(self):
         """With a small task count and many workers, the policy targets the ratio-based
         minimum and emits a setDesired with that smaller count to drain excess workers."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=20)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=20)]
         policy = WaterfallScalingPolicy(rules)
         # 5 tasks; ratio yields ceil(5/10) = 1 desired total.
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=20, worker_count=10)
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=20, worker_count=10
+            )
         }
         managed = [WorkerID(f"worker-{i}".encode()) for i in range(10)]
-        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=20)
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), max_task_concurrency=20)
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, managed, manager_snapshots)
 
@@ -302,19 +338,23 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         """When the priority chain has already absorbed all demand, a lower-priority manager
         that still has connected workers is told setDesired(0) for the generic capset."""
         rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"manager_b"), max_task_concurrency=20),
         ]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=3),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=2),
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=10, worker_count=3
+            ),
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), max_task_concurrency=20, worker_count=2
+            ),
         }
 
         managed_b = [WorkerID(b"w0"), WorkerID(b"w1")]
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), max_task_concurrency=20)
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, managed_b, manager_snapshots)
 
         # 5 tasks -> total_desired=1, absorbed by manager_a entirely -> manager_b's share=0;
@@ -335,51 +375,58 @@ class TestAllocate(unittest.TestCase):
 
     def test_a_floor_holds_with_no_demand(self):
         tiers = [
-            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
-            _tier(b"cloud", max_task_concurrency=100),
+            _tier(WorkerManagerID(b"native"), max_task_concurrency=8, min_task_concurrency=8),
+            _tier(WorkerManagerID(b"cloud"), max_task_concurrency=100),
         ]
-        self.assertEqual(allocate(0, tiers), {b"native": 8, b"cloud": 0})
+        self.assertEqual(allocate(0, tiers), {WorkerManagerID(b"native"): 8, WorkerManagerID(b"cloud"): 0})
 
     def test_demand_under_a_floor_stays_on_the_floor_tier(self):
         tiers = [
-            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
-            _tier(b"cloud", max_task_concurrency=100),
+            _tier(WorkerManagerID(b"native"), max_task_concurrency=8, min_task_concurrency=8),
+            _tier(WorkerManagerID(b"cloud"), max_task_concurrency=100),
         ]
-        self.assertEqual(allocate(5, tiers), {b"native": 8, b"cloud": 0})
+        self.assertEqual(allocate(5, tiers), {WorkerManagerID(b"native"): 8, WorkerManagerID(b"cloud"): 0})
 
     def test_demand_above_a_full_tier_spills_to_the_next(self):
         tiers = [
-            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
-            _tier(b"cloud", max_task_concurrency=100),
+            _tier(WorkerManagerID(b"native"), max_task_concurrency=8, min_task_concurrency=8),
+            _tier(WorkerManagerID(b"cloud"), max_task_concurrency=100),
         ]
-        self.assertEqual(allocate(20, tiers), {b"native": 8, b"cloud": 12})
+        self.assertEqual(allocate(20, tiers), {WorkerManagerID(b"native"): 8, WorkerManagerID(b"cloud"): 12})
 
     def test_a_floor_below_the_cap_is_a_minimum(self):
         self.assertEqual(
-            allocate(10, [_tier(b"native", max_task_concurrency=20, min_task_concurrency=2)]), {b"native": 10}
+            allocate(10, [_tier(WorkerManagerID(b"native"), max_task_concurrency=20, min_task_concurrency=2)]),
+            {WorkerManagerID(b"native"): 10},
         )
 
     def test_a_floor_on_a_lower_tier_counts_as_supply_first(self):
         tiers = [
-            _tier(b"burst", max_task_concurrency=20),
-            _tier(b"warm", max_task_concurrency=20, min_task_concurrency=8),
+            _tier(WorkerManagerID(b"burst"), max_task_concurrency=20),
+            _tier(WorkerManagerID(b"warm"), max_task_concurrency=20, min_task_concurrency=8),
         ]
         for target, burst, warm in ((5, 0, 8), (20, 12, 8), (30, 20, 10), (50, 20, 20)):
             with self.subTest(target=target):
-                self.assertEqual(allocate(target, tiers), {b"burst": burst, b"warm": warm})
+                self.assertEqual(
+                    allocate(target, tiers), {WorkerManagerID(b"burst"): burst, WorkerManagerID(b"warm"): warm}
+                )
 
 
 class TestDrainOrder(unittest.TestCase):
     def test_a_tier_holds_while_a_lower_priority_tier_is_above_its_floor(self):
-        warm_draining = _tier(b"warm", max_task_concurrency=8, min_task_concurrency=4, worker_count=6, priority=2)
-        warm_at_floor = _tier(b"warm", max_task_concurrency=8, min_task_concurrency=4, worker_count=4, priority=2)
-        burst = _tier(b"burst", max_task_concurrency=20, worker_count=20)
+        warm_draining = _tier(
+            WorkerManagerID(b"warm"), max_task_concurrency=8, min_task_concurrency=4, worker_count=6, priority=2
+        )
+        warm_at_floor = _tier(
+            WorkerManagerID(b"warm"), max_task_concurrency=8, min_task_concurrency=4, worker_count=4, priority=2
+        )
+        burst = _tier(WorkerManagerID(b"burst"), max_task_concurrency=20, worker_count=20)
         self.assertTrue(lower_priority_tier_above_floor(burst, [burst, warm_draining]))
         self.assertFalse(lower_priority_tier_above_floor(burst, [burst, warm_at_floor]))
 
     def test_a_tier_of_the_same_priority_does_not_hold_it(self):
-        burst = _tier(b"burst", max_task_concurrency=20, worker_count=20)
-        peer = _tier(b"peer", max_task_concurrency=8, worker_count=6)
+        burst = _tier(WorkerManagerID(b"burst"), max_task_concurrency=20, worker_count=20)
+        peer = _tier(WorkerManagerID(b"peer"), max_task_concurrency=8, worker_count=6)
         self.assertFalse(lower_priority_tier_above_floor(burst, [burst, peer]))
 
 
@@ -392,28 +439,55 @@ class TestWaterfallFloor(unittest.TestCase):
     def test_spill_through_the_policy(self):
         policy = WaterfallScalingPolicy(
             [
-                WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=8, min_task_concurrency=8),
-                WaterfallRule(priority=2, worker_manager_id=b"cloud", max_task_concurrency=100),
+                WaterfallRule(
+                    priority=1,
+                    worker_manager_id=WorkerManagerID(b"native"),
+                    max_task_concurrency=8,
+                    min_task_concurrency=8,
+                ),
+                WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"cloud"), max_task_concurrency=100),
             ]
         )
-        managers = {b"native": 8, b"cloud": 100}
+        managers = {WorkerManagerID(b"native"): 8, WorkerManagerID(b"cloud"): 100}
         desired = _desired_by_manager(policy, task_count=20 * TASKS_PER_WORKER, advertised_max_by_manager=managers)
-        self.assertEqual(desired, {b"native": 8, b"cloud": 12})
+        self.assertEqual(desired, {WorkerManagerID(b"native"): 8, WorkerManagerID(b"cloud"): 12})
 
     def test_a_floor_is_clamped_to_the_advertised_maximum(self):
         policy = WaterfallScalingPolicy(
-            [WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=8, min_task_concurrency=8)]
+            [
+                WaterfallRule(
+                    priority=1,
+                    worker_manager_id=WorkerManagerID(b"native"),
+                    max_task_concurrency=8,
+                    min_task_concurrency=8,
+                )
+            ]
         )
-        self.assertEqual(_desired_by_manager(policy, 0, {b"native": 3}), {b"native": 3})
+        self.assertEqual(
+            _desired_by_manager(policy, 0, {WorkerManagerID(b"native"): 3}), {WorkerManagerID(b"native"): 3}
+        )
 
     def test_a_floor_does_not_apply_to_capability_requests(self):
         """Only the generic request carries the floor; a capability request stays driven by demand."""
         policy = WaterfallScalingPolicy(
-            [WaterfallRule(priority=1, worker_manager_id=b"gpu", max_task_concurrency=8, min_task_concurrency=4)]
+            [
+                WaterfallRule(
+                    priority=1,
+                    worker_manager_id=WorkerManagerID(b"gpu"),
+                    max_task_concurrency=8,
+                    min_task_concurrency=4,
+                )
+            ]
         )
         snapshot = InformationSnapshot(tasks=_create_tasks(5, capabilities={"gpu": 1}), workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"gpu", max_task_concurrency=8, capabilities={"gpu": 1})
-        manager_snapshots = {b"gpu": _create_manager_snapshot(b"gpu", max_task_concurrency=8, capabilities={"gpu": 1})}
+        heartbeat = _create_worker_manager_heartbeat(
+            WorkerManagerID(b"gpu"), max_task_concurrency=8, capabilities={"gpu": 1}
+        )
+        manager_snapshots = {
+            WorkerManagerID(b"gpu"): _create_manager_snapshot(
+                WorkerManagerID(b"gpu"), max_task_concurrency=8, capabilities={"gpu": 1}
+            )
+        }
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
@@ -429,13 +503,15 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
     def test_capable_manager_emits_capability_request(self):
         """A capable manager emits a per-capset DesiredTaskConcurrencyRequest with that capset."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_gpu", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_gpu"), max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(1, capabilities={"gpu": 1})
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"manager_gpu", capabilities={"gpu": 4})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_gpu"), capabilities={"gpu": 4})
         manager_snapshots = {
-            b"manager_gpu": _create_manager_snapshot(b"manager_gpu", worker_count=0, capabilities={"gpu": 4})
+            WorkerManagerID(b"manager_gpu"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_gpu"), worker_count=0, capabilities={"gpu": 4}
+            )
         }
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
@@ -446,12 +522,16 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
     def test_incapable_manager_emits_no_capability_request(self):
         """A manager that can't satisfy a capset emits no request for that capset."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_cpu", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_cpu"), max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(1, capabilities={"gpu": 1})
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"manager_cpu", capabilities={})
-        manager_snapshots = {b"manager_cpu": _create_manager_snapshot(b"manager_cpu", worker_count=0, capabilities={})}
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_cpu"), capabilities={})
+        manager_snapshots = {
+            WorkerManagerID(b"manager_cpu"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_cpu"), worker_count=0, capabilities={}
+            )
+        }
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
@@ -460,22 +540,26 @@ class TestWaterfallCapabilities(unittest.TestCase):
     def test_higher_priority_capable_owns_capset(self):
         """When two managers can satisfy the capset, only the higher-priority one allocates it."""
         rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"manager_b"), max_task_concurrency=10),
         ]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(1, capabilities={"gpu": 1})
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", worker_count=0, capabilities={"gpu": 4}),
-            b"manager_b": _create_manager_snapshot(b"manager_b", worker_count=0, capabilities={"gpu": 4}),
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), worker_count=0, capabilities={"gpu": 4}
+            ),
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), worker_count=0, capabilities={"gpu": 4}
+            ),
         }
 
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", capabilities={"gpu": 4})
+        heartbeat_a = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), capabilities={"gpu": 4})
         commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, [], manager_snapshots)
         self.assertEqual(_capability_requests(commands_a[0]), [({"gpu": 1}, 1)])
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", capabilities={"gpu": 4})
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), capabilities={"gpu": 4})
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
         # Higher-priority A owns the gpu capset; B's share is 0 -> emits setDesired(0) for generic capset.
         self.assertEqual(len(commands_b), 1)
@@ -485,22 +569,22 @@ class TestWaterfallCapabilities(unittest.TestCase):
     def test_capset_overflow_to_lower_priority_when_higher_full(self):
         """When the higher-priority capable manager is full for the capset, overflow goes to the next."""
         rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=2),
-            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=2),
+            WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"manager_b"), max_task_concurrency=10),
         ]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(50, capabilities={"gpu": 1})
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(
-                b"manager_a", max_task_concurrency=2, worker_count=2, capabilities={"gpu": 4}
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=2, worker_count=2, capabilities={"gpu": 4}
             ),
-            b"manager_b": _create_manager_snapshot(
-                b"manager_b", max_task_concurrency=10, worker_count=0, capabilities={"gpu": 4}
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), max_task_concurrency=10, worker_count=0, capabilities={"gpu": 4}
             ),
         }
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", capabilities={"gpu": 4})
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), capabilities={"gpu": 4})
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
 
         # total_desired = ceil(50/10) = 5. manager_a cap=2 absorbs 2, manager_b allocates remaining 3.
@@ -508,13 +592,15 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
     def test_capability_request_carries_concrete_dict(self):
         """The request's capabilities field carries the exact dict from the originating tasks."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"mgr"), max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(1, capabilities={"gpu": 2, "nvlink": 1})
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": 8, "nvlink": 4})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": 8, "nvlink": 4})
         manager_snapshots = {
-            b"mgr": _create_manager_snapshot(b"mgr", worker_count=0, capabilities={"gpu": 8, "nvlink": 4})
+            WorkerManagerID(b"mgr"): _create_manager_snapshot(
+                WorkerManagerID(b"mgr"), worker_count=0, capabilities={"gpu": 8, "nvlink": 4}
+            )
         }
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
@@ -525,7 +611,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         """A capability-specific request must still be allocated for tasks that need
         unique capabilities, even when the cluster-wide task/worker ratio doesn't warrant
         scaling generic workers."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"manager_a"), max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
         # 3 generic + 1 gpu task; 3 workers running -> generic ratio is in band (no scale)
         # but a gpu request should still be emitted.
@@ -534,9 +620,11 @@ class TestWaterfallCapabilities(unittest.TestCase):
         all_tasks = {**generic_tasks, **gpu_tasks}
         workers = _create_workers(3)
         snapshot = InformationSnapshot(tasks=all_tasks, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"manager_a", capabilities={"gpu": 4})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), capabilities={"gpu": 4})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", worker_count=0, capabilities={"gpu": 4})
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), worker_count=0, capabilities={"gpu": 4}
+            )
         }
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
@@ -548,12 +636,12 @@ class TestWaterfallCapabilities(unittest.TestCase):
     def test_generic_capset_present_with_no_capability_tasks(self):
         """When all tasks have no capabilities, the manager receives a generic request
         (empty capabilities dict) carrying the ratio-derived allocation."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"mgr"), max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
-        manager_snapshots = {b"mgr": _create_manager_snapshot(b"mgr", worker_count=0)}
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"))
+        manager_snapshots = {WorkerManagerID(b"mgr"): _create_manager_snapshot(WorkerManagerID(b"mgr"), worker_count=0)}
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
@@ -569,13 +657,17 @@ class TestWaterfallCapabilities(unittest.TestCase):
     def test_capability_match_is_key_only(self):
         """Capability matching is name-only: a task requiring {a: 3} is considered serviceable
         by a manager that advertises {a: 5} -- numeric values are not used for subsumption."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"mgr"), max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(1, capabilities={"a": 3})
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         # Manager's advertised "a" value (5) differs from the task's required "a" value (3).
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"a": 5})
-        manager_snapshots = {b"mgr": _create_manager_snapshot(b"mgr", worker_count=0, capabilities={"a": 5})}
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"a": 5})
+        manager_snapshots = {
+            WorkerManagerID(b"mgr"): _create_manager_snapshot(
+                WorkerManagerID(b"mgr"), worker_count=0, capabilities={"a": 5}
+            )
+        }
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
@@ -689,16 +781,20 @@ class TestWaterfallConfigParsing(unittest.TestCase):
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=0),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0),
+            WorkerManagerID(b"manager_a"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_a"), max_task_concurrency=10, worker_count=0
+            ),
+            WorkerManagerID(b"manager_b"): _create_manager_snapshot(
+                WorkerManagerID(b"manager_b"), max_task_concurrency=20, worker_count=0
+            ),
         }
 
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        heartbeat_a = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_a"), max_task_concurrency=10)
         commands_a = scaling_policy.get_scaling_commands(snapshot, heartbeat_a, [], manager_snapshots)
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 1)
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
+        heartbeat_b = _create_worker_manager_heartbeat(WorkerManagerID(b"manager_b"), max_task_concurrency=20)
         commands_b = scaling_policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
         # Higher-priority A absorbs all 1 desired worker; B's share is 0 -> emits setDesired(0).
         self.assertEqual(len(commands_b), 1)
@@ -787,12 +883,12 @@ def _create_mock_worker_heartbeat(
         taskLock=False,
         processors=[],
         capabilities=capabilities or {},
-        workerManagerID=b"test",
+        workerManagerID=WorkerManagerID(b"test"),
     )
 
 
 def _create_worker_manager_heartbeat(
-    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: WorkerManagerID, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat(
         maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
@@ -800,7 +896,7 @@ def _create_worker_manager_heartbeat(
 
 
 def _create_manager_snapshot(
-    worker_manager_id: bytes,
+    worker_manager_id: WorkerManagerID,
     max_task_concurrency: int = 10,
     worker_count: int = 0,
     last_seen: Optional[float] = None,
@@ -834,7 +930,7 @@ def _create_workers(
 
 
 def _tier(
-    worker_manager_id: bytes,
+    worker_manager_id: WorkerManagerID,
     max_task_concurrency: int,
     min_task_concurrency: int = 0,
     worker_count: int = 0,
@@ -844,8 +940,8 @@ def _tier(
 
 
 def _desired_by_manager(
-    policy: WaterfallScalingPolicy, task_count: int, advertised_max_by_manager: Dict[bytes, int]
-) -> Dict[bytes, int]:
+    policy: WaterfallScalingPolicy, task_count: int, advertised_max_by_manager: Dict[WorkerManagerID, int]
+) -> Dict[WorkerManagerID, int]:
     """Ask the policy once per manager, as each manager's heartbeat does, with one consistent cluster view."""
     snapshot = InformationSnapshot(tasks=_create_tasks(task_count), workers={})
     manager_snapshots = {

@@ -5,11 +5,14 @@ from unittest.mock import MagicMock
 from scaler.protocol.capnp import WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
 from scaler.scheduler.policies.utility import create_policies
+from scaler.utility.identifiers import WorkerManagerID
 
 MAX_TASK_CONCURRENCY = 8
 
 
-def _desired_task_concurrency(policy: StaticScalingPolicy, worker_manager_id: bytes = b"manager") -> int:
+def _desired_task_concurrency(
+    policy: StaticScalingPolicy, worker_manager_id: WorkerManagerID = WorkerManagerID(b"manager")
+) -> int:
     heartbeat = WorkerManagerHeartbeat(maxTaskConcurrency=MAX_TASK_CONCURRENCY, workerManagerID=worker_manager_id)
     commands = policy.get_scaling_commands(MagicMock(), heartbeat, [], {})
     (command,) = commands
@@ -29,17 +32,17 @@ class TestStaticScalingPolicy(unittest.TestCase):
         self.assertEqual(_desired_task_concurrency(StaticScalingPolicy(100, {})), MAX_TASK_CONCURRENCY)
 
     def test_a_named_manager_gets_its_own_count(self) -> None:
-        policy = StaticScalingPolicy(None, {b"native": 3, b"ecs": 0})
-        self.assertEqual(_desired_task_concurrency(policy, b"native"), 3)
-        self.assertEqual(_desired_task_concurrency(policy, b"ecs"), 0)
+        policy = StaticScalingPolicy(None, {WorkerManagerID(b"native"): 3, WorkerManagerID(b"ecs"): 0})
+        self.assertEqual(_desired_task_concurrency(policy, WorkerManagerID(b"native")), 3)
+        self.assertEqual(_desired_task_concurrency(policy, WorkerManagerID(b"ecs")), 0)
 
     def test_an_unnamed_manager_gets_the_advertised_maximum(self) -> None:
-        policy = StaticScalingPolicy(None, {b"native": 3})
-        self.assertEqual(_desired_task_concurrency(policy, b"other"), MAX_TASK_CONCURRENCY)
+        policy = StaticScalingPolicy(None, {WorkerManagerID(b"native"): 3})
+        self.assertEqual(_desired_task_concurrency(policy, WorkerManagerID(b"other")), MAX_TASK_CONCURRENCY)
 
     def test_a_named_count_is_capped_at_the_advertised_maximum(self) -> None:
-        policy = StaticScalingPolicy(None, {b"native": 100})
-        self.assertEqual(_desired_task_concurrency(policy, b"native"), MAX_TASK_CONCURRENCY)
+        policy = StaticScalingPolicy(None, {WorkerManagerID(b"native"): 100})
+        self.assertEqual(_desired_task_concurrency(policy, WorkerManagerID(b"native")), MAX_TASK_CONCURRENCY)
 
 
 class TestScalingPolicyArgument(unittest.TestCase):
@@ -59,9 +62,9 @@ class TestScalingPolicyArgument(unittest.TestCase):
     def test_static_parses_per_manager_counts(self) -> None:
         static = self.__scaling_policy("static[native:4, ecs:0]")
         assert static is not None
-        self.assertEqual(_desired_task_concurrency(static, b"native"), 4)
-        self.assertEqual(_desired_task_concurrency(static, b"ecs"), 0)
-        self.assertEqual(_desired_task_concurrency(static, b"other"), MAX_TASK_CONCURRENCY)
+        self.assertEqual(_desired_task_concurrency(static, WorkerManagerID(b"native")), 4)
+        self.assertEqual(_desired_task_concurrency(static, WorkerManagerID(b"ecs")), 0)
+        self.assertEqual(_desired_task_concurrency(static, WorkerManagerID(b"other")), MAX_TASK_CONCURRENCY)
 
     def test_invalid_scaling_strings_are_refused(self) -> None:
         for scaling in [

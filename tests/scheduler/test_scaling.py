@@ -41,7 +41,7 @@ from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy
 from scaler.scheduler.policies.utility import create_scaling_policy
-from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.snapshot import InformationSnapshot
@@ -194,7 +194,7 @@ class TestScalingStringParsing(unittest.TestCase):
 
         vanilla = create_scaling_policy("vanilla [native:8]")
         assert isinstance(vanilla, VanillaScalingPolicy)
-        self.assertEqual(vanilla._bounds, {b"native": WorkerManagerBounds(8, 0)})
+        self.assertEqual(vanilla._bounds, {WorkerManagerID(b"native"): WorkerManagerBounds(8, 0)})
 
     def test_an_argument_with_entries_is_refused_as_such(self):
         with self.assertRaisesRegex(ValueError, "an argument or entries, not both"):
@@ -235,7 +235,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), max_task_concurrency=10)
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -250,7 +250,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         managed = [WorkerID(b"w0")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), max_task_concurrency=10)
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -268,7 +268,9 @@ class TestAtCapacityEmission(unittest.TestCase):
             tasks[tid] = _create_mock_task(tid, {"gpu": 1})
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10, capabilities={"gpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(
+            WorkerManagerID(b"mgr"), max_task_concurrency=10, capabilities={"gpu": -1}
+        )
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -283,7 +285,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         policy = CapabilityScalingPolicy()
         task_id = TaskID.generate_task_id()
         snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={})
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], {})
 
@@ -294,16 +296,20 @@ class TestAtCapacityEmission(unittest.TestCase):
 
     def test_waterfall_at_cap_emits_current(self):
         """Waterfall: when the manager is full per the priority chain, it still emits setDesired(current)."""
-        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"mgr"), max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
         # ceil(100/10) = 10; cap=10; desired=10 -> emits setDesired(10).
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), max_task_concurrency=10)
         manager_snapshots = {
-            b"mgr": WorkerManagerSnapshot(
-                worker_manager_id=b"mgr", max_task_concurrency=10, worker_count=10, last_seen_at=0.0, capabilities={}
+            WorkerManagerID(b"mgr"): WorkerManagerSnapshot(
+                worker_manager_id=WorkerManagerID(b"mgr"),
+                max_task_concurrency=10,
+                worker_count=10,
+                last_seen_at=0.0,
+                capabilities={},
             )
         }
 
@@ -339,7 +345,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
     async def test_pending_equals_desired_minus_connected(self):
         """pendingWorkers = max(0, last_desired_total - connected_count)."""
         source = b"mgr-src"
-        manager_id = b"mgr-id"
+        manager_id = WorkerManagerID(b"mgr-id")
         heartbeat = _create_worker_manager_heartbeat(manager_id)
 
         # Policy returns a setDesired command totaling 5 workers for this manager (empty caps).
@@ -356,7 +362,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
     async def test_pending_clamped_at_zero(self):
         """If more workers are connected than desired, pendingWorkers is 0 (never negative)."""
         source = b"mgr-src"
-        manager_id = b"mgr-id"
+        manager_id = WorkerManagerID(b"mgr-id")
         heartbeat = _create_worker_manager_heartbeat(manager_id)
 
         self.scaling_policy.get_scaling_commands.return_value = [build_set_desired_command([({}, 1)])]
@@ -371,7 +377,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
     async def test_pending_only_counts_capsets_this_manager_can_serve(self):
         """A capset whose capabilities are not a subset of the manager's capabilities is excluded."""
         source = b"mgr-src"
-        manager_id = b"mgr-id"
+        manager_id = WorkerManagerID(b"mgr-id")
         # Manager advertises only "cpu" capability.
         heartbeat = WorkerManagerHeartbeat(maxTaskConcurrency=10, capabilities={"cpu": -1}, workerManagerID=manager_id)
 
@@ -395,16 +401,16 @@ class TestManagerSnapshotsCountServingWorkers(unittest.IsolatedAsyncioTestCase):
         setup_logger()
         scaling_policy = WaterfallScalingPolicy(
             [
-                WaterfallRule(priority=1, worker_manager_id=b"burst", max_task_concurrency=20),
-                WaterfallRule(priority=2, worker_manager_id=b"warm", max_task_concurrency=8),
+                WaterfallRule(priority=1, worker_manager_id=WorkerManagerID(b"burst"), max_task_concurrency=20),
+                WaterfallRule(priority=2, worker_manager_id=WorkerManagerID(b"warm"), max_task_concurrency=8),
             ]
         )
         controller = WorkerManagerController(MagicMock(), scaling_policy)
 
         # burst runs 3 workers, 2 of them draining; warm runs 2 serving workers, above its floor of 0
         workers_by_manager = {
-            b"burst": {b"burst-0": False, b"burst-1": True, b"burst-2": True},
-            b"warm": {b"warm-0": False, b"warm-1": False},
+            WorkerManagerID(b"burst"): {b"burst-0": False, b"burst-1": True, b"burst-2": True},
+            WorkerManagerID(b"warm"): {b"warm-0": False, b"warm-1": False},
         }
         worker_controller = MagicMock()
         worker_controller._worker_alive_since = {
@@ -420,9 +426,13 @@ class TestManagerSnapshotsCountServingWorkers(unittest.IsolatedAsyncioTestCase):
         binder = AsyncMock()
         controller.register(binder, task_controller, worker_controller)
 
-        await controller.on_heartbeat(b"warm-src", _create_worker_manager_heartbeat(b"warm", max_task_concurrency=8))
+        await controller.on_heartbeat(
+            b"warm-src", _create_worker_manager_heartbeat(WorkerManagerID(b"warm"), max_task_concurrency=8)
+        )
         binder.send.reset_mock()
-        await controller.on_heartbeat(b"burst-src", _create_worker_manager_heartbeat(b"burst", max_task_concurrency=20))
+        await controller.on_heartbeat(
+            b"burst-src", _create_worker_manager_heartbeat(WorkerManagerID(b"burst"), max_task_concurrency=20)
+        )
 
         (command,) = [
             call.args[1] for call in binder.send.call_args_list if isinstance(call.args[1], WorkerManagerCommand)
@@ -453,13 +463,13 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, dra
         taskLock=False,
         processors=[],
         capabilities=capabilities,
-        workerManagerID=b"test",
+        workerManagerID=WorkerManagerID(b"test"),
         draining=draining,
     )
 
 
 def _create_worker_manager_heartbeat(
-    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: WorkerManagerID, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat(
         maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id

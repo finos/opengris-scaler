@@ -7,7 +7,7 @@ from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
@@ -27,14 +27,14 @@ class CapabilityScalingPolicy(ScalingPolicy):
 
     def __init__(self):
         self._upper_task_ratio = 5
-        self._logged_desired_by_manager: Dict[bytes, Dict[FrozenSet[Tuple[str, int]], int]] = {}
+        self._logged_desired_by_manager: Dict[WorkerManagerID, Dict[FrozenSet[Tuple[str, int]], int]] = {}
 
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         manager_id = worker_manager_heartbeat.workerManagerID
         # the manager being answered counts as live even if no snapshot was built for it
@@ -47,7 +47,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
 
     def __log_decisions(
         self,
-        manager_id: bytes,
+        manager_id: WorkerManagerID,
         tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
         desired_per_capset: List[Tuple[Dict[str, int], int]],
     ) -> None:
