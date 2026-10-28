@@ -50,6 +50,7 @@ for _mod in _STUBS:
 import asyncio  # noqa: E402  (must come after stubs so asyncio itself is real)
 
 import kubernetes.client.exceptions  # noqa: E402
+import yaml  # noqa: E402
 from kubernetes.client import ApiClient  # noqa: E402
 
 import scaler.worker_manager.cloud.kubernetes.worker_manager as worker_manager_module  # noqa: E402
@@ -589,6 +590,16 @@ class TestPodTemplateImage(unittest.IsolatedAsyncioTestCase):
         provisioner, core_v1 = _make_provisioner(config=_make_config(pod_template=template))
         await provisioner.start_units(1)
         self.assertEqual(_created_pod(core_v1)["spec"]["containers"][0]["image"], "test-image:latest")
+
+
+class TestPodTemplate(unittest.IsolatedAsyncioTestCase):
+    """Tests for how pod_template is loaded and layered under the generated pod."""
+
+    def test_invalid_template_fails_at_startup(self) -> None:
+        """A template that is not a YAML mapping, including a path to a missing file, fails before any pod starts."""
+        for template in ("- not\n- a mapping\n", "spec: [unclosed", "/no/such/pod-template.yaml"):
+            with self.subTest(template=template), self.assertRaises((ValueError, yaml.YAMLError)):
+                _make_provisioner(config=_make_config(pod_template=template))
 
 
 # ---------------------------------------------------------------------------

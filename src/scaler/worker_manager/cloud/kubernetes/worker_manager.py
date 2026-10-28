@@ -55,6 +55,8 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
             kubernetes.config.load_incluster_config()
         self._core_v1 = kubernetes.client.CoreV1Api()
 
+        self._pod_template = _load_pod_template(config.pod_template)
+
         # Pod names owned by this provisioner (oldest first)
         self._pods: List[str] = []
 
@@ -251,12 +253,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
                 pod_dict: Dict[str, Any] = cast(Dict[str, Any], ApiClient().sanitize_for_serialization(pod_manifest))
 
                 # Layer 1: pod_template YAML — deep-merged as a base layer.
-                pod_template_content = load_file_or_inline(config.pod_template)
-                if pod_template_content.strip():
-                    template = yaml.safe_load(pod_template_content)
-                    if not isinstance(template, dict):
-                        raise ValueError(f"pod_template must be a YAML mapping, got {type(template).__name__}")
-                    pod_dict = deep_merge(pod_dict, template)
+                pod_dict = deep_merge(pod_dict, self._pod_template)
 
                 # Config fields override the template.
                 spec = pod_dict.setdefault("spec", {})
@@ -338,6 +335,18 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
             self._backoff_reconcile_task.cancel()
         self._capacity_coordinator.cancel()
         await self.stop_units(len(self._pods))
+
+
+def _load_pod_template(pod_template: str) -> Dict[str, Any]:
+    content = load_file_or_inline(pod_template)
+    if not content.strip():
+        return {}
+    template = yaml.safe_load(content)
+    if not isinstance(template, dict):
+        raise ValueError(
+            f"pod_template must be a YAML mapping or the path to a file holding one, got {type(template).__name__}"
+        )
+    return template
 
 
 def _describe_exit(pod: V1Pod) -> str:
