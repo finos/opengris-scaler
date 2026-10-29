@@ -40,7 +40,7 @@ from scaler.scheduler.policies.scaling.types import WorkerManagerBounds, WorkerM
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy
-from scaler.scheduler.policies.utility import create_scaling_policy
+from scaler.scheduler.policies.utility import create_policies, create_scaling_policy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -144,7 +144,7 @@ class TestScaling(unittest.TestCase):
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
             load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
             protected=False,
-            policy=PolicyConfig(policy_content="allocate=even_load; scaling=capability"),
+            policy=PolicyConfig(policy_content="allocate=capability; scaling=capability"),
             event_loop="builtin",
             logging_paths=("/dev/stdout",),
             logging_config_file=None,
@@ -218,6 +218,14 @@ class TestScalingStringParsing(unittest.TestCase):
             with self.subTest(scaling=scaling):
                 with self.assertRaises(ValueError):
                     create_scaling_policy(scaling)
+
+    def test_even_load_with_capability_scaling_is_refused(self):
+        for policy_content in ["allocate=even_load; scaling=capability", "allocate = even_load ; scaling = capability"]:
+            with self.subTest(policy_content=policy_content):
+                with self.assertRaisesRegex(
+                    ValueError, "scaling=capability requires allocate=capability, got allocate=even_load"
+                ):
+                    create_policies("simple", policy_content)
 
 
 class TestAtCapacityEmission(unittest.TestCase):
