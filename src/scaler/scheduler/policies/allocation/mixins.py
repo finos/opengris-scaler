@@ -17,6 +17,12 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    def drain_worker(self, worker: WorkerID) -> List[TaskID]:
+        """stop assigning and balancing tasks to worker, and return the task_ids it holds so the caller can take them
+        back"""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def get_worker_ids(self) -> Set[WorkerID]:
         """get all worker ids as list"""
         raise NotImplementedError()

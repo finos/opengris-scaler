@@ -119,6 +119,7 @@ The ``scaling`` option controls how worker capacity grows or shrinks.
   * General autoscaling for homogeneous clusters.
   * Scale up when ``tasks / workers > 10``.
   * Scale down when ``tasks / workers < 1``.
+  * ``workers`` counts serving workers only: a draining worker takes no new task.
   * The optional bounds keep each named worker manager within a range, see `Vanilla bounds`_.
 
 * ``scaling=capability``

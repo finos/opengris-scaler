@@ -51,6 +51,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
 
         self._task_id_to_worker_id: Dict[TaskID, WorkerID] = {}
         self._capability_to_worker_ids: Dict[str, Set[WorkerID]] = {}
+        self._draining_worker_ids: Set[WorkerID] = set()
 
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         if any(capability_value != -1 for capability_value in capabilities.values()):
@@ -76,6 +77,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         if worker_holder is None:
             return []
 
+        self._draining_worker_ids.discard(worker)
         for capability in worker_holder.capabilities:
             self._capability_to_worker_ids[capability].discard(worker)
             if len(self._capability_to_worker_ids[capability]) == 0:
@@ -87,6 +89,14 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
 
         return task_ids
 
+    def drain_worker(self, worker: WorkerID) -> List[TaskID]:
+        worker_holder = self._worker_id_to_worker.get(worker)
+        if worker_holder is None or worker in self._draining_worker_ids:
+            return []
+
+        self._draining_worker_ids.add(worker)
+        return list(worker_holder.task_id_to_task.keys())
+
     def get_worker_ids(self) -> Set[WorkerID]:
         return set(self._worker_id_to_worker.keys())
 
@@ -96,7 +106,12 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
     def balance(self) -> Dict[WorkerID, List[TaskID]]:
         """Returns, for every worker id, the list of task ids to balance out."""
 
-        has_idle_workers = any(worker.n_tasks() == 0 for worker in self._worker_id_to_worker.values())
+        serving_workers = [
+            worker
+            for worker_id, worker in self._worker_id_to_worker.items()
+            if worker_id not in self._draining_worker_ids
+        ]
+        has_idle_workers = any(worker.n_tasks() == 0 for worker in serving_workers)
 
         if not has_idle_workers:
             return {}
@@ -139,8 +154,8 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         #
         # See <https://github.com/finos/opengris-scaler/issues/32#issuecomment-2541897645> for more details.
 
-        n_tasks = sum(worker.n_tasks() for worker in self._worker_id_to_worker.values())
-        avg_tasks_per_worker = n_tasks / len(self._worker_id_to_worker)
+        n_tasks = sum(worker.n_tasks() for worker in serving_workers)
+        avg_tasks_per_worker = n_tasks / len(serving_workers)
 
         # When workers outnumber tasks the average drops below one, and a strict "within one of the
         # average" test marks every idle worker as balanced -- so a single worker hoarding all the tasks
@@ -159,7 +174,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         #
         # Time complexity is O(n_workers + n_tasks)
 
-        workers = [worker.copy() for worker in self._worker_id_to_worker.values() if not is_balanced(worker)]
+        workers = [worker.copy() for worker in serving_workers if not is_balanced(worker)]
 
         # Then, we sort the remaining workers by the number of queued tasks.
         #
@@ -283,7 +298,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         if any(capability not in self._capability_to_worker_ids for capability in capabilities.keys()):
             return []
 
-        matching_worker_ids = set(self._worker_id_to_worker.keys())
+        matching_worker_ids = set(self._worker_id_to_worker.keys()) - self._draining_worker_ids
 
         for capability in capabilities.keys():
             matching_worker_ids.intersection_update(self._capability_to_worker_ids[capability])

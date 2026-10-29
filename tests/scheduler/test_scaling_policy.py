@@ -19,9 +19,11 @@ def _heartbeat(manager_id: bytes = MANAGER_ID) -> MagicMock:
 
 
 def _snapshot(task_count: int, worker_count: int) -> MagicMock:
+    """Serving workers keyed by id, as the scheduler builds them; the first is the managed `worker`."""
     snapshot = MagicMock()
     snapshot.tasks = list(range(task_count))
-    snapshot.workers = list(range(worker_count))
+    worker_ids = [WorkerID(b"worker")] + [WorkerID(f"worker-{i}".encode()) for i in range(1, worker_count)]
+    snapshot.workers = {worker_id: MagicMock(draining=False) for worker_id in worker_ids[:worker_count]}
     return snapshot
 
 

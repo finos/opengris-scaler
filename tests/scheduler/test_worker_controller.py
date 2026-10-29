@@ -3,8 +3,9 @@ import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
+from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, ErrorCode
-from scaler.protocol.capnp import Task, WorkerDisconnectNotification
+from scaler.protocol.capnp import Task, WorkerDisconnectNotification, WorkerHeartbeat
 from scaler.scheduler.controllers.mixins import ConfigController, TaskController
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
@@ -17,6 +18,54 @@ from tests.utility.utility import logging_test_name
 _WORKER_ID = WorkerID(b"worker_aaa")
 _MANAGER_ID = b"manager_bbb"
 _TASK_ID = TaskID(b"0" * 16)
+
+
+def _received_heartbeat(draining: bool) -> WorkerHeartbeat:
+    """A heartbeat as the binder delivers it: decoded from the wire, not built in memory."""
+    message = deserialize(serialize(WorkerHeartbeat(queueSize=10, workerManagerID=_MANAGER_ID, draining=draining)))
+    assert isinstance(message, WorkerHeartbeat)
+    return message
+
+
+class TestVanillaWorkerControllerOnDrainingHeartbeat(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+        config_controller = MagicMock(spec=ConfigController)
+        self.allocation_policy, _ = create_policies("simple", "allocate=capability; scaling=vanilla")
+
+        self.controller = VanillaWorkerController(config_controller, self.allocation_policy)
+        self.task_controller = MagicMock(spec=TaskController)
+        self.controller.register(AsyncMock(), AsyncMock(), self.task_controller)
+
+    async def _connect_worker_holding_a_task(self) -> None:
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=False))
+        task = Task(
+            taskId=_TASK_ID,
+            source=ClientID(b"client"),
+            metadata=b"",
+            funcObjectId=b"",
+            functionArgs=[],
+            capabilities={},
+        )
+        self.assertEqual(self.allocation_policy.assign_task(task), _WORKER_ID)
+
+    async def test_first_draining_heartbeat_takes_back_the_worker_tasks(self) -> None:
+        """The scheduler drains a worker, and takes back its tasks, once the worker reports draining."""
+        await self._connect_worker_holding_a_task()
+        self.task_controller.on_task_balance_cancel.assert_not_called()
+
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
+        self.task_controller.on_task_balance_cancel.assert_called_once_with(_TASK_ID)
+
+    async def test_later_draining_heartbeats_do_not_take_back_tasks_again(self) -> None:
+        """A task the worker refused to give up stays with it: later draining heartbeats send no new cancel."""
+        await self._connect_worker_holding_a_task()
+
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
+        self.task_controller.on_task_balance_cancel.assert_called_once_with(_TASK_ID)
 
 
 class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsyncioTestCase):
