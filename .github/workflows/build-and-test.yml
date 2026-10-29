@@ -36,15 +36,7 @@ jobs:
         with:
           os: ${{ runner.os }}
 
-      - uses: ./.github/actions/3rd-party-libraries-download
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/3rd-party-libraries-compile
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/3rd-party-libraries-install
+      - uses: ./.github/actions/3rd-party-libraries
         with:
           os: ${{ runner.os }}
 
@@ -56,9 +48,37 @@ jobs:
         with:
           os: ${{ runner.os }}
 
+      - uses: ./.github/actions/install-wheel
+
       - uses: ./.github/actions/run-test
         with:
           os: ${{ runner.os }}
+
+  examples:
+    name: Run Examples
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-env
+        with:
+          os: ${{ runner.os }}
+          python-version: '3.10'
+
+      - uses: ./.github/actions/3rd-party-libraries
+        with:
+          os: ${{ runner.os }}
+
+      - uses: ./.github/actions/install-wheel
+
+      - uses: ./.github/actions/run-examples
 
   build-wasm-client:
     name: Build WASM Client (Pyodide)
