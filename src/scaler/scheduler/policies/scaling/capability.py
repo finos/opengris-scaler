@@ -98,6 +98,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
             desired = max(1, ceil(len(tasks) / self._upper_task_ratio))
             if max_concurrency != -1:
                 desired = min(desired, max_concurrency)
-            # Use first task's concrete capability dict as the representative for the capset.
-            result.append((tasks[0], desired))
+            # Use the max value per capability across all tasks as the representative.
+            representative = {key: max(task[key] for task in tasks) for key in tasks[0]}
+            result.append((representative, desired))
         return result

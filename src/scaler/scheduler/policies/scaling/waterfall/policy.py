@@ -183,7 +183,11 @@ class WaterfallScalingPolicy(ScalingPolicy):
         )
 
     def _tasks_by_capability(self, information_snapshot: InformationSnapshot) -> Dict[FrozenSet[str], Dict[str, int]]:
-        """Group tasks with non-empty capabilities, mapping capset keys to a representative dict."""
+        """Group tasks with non-empty capabilities, mapping capset keys to a representative dict.
+
+        The representative uses the max value per capability across all tasks in the capset, so heterogeneous demands
+        (e.g. {"gpu": 1} and {"gpu": 2}) are represented by {"gpu": 2}.
+        """
         result: Dict[FrozenSet[str], Dict[str, int]] = {}
         for task in information_snapshot.tasks.values():
             if not task.capabilities:
@@ -191,6 +195,9 @@ class WaterfallScalingPolicy(ScalingPolicy):
             required_keys = frozenset(task.capabilities.keys())
             if required_keys not in result:
                 result[required_keys] = dict(task.capabilities)
+            else:
+                for key, value in task.capabilities.items():
+                    result[required_keys][key] = max(result[required_keys][key], value)
         return result
 
 

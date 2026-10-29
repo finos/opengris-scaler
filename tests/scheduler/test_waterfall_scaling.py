@@ -586,6 +586,26 @@ class TestWaterfallCapabilities(unittest.TestCase):
         self.assertEqual(len(cap_requests), 1)
         self.assertEqual(set(cap_requests[0][0].keys()), {"a"})
 
+    def test_heterogeneous_capability_values_use_max_representative(self):
+        """Tasks with {"gpu": 1} and {"gpu": 2} in the same capset produce a representative with {"gpu": 2}."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+        task_id_1 = TaskID.generate_task_id()
+        task_id_2 = TaskID.generate_task_id()
+        tasks = {
+            task_id_1: _create_mock_task(task_id_1, capabilities={"gpu": 1}),
+            task_id_2: _create_mock_task(task_id_2, capabilities={"gpu": 2}),
+        }
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": 4})
+        manager_snapshots = {b"mgr": _create_manager_snapshot(b"mgr", worker_count=0, capabilities={"gpu": 4})}
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+
+        cap_requests = _capability_requests(commands[0])
+        self.assertEqual(len(cap_requests), 1)
+        self.assertEqual(cap_requests[0][0], {"gpu": 2})
+
 
 class TestWaterfallConfigParsing(unittest.TestCase):
     """Unit tests for waterfall config parsing via create_policies() factory."""
