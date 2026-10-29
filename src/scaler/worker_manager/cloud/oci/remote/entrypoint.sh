@@ -11,12 +11,23 @@ printf '%s\n' "${PYTHON_REQUIREMENTS}" > /tmp/requirements.txt
 if grep -qE 'git\+|@ git\+' /tmp/requirements.txt; then
     apt-get update -qq
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        ca-certificates git cmake gcc-14 g++-14 pkg-config \
+        ca-certificates curl git cmake make perl gcc-14 g++-14 pkg-config \
         libcapnp-dev capnproto \
-        libuv1-dev libssl-dev
+        libuv1-dev
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
     update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
     rm -rf /var/lib/apt/lists/*
+
+    # Ubuntu's libssl-dev lacks the OpenSSL CMake package scaler needs, so build OpenSSL with the repo's library_tool.sh
+    read -r clone_url clone_branch < <(/opt/opengris-scaler/bin/python - <<'EOF'
+import re, urllib.parse
+url = urllib.parse.urlsplit(re.search(r"git\+([^\s;]+)", open("/tmp/requirements.txt").read()).group(1))
+path, _, branch = url.path.partition("@")
+print(urllib.parse.urlunsplit(url._replace(path=path, fragment="")), branch)
+EOF
+)
+    git clone --depth 1 ${clone_branch:+--branch "${clone_branch}"} "${clone_url}" /tmp/scaler-src
+    for step in download compile install; do /tmp/scaler-src/scripts/library_tool.sh openssl "${step}"; done
 fi
 
 uv pip install --no-cache -q --python /opt/opengris-scaler -r /tmp/requirements.txt
