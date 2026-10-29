@@ -80,6 +80,10 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
     def on_cleanup(self, task_id: TaskID) -> None:
         self._task_id_to_batch_job_id.pop(task_id, None)
 
+    def close(self) -> None:
+        # The worker is exiting, so the AWS calls still queued on the pool have nowhere to report back to.
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
     async def on_cancel(self, task_cancel: TaskCancel) -> None:
         if task_cancel.taskId in self._task_id_to_batch_job_id:
             batch_job_id = self._task_id_to_batch_job_id[task_cancel.taskId]

@@ -593,7 +593,7 @@ IBM Spectrum Symphony worker manager.
             type = "symphony"
             scheduler_address = "tcp://127.0.0.1:6378"
             worker_manager_id = "wm-symphony"
-            service_name = "ScalerService"
+            service_name = "Scaler"
 
         Run command:
 
@@ -607,7 +607,7 @@ IBM Spectrum Symphony worker manager.
 
             scaler_worker_manager symphony tcp://127.0.0.1:6378 \
                 --worker-manager-id wm-symphony \
-                --service-name ScalerService
+                --service-name Scaler
 
 .. list-table::
    :header-rows: 1
@@ -619,7 +619,9 @@ IBM Spectrum Symphony worker manager.
    * - ``-sn``, ``--service-name``
      - Yes
      - -
-     - Symphony service name to use for submitted workers.
+     - Symphony **application** name to submit workload to. Despite the option name, this value reaches
+       ``soamapi.connect()``, which takes an application rather than a service. See
+       :doc:`worker_managers/symphony`.
 
 Subcommand: ``aws_raw_ecs``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

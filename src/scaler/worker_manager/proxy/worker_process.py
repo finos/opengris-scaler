@@ -6,6 +6,8 @@ import sys
 from collections import deque
 from typing import Callable, Dict, Optional
 
+import tblib.pickling_support
+
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
 from scaler.config.types.address import AddressConfig
@@ -56,7 +58,6 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         worker_manager_id: bytes,
         processor_status_provider_factory: Callable[[], ProcessorStatusProvider],
         execution_backend_factory: Callable[[], ExecutionBackend],
-        idle_sleep_seconds: float = 0.0,
         security_config: Optional[SecurityConfig] = None,
     ) -> None:
         super().__init__(name=name)
@@ -80,7 +81,6 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
 
         self._processor_status_provider_factory = processor_status_provider_factory
         self._execution_backend_factory = execution_backend_factory
-        self._idle_sleep_seconds = idle_sleep_seconds
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -159,14 +159,33 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         return exit_code
 
     def _cleanup(self) -> None:
+        """Give back everything the worker holds, in the order that keeps its owners alive.
+
+        The execution backend goes first, while it can still reach whatever it is releasing, and the
+        network backend last, because the connectors run on its IO threads. Releasing here rather than
+        leaving it to interpreter shutdown keeps the order ours: both backends own native resources
+        whose destructors would otherwise run in whatever order finalization chose.
+        """
+        if self._execution_backend is not None:
+            self._execution_backend.close()
+
         if self._connector_external is not None:
             self._connector_external.destroy()
 
         if self._connector_storage is not None:
             self._connector_storage.destroy()
 
+        # Last: the connectors above run on this context's IO threads.
+        if self._backend is not None:
+            self._backend.destroy()
+
     def __initialize(self) -> None:
         bootstrap_process()
+
+        # A task's exception is pickled on to the client from this process, and a traceback only
+        # survives pickling where tblib is installed, so a failure arrives without one otherwise.
+        tblib.pickling_support.install()
+
         register_event_loop(self._event_loop)
 
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)
@@ -189,9 +208,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             security_config=self._security_config,
         )
         self._task_manager = TaskManager(
-            base_concurrency=self._base_concurrency,
-            execution_backend=self._execution_backend,
-            idle_sleep_seconds=self._idle_sleep_seconds,
+            base_concurrency=self._base_concurrency, execution_backend=self._execution_backend
         )
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
 
@@ -256,8 +273,8 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
             create_async_loop_routine(self._timeout_manager.routine, 1),
             create_async_loop_routine(self._execution_backend.routine, 0),
-            create_async_loop_routine(self._task_manager.process_task, 0),
-            create_async_loop_routine(self._task_manager.resolve_tasks, 0),
+            create_async_loop_routine(self._task_manager.routine, 0),
+            create_async_loop_routine(self._task_manager.upload_results, 0),
         )
 
     async def __teardown(self) -> None:
