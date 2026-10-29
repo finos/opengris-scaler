@@ -9,13 +9,19 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # The env context does not hold variables the runner sets, such as ImageOS
+    - name: Read Runner Image
+      id: runner-image
+      shell: bash
+      run: echo "image-os=${ImageOS}" >> "$GITHUB_OUTPUT"
+
     # Caches the install prefix: caching the build tree left the Linux install step at 92-182 s per run.
     - name: Cache Installed Libraries
       uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
       id: installed-libraries
       with:
         path: ${{ env.SCALER_THIRDPARTY_PREFIX }}
-        key: installed-libraries-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
+        key: installed-libraries-${{ inputs.os }}-${{ steps.runner-image.outputs.image-os }}-${{ hashFiles('scripts/library_tool.*', 'scripts/install_system_packages.sh', '.github/actions/setup-env/**', '.github/actions/3rd-party-libraries/**') }}
 
     - name: Download, Compile, And Install Libraries (Linux/macOS)
       shell: bash
