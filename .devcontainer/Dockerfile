@@ -5,8 +5,6 @@ RUN /tmp/install_system_packages.sh \
     && apt-get -y install libgraphblas-dev pandoc python3-pip python3-venv pipx tmux \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/install_system_packages.sh \
-    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 \
-    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100 \
     && sudo -u vscode pipx install uv
 
 # Absolute path so the bake (CWD=/) and dev-shell invocations (CWD=/workspaces/scaler) agree on the same staging tree.
