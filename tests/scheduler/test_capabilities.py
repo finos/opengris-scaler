@@ -1,6 +1,7 @@
 import multiprocessing
 import unittest
 from concurrent.futures import TimeoutError
+from typing import Dict
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
@@ -9,9 +10,22 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities
+from scaler.protocol.helpers import capabilities_to_dict
 from scaler.utility.logging.utility import setup_logger
+from scaler.worker.agent.processor.processor import Processor
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
+
+
+def task_capabilities() -> Dict[str, int]:
+    """The capabilities of the running task, as its worker received them."""
+    current_processor = Processor.get_current_processor()
+    assert current_processor is not None
+
+    current_task = current_processor.current_task()
+    assert current_task is not None
+
+    return capabilities_to_dict(current_task.capabilities)
 
 
 class TestCapabilities(unittest.TestCase):
@@ -127,3 +141,25 @@ class TestCapabilities(unittest.TestCase):
 
             gpu_process.terminate()
             gpu_process.join()
+
+
+class TestWorkerReceivesCapabilities(unittest.TestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+        self.combo = SchedulerClusterCombo(
+            n_workers=1,
+            per_worker_capabilities={"gpu": -1, "memory": -1},
+            event_loop="builtin",
+            scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=static"),
+        )
+
+    def tearDown(self) -> None:
+        self.combo.shutdown()
+
+    def test_worker_receives_task_capabilities(self) -> None:
+        capabilities = {"gpu": 2, "memory": 1_000}
+
+        with Client(self.combo.get_address()) as client:
+            future = client.submit_verbose(task_capabilities, args=(), kwargs={}, capabilities=capabilities)
+            self.assertEqual(future.result(), capabilities)

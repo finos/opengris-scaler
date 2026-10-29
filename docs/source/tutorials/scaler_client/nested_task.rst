@@ -14,6 +14,13 @@ What the example does:
 
 This pattern is useful to demonstrate nested execution, but recursion creates many small tasks and can be expensive.
 
+Nested client capabilities
+--------------------------
+
+A nested ``Client`` given no ``capabilities`` takes the capabilities of the task it runs in.
+Pass ``capabilities={}`` to submit tasks that require none.
+See :ref:`client-capabilities`.
+
 Nested client addresses
 -----------------------
 
