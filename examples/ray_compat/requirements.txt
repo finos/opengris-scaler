@@ -2,7 +2,7 @@ ray[default]
 beautifulsoup4==4.11.1
 pyarrow==23.0.1
 pandas==2.2.3
-filelock==3.25.2
+filelock==4.2.1
 
 # the test that uses these is disabled
 # torch==2.5.1
