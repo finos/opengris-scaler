@@ -121,6 +121,7 @@ max_task_concurrency
 * The effective cap is ``min(rule.max_task_concurrency, heartbeat.max_task_concurrency)``.
 * A lower-priority manager only scales above its floor after all higher-priority managers reach their effective caps.
 * A higher-priority manager only scales down after lower-priority managers are drained to their floors.
+* A manager's worker count includes serving workers only: a draining worker takes no new task.
 * Omitted or empty: the cap is the manager's heartbeat ``max_task_concurrency``.
 
 min_task_concurrency

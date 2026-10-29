@@ -49,11 +49,16 @@ class VanillaScalingPolicy(ScalingPolicy):
         managed_worker_ids: List[WorkerID],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> int:
-        """Compute the target worker count for this manager from current task and worker observations."""
+        """Compute the target worker count for this manager from current task and worker observations.
+
+        A draining worker is not supply: it takes no new task, and its manager does not count it either."""
         manager_id = worker_manager_heartbeat.workerManagerID
-        current = len(managed_worker_ids)
+        serving_worker_ids = {
+            worker_id for worker_id, heartbeat in information_snapshot.workers.items() if not heartbeat.draining
+        }
+        current = sum(1 for worker_id in managed_worker_ids if worker_id in serving_worker_ids)
         task_count = len(information_snapshot.tasks)
-        worker_count = len(information_snapshot.workers)
+        worker_count = len(serving_worker_ids)
         worker_count_by_manager = {
             other_id: snapshot.worker_count for other_id, snapshot in worker_manager_snapshots.items()
         }

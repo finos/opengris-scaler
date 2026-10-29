@@ -102,6 +102,25 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         # Ratio would say desired=3, cap clamps to 2; emits setDesired(2).
         self.assertEqual(request.taskConcurrency, 2)
 
+    def test_draining_workers_are_not_supply(self):
+        """A draining worker takes no new task and the manager does not count it, so the ratio and the +1 skip it."""
+        managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
+        workers = {wid: _create_mock_worker_heartbeat({}, draining=i >= 5) for i, wid in enumerate(managed)}
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=100)
+
+        # 5 serving workers: 120 tasks is a ratio of 24 and 60 tasks one of 12, both above 10, so 5 + 1
+        for task_count in (120, 60):
+            with self.subTest(task_count=task_count):
+                tasks = {
+                    TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {})
+                    for _ in range(task_count)
+                }
+                snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+
+                request = self._single_request(snapshot, heartbeat, managed)
+
+                self.assertEqual(request.taskConcurrency, 6)
+
 
 class TestRatioTarget(unittest.TestCase):
     """A manager grows by one above 10 tasks per worker, holds in band, and shrinks below 1 task per worker."""
@@ -289,7 +308,7 @@ def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
     )
 
 
-def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> WorkerHeartbeat:
+def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, draining: bool = False) -> WorkerHeartbeat:
     return WorkerHeartbeat(
         agent=Resource(cpu=1, rss=1000000),
         rssFree=500000,
@@ -300,6 +319,7 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
         processors=[],
         capabilities=capabilities,
         workerManagerID=b"test",
+        draining=draining,
     )
 
 
