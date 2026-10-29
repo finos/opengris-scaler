@@ -13,7 +13,7 @@ Service Mapping (AWS -> OCI):
     - ECR repository         -> OCI Container Registry (OCIR) repository
     - CloudWatch Log Group   -> OCI Logging (log group managed automatically)
     - Compute Environment    -> N/A (OCI Container Instances are fully on-demand)
-    - Job Queue              -> N/A (concurrency is managed by the adapter semaphore)
+    - Job Queue              -> N/A (the worker's ``base_concurrency`` limits concurrency)
 
 OCI Authentication:
     The provisioner uses the OCI Python SDK and reads credentials from the
@@ -63,7 +63,7 @@ class OCIInfrastructureProvisioner:
 
     Unlike the AWS Batch adapter, there is no equivalent of a Compute Environment
     or Job Queue - OCI Container Instances are created on-demand per task, and
-    concurrency is governed by the adapter's semaphore (``base_concurrency``).
+    the worker's ``base_concurrency`` limits concurrency.
     """
 
     def __init__(
