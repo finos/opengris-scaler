@@ -281,9 +281,6 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
             if config.node_selector:
                 spec["nodeSelector"] = config.node_selector
 
-            if config.service_account_name:
-                spec["serviceAccountName"] = config.service_account_name
-
             if config.image_pull_policy:
                 container["imagePullPolicy"] = config.image_pull_policy
 

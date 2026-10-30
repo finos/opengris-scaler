@@ -247,12 +247,6 @@ The ``dict`` fields are TOML-only: the command line does not parse them.
      - ``{}``
      - Node selector labels for pod scheduling
        (e.g. ``{nodepool = "compute"}``).
-   * - ``service_account_name``
-     - ``str``
-     - ``""``
-     - Kubernetes service account for worker Pods.
-       Workers do not call the Kubernetes API, so this account needs no RBAC permissions.
-       It does not set the worker manager's identity: see ``kubeconfig_path``.
    * - ``image_pull_policy``
      - ``str``
      - ``""``
@@ -314,9 +308,6 @@ Invalid YAML, a template that is not a mapping, or a path to a missing file stop
    namespace = "scaler"
    pod_image = "myregistry.example.com/scaler:latest"
    workers_per_pod = 4
-
-   # Common options:
-   service_account_name = "scaler-worker"
 
    [worker_manager.node_selector]
    nodepool = "compute"
@@ -525,7 +516,7 @@ For locally-loaded KinD images that bypass a registry entirely, set
 
 **Permission denied when creating pods:**
 Apply the RBAC manifest in `RBAC Example`_ and confirm the worker manager runs as the bound identity.
-Inside the cluster, that is the ``serviceAccountName`` of the worker manager's own Pod, not ``service_account_name``.
+Inside the cluster, that is the ``serviceAccountName`` of the worker manager's own Pod.
 Outside the cluster, that is the user in ``kubeconfig_path``.
 
 **``scaler_worker_manager`` not found in container:**
