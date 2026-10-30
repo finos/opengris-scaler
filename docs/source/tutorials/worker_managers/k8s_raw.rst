@@ -1,0 +1,534 @@
+Kubernetes Worker Manager
+=========================
+
+The Kubernetes worker manager (type ``k8s_raw``) provisions Scaler workers as **bare
+Kubernetes Pods** --- no Deployment, Job, or StatefulSet controller sits between Scaler
+and the pods. This gives Scaler complete, deterministic control over exactly which pods
+are alive at any point in time, making scale-up and scale-down as predictable as possible.
+
+Each pod runs the existing ``scaler_worker_manager baremetal_native --mode fixed``
+entrypoint --- the same pattern used by other raw worker managers --- so the Kubernetes
+layer is purely responsible for pod lifecycle, while the in-pod native manager handles
+the actual Scaler workers.
+
+Prerequisites
+-------------
+
+* A running Kubernetes cluster (1.28+) with ``kubectl`` access configured.
+* `Python package <https://pypi.org/project/kubernetes/>`_ for the Kubernetes client:
+
+  .. code-block:: bash
+
+     uv pip install opengris-scaler[kubernetes]
+
+* RBAC permissions granting the worker manager's identity ``get``, ``list``, ``watch``,
+  ``create``, and ``delete`` on ``pods`` in the target namespace.
+  See `RBAC Example`_ below for a ready-to-apply manifest.
+
+* A container image pushed to a registry reachable from the cluster.  The image
+  must include ``uv`` so that Python and requirements can be installed at container
+  start-up.
+
+  The repository includes a ready-made Dockerfile at ``docker/Dockerfile`` that
+  builds a minimal Alpine image with ``uv`` pre-installed and the shared libraries
+  scaler needs at runtime.  The accompanying ``docker/entrypoint.sh`` reads the
+  ``PYTHON_VERSION``, ``PYTHON_REQUIREMENTS``, and ``COMMAND`` environment variables
+  that the k8s_raw worker manager injects into each pod automatically.  To build
+  and push the image:
+
+  .. code-block:: bash
+
+     docker build -t myregistry.example.com/scaler:latest -f docker/Dockerfile .
+     docker push myregistry.example.com/scaler:latest
+
+Quick Start
+-----------
+
+Create a virtual environment and install Scaler with the Kubernetes extra:
+
+.. code-block:: bash
+
+   uv venv
+   source .venv/bin/activate
+   uv pip install opengris-scaler[kubernetes]
+
+Verify your cluster access:
+
+.. code-block:: bash
+
+   kubectl cluster-info
+   kubectl get namespace scaler   # or whichever namespace you plan to use
+
+Scaler addresses must be IP addresses: the default network backend (YMQ) does not resolve hostnames such as a Service name.
+Inside the cluster, use the ClusterIP of the Service in front of the scheduler:
+
+.. code-block:: bash
+
+   kubectl get service scheduler-service -n scaler -o jsonpath='{.spec.clusterIP}'
+
+Copy the ``config.toml`` below, replace the placeholder image URI and ``<SCHEDULER_IP>``, then start services:
+
+.. tabs::
+
+   .. group-tab:: config.toml
+
+      .. code-block:: toml
+         :caption: config.toml
+
+         [object_storage_server]
+         bind_address = "tcp://0.0.0.0:8517"
+
+         [scheduler]
+         bind_address = "tcp://0.0.0.0:8516"
+         object_storage_address = "tcp://<SCHEDULER_IP>:8517"
+
+         [[worker_manager]]
+         type = "k8s_raw"
+         scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+         worker_manager_id = "wm-k8s-01"
+         max_task_concurrency = 80
+
+         namespace = "scaler"
+         pod_image = "myregistry.example.com/scaler:latest"
+         workers_per_pod = 4
+         delete_grace_period_seconds = 60
+         requirements_txt = "opengris-scaler"
+         python_version = "3.14"
+
+      Run command:
+
+      .. code-block:: bash
+
+         scaler config.toml
+
+   .. group-tab:: command line
+
+      .. code-block:: bash
+
+         scaler_object_storage_server tcp://0.0.0.0:8517
+         scaler_scheduler tcp://0.0.0.0:8516 \
+             --object-storage-address tcp://<SCHEDULER_IP>:8517 \
+             --policy-content "allocate=even_load; scaling=vanilla"
+         scaler_worker_manager k8s_raw tcp://<SCHEDULER_IP>:8516 \
+             --worker-manager-id wm-k8s-01 \
+             --max-task-concurrency 80 \
+             --namespace scaler \
+             --pod-image myregistry.example.com/scaler:latest \
+             --workers-per-pod 4 \
+             --delete-grace-period-seconds 60 \
+             --requirements-txt opengris-scaler \
+             --python-version 3.14
+
+After services are up, use a client to submit tasks to Kubernetes-provisioned workers:
+
+.. code-block:: python
+   :caption: my_client.py
+
+   from scaler import Client
+
+   def compute(x):
+       return x ** 2
+
+   with Client(address="tcp://<SCHEDULER_IP>:8516") as client:
+       print(client.map(compute, range(80)))
+
+Configuration Reference
+-----------------------
+
+Core
+~~~~
+
+These fields are part of the embedded ``WorkerManagerConfig`` and appear at the top
+level of the ``[[worker_manager]]`` TOML section.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``scheduler_address``
+     - ``str``
+     - *(required)*
+     - Address of the Scaler scheduler that this worker manager connects to
+       (e.g. ``tcp://10.96.0.50:8516``). Must be an IP address.
+   * - ``worker_manager_id``
+     - ``str``
+     - *(required)*
+     - Stable, unique identifier for this worker manager instance.
+       The scheduler uses it to associate workers with their manager.
+   * - ``max_task_concurrency``
+     - ``int``
+     - CPU count
+     - Maximum total number of Scaler worker processes across all pods.
+       The number of pods launched is ``ceil(max_task_concurrency / workers_per_pod)``.
+       Set to ``-1`` for no limit.
+
+Authentication
+~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``kubeconfig_path``
+     - ``str``
+     - ``""``
+     - Path to a kubeconfig file. Empty string activates in-cluster authentication
+       (reads the service account token mounted at
+       ``/var/run/secrets/kubernetes.io/serviceaccount``).
+       Set this to a file path when running the worker manager *outside* the cluster.
+       This identity is the one that needs the permissions in `RBAC Example`_.
+   * - ``namespace``
+     - ``str``
+     - ``"default"``
+     - Kubernetes namespace in which worker Pods are created and deleted.
+
+Pod Image
+~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``pod_image``
+     - ``str``
+     - *(required)*
+     - Container image used for worker Pods
+       (e.g. ``myregistry.example.com/scaler:latest``).
+       The official image bakes Python 3.14 and ``opengris-scaler``.
+
+Sizing
+~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``workers_per_pod``
+     - ``int``
+     - ``4``
+     - Number of Scaler worker processes launched inside each Pod.
+       Acts as the divisor when converting ``max_task_concurrency`` to a pod count.
+       Must be >= 1.
+
+Pod Spec Fields
+~~~~~~~~~~~~~~~
+
+Common Kubernetes pod and container settings are exposed as individual config fields.
+These are applied **after** the ``pod_template`` YAML (if any), so they override
+template values when both are set.
+The ``dict`` fields are TOML-only: the command line does not parse them.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``node_selector``
+     - ``dict``
+     - ``{}``
+     - Node selector labels for pod scheduling
+       (e.g. ``{nodepool = "compute"}``).
+   * - ``image_pull_policy``
+     - ``str``
+     - ``""``
+     - Image pull policy for the worker container
+       (``"Always"``, ``"Never"``, or ``"IfNotPresent"``).
+   * - ``resource_requests``
+     - ``dict``
+     - ``{}``
+     - Kubernetes resource requests for the worker container
+       (e.g. ``{cpu = "2", memory = "8Gi"}``).
+   * - ``resource_limits``
+     - ``dict``
+     - ``{}``
+     - Kubernetes resource limits for the worker container
+       (e.g. ``{cpu = "4", memory = "16Gi"}``).
+
+Pod Template
+~~~~~~~~~~~~
+
+For settings not covered by the fields above --- tolerations, image pull secrets,
+init containers, volumes, security contexts, extra labels/annotations, or any other
+Kubernetes pod spec option --- use ``pod_template`` to provide a partial pod spec in
+YAML format.
+
+**Layering order:**
+
+1. ``pod_template`` is the base pod.
+2. Scaler sets the pod's ``metadata.name`` and ``metadata.namespace``, and its ``app`` and ``scaler/worker-manager-id`` labels.
+   Other template labels are kept.
+3. Scaler sets the first container's ``image`` from ``pod_image``, and its ``name`` to ``scaler-worker`` if the template sets none.
+4. Config fields (``node_selector``, ``resource_requests``, etc.) override the template's values.
+5. ``restartPolicy`` is always ``Never``; you cannot override it.
+
+Scaler's settings for the worker container go on the template's first container.
+
+The worker manager parses ``pod_template`` once at startup.
+Invalid YAML, a template that is not a mapping, or a path to a missing file stops it before any pod starts.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``pod_template``
+     - ``str``
+     - ``""``
+     - Partial Kubernetes pod template in YAML format, either as an inline TOML
+       multi-line string or a path to a YAML file. Parsed with ``yaml.safe_load``
+       and used as the base of every worker pod. Use standard camelCase
+       Kubernetes field names.
+
+.. code-block:: toml
+
+   [[worker_manager]]
+   type = "k8s_raw"
+   namespace = "scaler"
+   pod_image = "myregistry.example.com/scaler:latest"
+   workers_per_pod = 4
+
+   [worker_manager.node_selector]
+   nodepool = "compute"
+
+   [worker_manager.resource_requests]
+   cpu = "4"
+   memory = "16Gi"
+
+   [worker_manager.resource_limits]
+   memory = "32Gi"
+
+   # pod_template as an inline YAML string:
+   pod_template = """
+   metadata:
+     labels:
+       env: prod
+     annotations:
+       prometheus.io/scrape: "true"
+   spec:
+     imagePullSecrets:
+     - name: registry-credentials
+     tolerations:
+     - key: dedicated
+       operator: Equal
+       value: scaler
+       effect: NoSchedule
+     securityContext:
+       runAsNonRoot: true
+       runAsUser: 1000
+     containers:
+     - name: scaler-worker
+       securityContext:
+         allowPrivilegeEscalation: false
+         capabilities:
+           drop: ["ALL"]
+   """
+
+Alternatively, point ``pod_template`` at a YAML file:
+
+.. code-block:: toml
+
+   [[worker_manager]]
+   type = "k8s_raw"
+   namespace = "scaler"
+   pod_image = "myregistry.example.com/scaler:latest"
+   workers_per_pod = 4
+   pod_template = "pod-template.yaml"
+
+.. note::
+   Environment variables from the template are merged with Scaler's injected
+   vars (``COMMAND``, ``PYTHON_REQUIREMENTS``, ``PYTHON_VERSION``).  Scaler's
+   vars take precedence by name; any additional vars you define are preserved.
+
+Lifecycle
+~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``delete_grace_period_seconds``
+     - ``int``
+     - ``30``
+     - Grace period in seconds given to a Pod during deletion
+       (``gracePeriodSeconds`` on the Kubernetes delete call).
+       Allows in-flight tasks to finish cleanly before the container exits.
+       Must be >= 0.
+
+Python Environment
+~~~~~~~~~~~~~~~~~~
+
+These values are passed as environment variables into each container so the entrypoint
+can install the right packages at startup. Shares the same
+``PythonWorkerEnvironmentConfig`` fields as other container-based worker managers; they
+appear as flat keys in the ``[[worker_manager]]`` TOML section (not a sub-section).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``requirements_txt``
+     - ``str``
+     - *(required)*
+     - Python packages to install inside the container at startup. Passed as the
+       ``PYTHON_REQUIREMENTS`` environment variable. Can be a path to a
+       requirements.txt file or an inline string. Include any packages your task
+       functions import. Must include ``opengris-scaler`` itself.
+   * - ``python_version``
+     - ``str``
+     - *(required)*
+     - Python version string passed as the ``PYTHON_VERSION`` environment variable
+       to the container entrypoint.
+
+Common Parameters
+~~~~~~~~~~~~~~~~~
+
+For networking, worker behaviour, logging, and event-loop options shared by all
+worker managers, see :doc:`common_parameters`.
+
+RBAC Example
+------------
+
+The worker manager creates, watches, and deletes worker Pods, so its own identity needs permissions on ``pods``.
+Worker Pods need none.
+The manifest below grants the ``scaler-worker-manager`` service account the minimum permissions in the ``scaler`` namespace.
+Adjust ``namespace`` and ``name`` to match your deployment:
+
+.. code-block:: yaml
+   :caption: scaler-rbac.yaml
+
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: Role
+   metadata:
+     name: scaler-worker-manager
+     namespace: scaler
+   rules:
+     - apiGroups: [""]
+       resources: ["pods"]
+       verbs: ["get", "create", "delete", "list", "watch"]
+   ---
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: RoleBinding
+   metadata:
+     name: scaler-worker-manager
+     namespace: scaler
+   subjects:
+     - kind: ServiceAccount
+       name: scaler-worker-manager
+       namespace: scaler
+   roleRef:
+     kind: Role
+     name: scaler-worker-manager
+     apiGroup: rbac.authorization.k8s.io
+
+Apply it with:
+
+.. code-block:: bash
+
+   kubectl apply -f scaler-rbac.yaml
+
+Then run the worker manager with that identity:
+
+* Inside the cluster: set ``serviceAccountName: scaler-worker-manager`` on the Pod running ``scaler_worker_manager k8s_raw`` and leave ``kubeconfig_path`` empty.
+* Outside the cluster: set ``kubeconfig_path`` to a kubeconfig whose user is bound to the Role.
+
+.. note::
+   The manifest above grants permissions scoped to a single namespace using a
+   ``Role``/``RoleBinding`` pair.  Do **not** use a ``ClusterRole``/``ClusterRoleBinding``
+   unless your deployment genuinely needs cross-namespace pod management.
+
+How It Works
+------------
+
+On every scheduler heartbeat, the scheduler sends a ``setDesiredTaskConcurrency``
+command.  The worker manager converts this to a pod count
+(``ceil(desired_tasks / workers_per_pod)``) and reconciles by creating or deleting
+bare Pods via the Kubernetes API.
+
+Each Pod runs ``scaler_worker_manager baremetal_native --mode fixed``, which spawns
+``workers_per_pod`` worker processes that connect back to the scheduler and process
+tasks like local workers.  When workers are no longer needed, the worker manager
+deletes the corresponding Pods, honouring ``delete_grace_period_seconds``.
+
+Every Pod is created with ``restartPolicy: Never``, so Kubernetes never restarts a pod whose workers exit.
+The scheduler's worker heartbeat timeout marks those workers dead and re-queues their tasks.
+The worker manager watches its pods and handles an exit itself:
+
+1. It logs the container's exit code and reason, then deletes the pod.
+2. It waits before starting a replacement, like Kubernetes' CrashLoopBackOff: 10 seconds, doubling per exit up to 5 minutes, back to 10 seconds after 10 minutes without an exit.
+3. It starts replacement pods to match the scheduler's desired count.
+
+A deleted pod's logs are gone, so keep worker logs with cluster log collection (for example Fluent Bit or a cloud logging agent).
+A pod deleted outside Scaler (``kubectl delete pod``) is replaced without the wait.
+
+Troubleshooting
+---------------
+
+**Workers can't connect to the scheduler:**
+Worker Pods must be able to reach the scheduler address over the network. If the
+scheduler runs outside the cluster, ensure the address in ``scheduler_address`` is
+reachable from Pod IP space (e.g. a LoadBalancer or NodePort service, or a VPN).
+The address must be an IP address: the default network backend does not resolve hostnames, so a Service name fails with ``InvalidAddressFormatError``.
+Inside a cluster, use the scheduler Service's ClusterIP.
+
+**Pods stuck in** ``Pending``:
+Check Pod events with ``kubectl describe pod <pod-name> -n scaler``. Common causes:
+no nodes match the ``node_selector``, tolerations are missing for tainted nodes, or
+the cluster has insufficient CPU/memory to satisfy ``resource_requests``.
+
+**Image pull errors or locally-loaded KinD images:**
+For images pushed to a private registry, verify the URI in ``pod_image`` is correct
+and that any ``imagePullSecrets`` set via ``pod_template`` match valid
+``kubernetes.io/dockerconfigjson`` secrets in the same namespace
+(``kubectl get secret <name> -n scaler``).
+
+For locally-loaded KinD images that bypass a registry entirely, set
+``image_pull_policy = "Never"``.
+
+**Permission denied when creating pods:**
+Apply the RBAC manifest in `RBAC Example`_ and confirm the worker manager runs as the bound identity.
+Inside the cluster, that is the ``serviceAccountName`` of the worker manager's own Pod.
+Outside the cluster, that is the user in ``kubeconfig_path``.
+
+**``scaler_worker_manager`` not found in container:**
+Ensure ``requirements_txt`` includes ``opengris-scaler`` (or at minimum the package
+that provides the ``scaler_worker_manager`` entry point), and that the container
+entrypoint installs it before launching workers.
+
+**Pods are not deleted after scale-down:**
+Check that the worker manager process has not crashed.  The manager holds the list of
+pod names it owns in memory; if it restarts it will no longer track previously created
+pods.  You can clean up orphaned pods manually:
+
+.. code-block:: bash
+
+   kubectl delete pods -n scaler -l app=scaler-worker
