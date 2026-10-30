@@ -66,9 +66,6 @@ class KubernetesWorkerManagerConfig(ConfigClass):
         default_factory=dict,
         metadata=dict(type=None, help="Node selector labels for pod scheduling (e.g. {nodepool = 'compute'})."),
     )
-    service_account_name: str = dataclasses.field(
-        default="", metadata=dict(help="Kubernetes service account name for worker Pods.")
-    )
     image_pull_policy: str = dataclasses.field(
         default="",
         metadata=dict(help="Image pull policy for the worker container ('Always', 'Never', or 'IfNotPresent')."),
