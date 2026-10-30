@@ -36,7 +36,7 @@ def capabilities_to_dict(capabilities) -> dict[str, int]:
 def dict_to_capabilities(capabilities: dict[str, int] | list[capnp.TaskCapability]) -> list[capnp.TaskCapability]:
     """Convert capabilities into a list of freshly-built capnp ``TaskCapability`` structs.
 
-    The capnp Python extension does not natively populate a ``list(TaskCapability)`` field from a
+    The capnp Python extension does not natively populate a ``List(TaskCapability)`` field from a
     Python ``dict`` (only the dict's keys are iterated, leaving every struct's ``value`` at its
     default), and assigning an existing capnp list reader to a builder field has the same effect:
     the destination list is sized to the source but each entry retains its default values. This

@@ -66,7 +66,7 @@ def _from_toml(config_cls: type[T], data: dict[str, Any]) -> T:
           class pulls its own fields from it.  This lets multiple composed
           classes share a single flat TOML section.
 
-    * type coercion: the same precedence as ``_from_args`` is used - the
+    * Type coercion: the same precedence as ``_from_args`` is used - the
       field's explicit ``type`` metadata (if any) is tried first, then the
       type derived from the field's Python type annotation.  This ensures
       e.g. enum fields with a value-based constructor (``mode = "fixed"``) and
@@ -137,7 +137,7 @@ def _from_args(config_cls: type[T], kwargs: dict[str, Any], toml_data: Optional[
             whatever ``discriminator`` names) that selects the concrete class.
          b. Single dict (``[section]`` table): reconstructed as a single
             instance, wrapped in a list if the field type is list[...].
-         c. list of dicts (``[[section]]`` array-of-tables): each item
+         c. List of dicts (``[[section]]`` array-of-tables): each item
             reconstructed independently.
 
     2. Nested ConfigClass (no ``section=``) - recurse into _from_args(),

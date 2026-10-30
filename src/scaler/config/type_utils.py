@@ -46,12 +46,12 @@ def get_optional_type(ty: Any) -> type:
 
 
 def is_list(ty: Any) -> bool:
-    """determines if `ty` is list or list"""
+    """determines if `ty` is typing.List or list"""
     return typing.get_origin(ty) is list or ty is list
 
 
 def get_list_type(ty: Any) -> type:
-    """get the generic type of a list[T] or list[T]"""
+    """get the generic type of a typing.List[T] or list[T]"""
     return typing.get_args(ty)[0]
 
 
@@ -89,7 +89,7 @@ def get_type_args(ty: Any) -> dict[str, Any]:
     For example a parameter of type Option[T] is parsed as `T`,
     has no implication on `nargs`, and is not required
 
-    Similarly a parameter of list[T] is also parsed as `T`,
+    Similarly a parameter of List[T] is also parsed as `T`,
     might have `nargs="*"`, and has no implication on `required`
 
     This function determines these settings based upon a given type.

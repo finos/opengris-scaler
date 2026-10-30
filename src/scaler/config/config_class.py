@@ -183,7 +183,7 @@ class ConfigClass:
     - `bool`: parses from "true" and "false", and all upper/lower case variants
     - subclasses of `ConfigType`: uses the `.from_string()` method
     - `Optional[T]`, `T | None`: parsed as `T` and sets `required=False`
-    - `list[T]`, `list[T]`: parsed as `T`, and sets `nargs="*"`
+    - `List[T]`, `list[T]`: parsed as `T`, and sets `nargs="*"`
     - sublcasses of `enum.Enum`: values are parsed by name
 
     For generic types, the `T` is parsed recursively following the rules here.

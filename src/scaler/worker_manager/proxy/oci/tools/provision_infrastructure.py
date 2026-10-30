@@ -195,7 +195,7 @@ class OCIInfrastructureProvisioner:
                     ]
                 ),
             )
-            logger.info(f"set Object Storage lifecycle rule: delete after {OCI_BUCKET_LIFECYCLE_DAYS} day(s)")
+            logger.info(f"Set Object Storage lifecycle rule: delete after {OCI_BUCKET_LIFECYCLE_DAYS} day(s)")
         except Exception as exc:
             logger.warning(f"Failed to set lifecycle rule: {exc}")
 

@@ -90,7 +90,7 @@ class AWSBatchInfrastructureProvisioner:
             vcpus: vCPUs per job (integer for EC2)
             memory_mb: Memory per job in MB (will use 90% of nearest 2048MB multiple)
             max_vcpus: Max vCPUs for compute environment
-            instance_types: list of EC2 instance types (default: ["default_x86_64"])
+            instance_types: List of EC2 instance types (default: ["default_x86_64"])
             job_timeout_seconds: Max job runtime in seconds (default: 3600 = 1 hour)
 
         Returns:
@@ -472,7 +472,7 @@ class AWSBatchInfrastructureProvisioner:
             logger.warning(f"Failed to cleanup old job definitions: {e}")
 
     def _setup_cloudwatch_logs_retention(self, retention_days: int = CLOUDWATCH_RETENTION_DAYS) -> None:
-        """set CloudWatch Logs retention policy for AWS Batch logs."""
+        """Set CloudWatch Logs retention policy for AWS Batch logs."""
         logs_client = self._session.client("logs")
         log_group_name = CLOUDWATCH_LOG_GROUP
 
@@ -487,7 +487,7 @@ class AWSBatchInfrastructureProvisioner:
 
             # Set retention policy
             logs_client.put_retention_policy(logGroupName=log_group_name, retentionInDays=retention_days)
-            logger.info(f"set CloudWatch Logs retention: {retention_days} days for {log_group_name}")
+            logger.info(f"Set CloudWatch Logs retention: {retention_days} days for {log_group_name}")
         except ClientError as e:
             logger.warning(f"Failed to set CloudWatch Logs retention: {e}")
 
@@ -564,7 +564,7 @@ class AWSBatchInfrastructureProvisioner:
         }
         try:
             ecr.put_lifecycle_policy(repositoryName=repo_name, lifecyclePolicyText=json.dumps(lifecycle_policy))
-            logger.info(f"set ECR lifecycle policy: keep {ECR_IMAGES_TO_KEEP} latest images")
+            logger.info(f"Set ECR lifecycle policy: keep {ECR_IMAGES_TO_KEEP} latest images")
         except ClientError as e:
             logger.warning(f"Failed to set lifecycle policy: {e}")
 
