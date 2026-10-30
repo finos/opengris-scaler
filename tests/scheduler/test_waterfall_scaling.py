@@ -1,7 +1,7 @@
 import asyncio
 import time
 import unittest
-from typing import Dict, Optional
+from typing import Optional
 
 from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
@@ -763,7 +763,7 @@ class TestWaterfallAllocationWithCapabilities(unittest.TestCase):
         )
 
 
-def _create_mock_task(task_id: TaskID, capabilities: Optional[Dict[str, int]] = None) -> Task:
+def _create_mock_task(task_id: TaskID, capabilities: Optional[dict[str, int]] = None) -> Task:
     client_id = ClientID.generate_client_id()
     return Task(
         taskId=task_id,
@@ -776,7 +776,7 @@ def _create_mock_task(task_id: TaskID, capabilities: Optional[Dict[str, int]] = 
 
 
 def _create_mock_worker_heartbeat(
-    queued_tasks: int = 0, capabilities: Optional[Dict[str, int]] = None
+    queued_tasks: int = 0, capabilities: Optional[dict[str, int]] = None
 ) -> WorkerHeartbeat:
     return WorkerHeartbeat(
         agent=Resource(cpu=1, rss=1000000),
@@ -792,7 +792,7 @@ def _create_mock_worker_heartbeat(
 
 
 def _create_worker_manager_heartbeat(
-    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat(
         maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
@@ -804,7 +804,7 @@ def _create_manager_snapshot(
     max_task_concurrency: int = 10,
     worker_count: int = 0,
     last_seen: Optional[float] = None,
-    capabilities: Optional[Dict[str, int]] = None,
+    capabilities: Optional[dict[str, int]] = None,
 ) -> WorkerManagerSnapshot:
     return WorkerManagerSnapshot(
         worker_manager_id=worker_manager_id,
@@ -815,7 +815,7 @@ def _create_manager_snapshot(
     )
 
 
-def _create_tasks(count: int, capabilities: Optional[Dict[str, int]] = None) -> Dict[TaskID, Task]:
+def _create_tasks(count: int, capabilities: Optional[dict[str, int]] = None) -> dict[TaskID, Task]:
     tasks = {}
     for _ in range(count):
         task_id = TaskID.generate_task_id()
@@ -824,8 +824,8 @@ def _create_tasks(count: int, capabilities: Optional[Dict[str, int]] = None) -> 
 
 
 def _create_workers(
-    count: int, queued_tasks: int = 0, capabilities: Optional[Dict[str, int]] = None
-) -> Dict[WorkerID, WorkerHeartbeat]:
+    count: int, queued_tasks: int = 0, capabilities: Optional[dict[str, int]] = None
+) -> dict[WorkerID, WorkerHeartbeat]:
     workers = {}
     for i in range(count):
         worker_id = WorkerID(f"worker-{i}".encode())
@@ -844,8 +844,8 @@ def _tier(
 
 
 def _desired_by_manager(
-    policy: WaterfallScalingPolicy, task_count: int, advertised_max_by_manager: Dict[bytes, int]
-) -> Dict[bytes, int]:
+    policy: WaterfallScalingPolicy, task_count: int, advertised_max_by_manager: dict[bytes, int]
+) -> dict[bytes, int]:
     """Ask the policy once per manager, as each manager's heartbeat does, with one consistent cluster view."""
     snapshot = InformationSnapshot(tasks=_create_tasks(task_count), workers={})
     manager_snapshots = {

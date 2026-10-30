@@ -1,5 +1,4 @@
 import struct
-from typing import Dict
 
 import bidict
 
@@ -27,7 +26,7 @@ def from_capnp_object_id(capnp_object_id: CapnpObjectID) -> ScalerObjectID:
     )
 
 
-def capabilities_to_dict(capabilities) -> Dict[str, int]:
+def capabilities_to_dict(capabilities) -> dict[str, int]:
     if isinstance(capabilities, dict):
         return dict(capabilities)
 

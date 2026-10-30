@@ -1,7 +1,7 @@
 import argparse
 import enum
 import typing
-from typing import Any, Dict, Type
+from typing import Any
 
 from scaler.config.mixins import ConfigType
 
@@ -16,7 +16,7 @@ def parse_bool(s: str) -> bool:
     raise argparse.ArgumentTypeError(f"'{s}' is not a valid bool")
 
 
-def parse_enum(s: str, enumm: Type[enum.Enum]) -> Any:
+def parse_enum(s: str, enumm: type[enum.Enum]) -> Any:
     try:
         return enumm[s]
     except KeyError as e:
@@ -81,7 +81,7 @@ def is_enum(ty: Any) -> bool:
         return False
 
 
-def get_type_args(ty: Any) -> Dict[str, Any]:
+def get_type_args(ty: Any) -> dict[str, Any]:
     """
     The type of a field implies several options for its argument parsing,
     such as `type`, `nargs`, and `required`

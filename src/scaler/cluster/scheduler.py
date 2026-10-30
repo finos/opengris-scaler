@@ -2,7 +2,7 @@ import asyncio
 import multiprocessing
 import multiprocessing.connection
 from multiprocessing.synchronize import Event as EventType
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.constants import SCHEDULER_READINESS_TIMEOUT_SECONDS
@@ -16,7 +16,7 @@ from scaler.utility.signal_handler import install_async_shutdown_handler
 
 def run_scheduler(
     scheduler_config: SchedulerConfig,
-    logging_paths: Tuple[str, ...],
+    logging_paths: tuple[str, ...],
     logging_config_file: Optional[str],
     logging_level: str,
     shutdown_event: Optional[EventType] = None,
@@ -61,7 +61,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         protected: bool,
         policy: PolicyConfig,
         event_loop: str,
-        logging_paths: Tuple[str, ...],
+        logging_paths: tuple[str, ...],
         logging_config_file: Optional[str],
         logging_level: str,
         shutdown_event: Optional[EventType] = None,

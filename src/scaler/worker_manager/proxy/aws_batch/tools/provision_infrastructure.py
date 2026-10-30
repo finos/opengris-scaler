@@ -8,7 +8,7 @@ job definition, and S3 bucket required for the Scaler AWS Batch worker manager.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -79,9 +79,9 @@ class AWSBatchInfrastructureProvisioner:
         vcpus: int = 1,
         memory_mb: int = 2048,
         max_vcpus: int = 256,
-        instance_types: Optional[List[str]] = None,
+        instance_types: Optional[list[str]] = None,
         job_timeout_seconds: int = 3600,
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         """
         Provision all required AWS resources.
 
@@ -149,7 +149,7 @@ class AWSBatchInfrastructureProvisioner:
         return result
 
     @staticmethod
-    def save_config(config: Dict[str, object], config_file: str = DEFAULT_CONFIG_FILE) -> None:
+    def save_config(config: dict[str, object], config_file: str = DEFAULT_CONFIG_FILE) -> None:
         """Save provisioned config to file."""
         path = Path(config_file)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -158,7 +158,7 @@ class AWSBatchInfrastructureProvisioner:
         logger.info(f"Config saved to {path.absolute()}")
 
     @staticmethod
-    def load_config(config_file: str = DEFAULT_CONFIG_FILE) -> Dict[str, object]:
+    def load_config(config_file: str = DEFAULT_CONFIG_FILE) -> dict[str, object]:
         """Load provisioned config from file."""
         path = Path(config_file)
         if not path.exists():
@@ -167,7 +167,7 @@ class AWSBatchInfrastructureProvisioner:
             return json.load(f)
 
     @staticmethod
-    def print_export_commands(config: Dict[str, object]) -> None:
+    def print_export_commands(config: dict[str, object]) -> None:
         """Print shell export commands for config values."""
         print(f"export SCALER_AWS_REGION=\"{config['aws_region']}\"")
         print(f"export SCALER_S3_BUCKET=\"{config['s3_bucket']}\"")
@@ -175,7 +175,7 @@ class AWSBatchInfrastructureProvisioner:
         print(f"export SCALER_JOB_DEFINITION=\"{config['job_definition_name']}\"")
 
     @staticmethod
-    def save_env_file(config: Dict[str, object], env_file: str = ".scaler_aws_batch.env") -> None:
+    def save_env_file(config: dict[str, object], env_file: str = ".scaler_aws_batch.env") -> None:
         """Save config as sourceable shell env file."""
         path = Path(env_file)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -275,7 +275,7 @@ class AWSBatchInfrastructureProvisioner:
 
         return role_arn
 
-    def provision_compute_environment(self, max_vcpus: int, instance_types: List[str]) -> str:
+    def provision_compute_environment(self, max_vcpus: int, instance_types: list[str]) -> str:
         """Create EC2 compute environment (not Fargate for better container reuse)."""
         env_name = f"{self._prefix}-compute"
 
@@ -491,13 +491,13 @@ class AWSBatchInfrastructureProvisioner:
         except ClientError as e:
             logger.warning(f"Failed to set CloudWatch Logs retention: {e}")
 
-    def _get_default_subnets(self) -> List[str]:
+    def _get_default_subnets(self) -> list[str]:
         """Get default VPC subnets."""
         ec2 = self._session.client("ec2")
         response = ec2.describe_subnets(Filters=[{"Name": "default-for-az", "Values": ["true"]}])
         return [s["SubnetId"] for s in response["Subnets"]]
 
-    def _get_default_security_group(self) -> List[str]:
+    def _get_default_security_group(self) -> list[str]:
         """Get default security group."""
         ec2 = self._session.client("ec2")
         response = ec2.describe_security_groups(Filters=[{"Name": "group-name", "Values": ["default"]}])

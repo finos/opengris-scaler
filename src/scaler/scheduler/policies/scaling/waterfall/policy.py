@@ -1,6 +1,6 @@
 import logging
 from math import ceil
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Optional
 
 from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
@@ -27,17 +27,17 @@ class WaterfallScalingPolicy(ScalingPolicy):
     of a task capset participate in that capset's allocation chain.
     """
 
-    def __init__(self, rules: List[WaterfallRule]):
+    def __init__(self, rules: list[WaterfallRule]):
         self._rules = sorted(rules, key=lambda r: r.priority)
-        self._rule_by_manager_id: Dict[bytes, WaterfallRule] = {r.worker_manager_id: r for r in self._rules}
+        self._rule_by_manager_id: dict[bytes, WaterfallRule] = {r.worker_manager_id: r for r in self._rules}
 
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
-        managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
-    ) -> List[WorkerManagerCommand]:
+        managed_worker_ids: list[WorkerID],
+        worker_manager_snapshots: dict[bytes, WorkerManagerSnapshot],
+    ) -> list[WorkerManagerCommand]:
         manager_id = worker_manager_heartbeat.workerManagerID
         rule = self._find_rule(manager_id)
 
@@ -55,7 +55,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         return self._rule_by_manager_id.get(manager_id)
 
     def _find_matching_snapshot(
-        self, rule: WaterfallRule, snapshots: Dict[bytes, WorkerManagerSnapshot]
+        self, rule: WaterfallRule, snapshots: dict[bytes, WorkerManagerSnapshot]
     ) -> Optional[WorkerManagerSnapshot]:
         """Return the manager snapshot matching *rule*'s worker manager ID, or None."""
         return snapshots.get(rule.worker_manager_id)
@@ -65,8 +65,8 @@ class WaterfallScalingPolicy(ScalingPolicy):
         current_rule: WaterfallRule,
         information_snapshot: InformationSnapshot,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
-    ) -> List[Tuple[Dict[str, int], int]]:
+        snapshots: dict[bytes, WorkerManagerSnapshot],
+    ) -> list[tuple[dict[str, int], int]]:
         """Compute desired worker count per capability set for this manager only.
 
         Generic (empty-cap) tasks fill higher-priority managers first; this manager's share is
@@ -75,7 +75,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         Capability-specific requests are emitted only for capsets this manager owns: the
         highest-priority manager whose advertised capabilities are a superset of the capset.
         """
-        result: List[Tuple[Dict[str, int], int]] = []
+        result: list[tuple[dict[str, int], int]] = []
 
         generic_desired = self._allocate_generic_desired(
             current_rule, information_snapshot, current_heartbeat, snapshots
@@ -96,7 +96,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         current_rule: WaterfallRule,
         information_snapshot: InformationSnapshot,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
+        snapshots: dict[bytes, WorkerManagerSnapshot],
     ) -> int:
         """Allocate this manager's share of the cluster-wide generic worker target."""
         tiers = self._online_tiers(current_rule, current_heartbeat, snapshots)
@@ -110,8 +110,8 @@ class WaterfallScalingPolicy(ScalingPolicy):
         self,
         current_rule: WaterfallRule,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
-    ) -> List[Tier]:
+        snapshots: dict[bytes, WorkerManagerSnapshot],
+    ) -> list[Tier]:
         """The rules of the online managers in priority order, with their concurrency limits resolved."""
         tiers = []
         for rule in self._rules:
@@ -129,10 +129,10 @@ class WaterfallScalingPolicy(ScalingPolicy):
     def _allocate_capset_desired(
         self,
         current_rule: WaterfallRule,
-        required_keys: FrozenSet[str],
+        required_keys: frozenset[str],
         information_snapshot: InformationSnapshot,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
+        snapshots: dict[bytes, WorkerManagerSnapshot],
     ) -> int:
         """Allocate this manager's share of the target for one capability set."""
         task_count = sum(
@@ -163,7 +163,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         rule: WaterfallRule,
         current_rule: WaterfallRule,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
+        snapshots: dict[bytes, WorkerManagerSnapshot],
     ) -> Optional[int]:
         """Return effective worker capacity for *rule*.
 
@@ -182,9 +182,9 @@ class WaterfallScalingPolicy(ScalingPolicy):
             else snap.max_task_concurrency
         )
 
-    def _tasks_by_capability(self, information_snapshot: InformationSnapshot) -> Dict[FrozenSet[str], Dict[str, int]]:
+    def _tasks_by_capability(self, information_snapshot: InformationSnapshot) -> dict[frozenset[str], dict[str, int]]:
         """Group tasks with non-empty capabilities, mapping capset keys to a representative dict."""
-        result: Dict[FrozenSet[str], Dict[str, int]] = {}
+        result: dict[frozenset[str], dict[str, int]] = {}
         for task in information_snapshot.tasks.values():
             if not task.capabilities:
                 continue
@@ -199,7 +199,7 @@ def target_worker_count(task_count: int) -> int:
     return ceil(task_count / TASKS_PER_WORKER)
 
 
-def allocate(target: int, tiers: List[Tier]) -> Dict[bytes, int]:
+def allocate(target: int, tiers: list[Tier]) -> dict[bytes, int]:
     """Split `target` workers over `tiers`, given in priority order.
 
     Every floor counts as supply first; the rest fills each tier above its floor, up to its cap, in order."""
@@ -212,6 +212,6 @@ def allocate(target: int, tiers: List[Tier]) -> Dict[bytes, int]:
     return allocation
 
 
-def lower_priority_tier_above_floor(tier: Tier, tiers: List[Tier]) -> bool:
+def lower_priority_tier_above_floor(tier: Tier, tiers: list[Tier]) -> bool:
     """With no tasks, `tier` keeps its workers while a lower-priority tier still drains toward its floor."""
     return any(other.priority > tier.priority and other.worker_count > other.min_task_concurrency for other in tiers)

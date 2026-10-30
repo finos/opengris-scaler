@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import Any, Optional, cast
 
 import cloudpickle
 from bidict import bidict
@@ -44,18 +44,18 @@ class TaskManager(Looper, TaskManagerMixin):
 
         self._executor_semaphore = asyncio.Semaphore(value=self._base_concurrency)
 
-        self._task_id_to_task: Dict[TaskID, Task] = dict()
+        self._task_id_to_task: dict[TaskID, Task] = dict()
         self._task_id_to_future: bidict[TaskID, asyncio.Future] = bidict()
-        self._task_id_to_start_time: Dict[TaskID, float] = dict()
+        self._task_id_to_start_time: dict[TaskID, float] = dict()
 
-        self._serializers: Dict[bytes, Serializer] = dict()
+        self._serializers: dict[bytes, Serializer] = dict()
 
         self._queued_task_id_queue = AsyncPriorityQueue()
-        self._queued_task_ids: Set[TaskID] = set()
+        self._queued_task_ids: set[TaskID] = set()
 
-        self._acquiring_task_ids: Set[TaskID] = set()
-        self._processing_task_ids: Set[TaskID] = set()
-        self._canceled_task_ids: Set[TaskID] = set()
+        self._acquiring_task_ids: set[TaskID] = set()
+        self._processing_task_ids: set[TaskID] = set()
+        self._canceled_task_ids: set[TaskID] = set()
 
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
@@ -246,7 +246,7 @@ class TaskManager(Looper, TaskManagerMixin):
     def processing_task_count(self) -> int:
         return len(self._processing_task_ids)
 
-    async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]:
+    async def load_task_inputs(self, task: Task) -> tuple[Any, list[Any]]:
         serializer_id = ObjectID.generate_serializer_object_id(task.source)
 
         if serializer_id not in self._serializers:

@@ -1,5 +1,5 @@
 import time
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import psutil
 
@@ -15,7 +15,7 @@ from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, TaskM
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
-def _host_network_counters() -> Tuple[int, int]:
+def _host_network_counters() -> tuple[int, int]:
     """Host-wide bytes sent and received, 0 where the host has no counters to read.
 
     Every worker on a host reports the same pair, so the monitor reads it once per hostname, never summed.
@@ -34,7 +34,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
     def __init__(
         self,
         object_storage_address: Optional[AddressConfig],
-        capabilities: Dict[str, int],
+        capabilities: dict[str, int],
         task_queue_size: int,
         worker_manager_id: bytes,
         security_config: Optional[SecurityConfig] = None,

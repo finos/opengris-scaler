@@ -1,7 +1,7 @@
 import asyncio
 import time
 import unittest
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
@@ -476,7 +476,7 @@ class TestExecutionBackendSentinel(unittest.IsolatedAsyncioTestCase):
         logging_test_name(self)
 
     async def test_load_task_inputs_after_register_does_not_raise(self) -> None:
-        async def _loader(task: Task) -> Tuple[Any, List[Any]]:
+        async def _loader(task: Task) -> tuple[Any, list[Any]]:
             return None, []
 
         class _ConcreteBackend(TaskInputLoader, ExecutionBackend):
@@ -485,7 +485,7 @@ class TestExecutionBackendSentinel(unittest.IsolatedAsyncioTestCase):
             def register(self, load_task_inputs: TaskDeserializer) -> None:
                 self._loader = load_task_inputs
 
-            async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]:
+            async def load_task_inputs(self, task: Task) -> tuple[Any, list[Any]]:
                 return await self._loader(task)
 
             async def execute(self, task: Task) -> asyncio.Future:
