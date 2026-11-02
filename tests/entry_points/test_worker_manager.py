@@ -294,6 +294,8 @@ _ORB_AWS_EC2_IMAGE_ARGV = [
     "tcp://127.0.0.1:6378",
     "--worker-manager-id",
     "wm-test",
+    "--children-address",
+    "tcp://203.0.113.10:6390",
     "--aws-region",
     "us-east-1",
     "--image-id",
@@ -303,6 +305,8 @@ _ORB_AWS_EC2_AUTO_ARGV = [
     "tcp://127.0.0.1:6378",
     "--worker-manager-id",
     "wm-test",
+    "--children-address",
+    "tcp://203.0.113.10:6390",
     "--aws-region",
     "us-east-1",
     "--python-version",
@@ -524,6 +528,8 @@ _OCI_RAW_BASE_ARGV = [
     "tcp://127.0.0.1:6378",
     "--worker-manager-id",
     "wm-test",
+    "--children-address",
+    "tcp://203.0.113.10:6390",
     "--compartment-id",
     "ocid1.compartment.oc1..example",
     "--availability-domain",
@@ -699,6 +705,13 @@ class TestOCIRawWorkerManagerConfig(unittest.TestCase):
         with self.assertRaises(ValueError):
             OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
 
+    def test_missing_children_address_raises(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        argv = [arg for arg in _OCI_RAW_BASE_ARGV if arg not in ("--children-address", "tcp://203.0.113.10:6390")]
+        with self.assertRaisesRegex(ValueError, "children_address"):
+            OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
     def test_missing_requirements_txt_raises(self) -> None:
         from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 
@@ -735,6 +748,7 @@ class TestOCIRawWorkerManagerConfig(unittest.TestCase):
             "type": "oci_raw",
             "scheduler_address": "tcp://127.0.0.1:6378",
             "worker_manager_id": "wm-test",
+            "children_address": "tcp://203.0.113.10:6390",
             "compartment_id": "ocid1.compartment.oc1..example",
             "availability_domain": "AD-1",
             "subnet_id": "ocid1.subnet.oc1.phx.example",
@@ -755,6 +769,7 @@ class TestOCIRawWorkerManagerConfig(unittest.TestCase):
             "type": "oci_raw",
             "scheduler_address": "tcp://127.0.0.1:6378",
             "worker_manager_id": "wm-test",
+            "children_address": "tcp://203.0.113.10:6390",
             "compartment_id": "ocid1.compartment.oc1..example",
             "availability_domain": "AD-1",
             "subnet_id": "ocid1.subnet.oc1.phx.example",
@@ -849,6 +864,13 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
         ]
         with self.assertRaises(SystemExit):
             ORBAWSEC2WorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv_without_region)
+
+    def test_orb_aws_ec2_missing_children_address_raises(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
+
+        argv = [arg for arg in _ORB_AWS_EC2_IMAGE_ARGV if arg not in ("--children-address", "tcp://203.0.113.10:6390")]
+        with self.assertRaisesRegex(ValueError, "children_address"):
+            ORBAWSEC2WorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
 
     def test_orb_aws_ec2_instance_type_and_region_from_cli(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
@@ -960,6 +982,7 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             "type": "orb_aws_ec2",
             "scheduler_address": "tcp://127.0.0.1:6378",
             "worker_manager_id": "wm-test",
+            "children_address": "tcp://203.0.113.10:6390",
             "aws_region": "us-east-1",
             "image_id": "ami-0528819f94f4f5fa5",
             "instance_tags": "Name=my-worker,Env=prod",

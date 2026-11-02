@@ -26,7 +26,6 @@ from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.cloud.child_command import (
     child_link_arguments,
-    cloud_children_address,
     format_capabilities,
     load_requirements_content,
 )
@@ -287,7 +286,7 @@ class ORBAWSEC2WorkerManager:
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_instances,
             worker_provisioner=self._orb_pool,
-            children_address=cloud_children_address(self._config.worker_manager_config),
+            children_address=self._config.worker_manager_config.children_address,
             io_threads=self._config.worker_config.io_threads,
             workers_per_provisioner_unit=workers_per_instance,
         )

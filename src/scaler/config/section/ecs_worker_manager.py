@@ -63,3 +63,5 @@ class ECSWorkerManagerConfig(ConfigClass):
             raise ValueError("ecs_task_definition cannot be an empty string.")
         if not self.ecs_task_image:
             raise ValueError("ecs_task_image cannot be an empty string.")
+        if self.worker_manager_config.children_address is None:
+            raise ValueError("children_address must be an address the provisioned resources can reach.")

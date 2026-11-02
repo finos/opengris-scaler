@@ -10,7 +10,7 @@ import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import child_link_arguments, cloud_children_address, format_capabilities
+from scaler.worker_manager.cloud.child_command import child_link_arguments, format_capabilities
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -222,7 +222,7 @@ class ECSWorkerManager:
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_instances,
             worker_provisioner=provisioner,
-            children_address=cloud_children_address(config.worker_manager_config),
+            children_address=config.worker_manager_config.children_address,
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=config.ecs_task_cpu,
         )

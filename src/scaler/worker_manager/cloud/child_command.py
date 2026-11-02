@@ -3,7 +3,6 @@ from typing import Dict
 
 from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
-from scaler.config.types.address import AddressConfig
 
 
 def load_requirements_content(requirements_txt: str) -> str:
@@ -29,15 +28,6 @@ def format_capabilities(capabilities: Dict[str, int]) -> str:
     return ",".join(parts)
 
 
-def cloud_children_address(worker_manager_config: WorkerManagerConfig) -> AddressConfig:
-    """The address a cloud manager binds for the child managers in its resources to dial."""
-    if worker_manager_config.children_address is None:
-        raise ValueError(
-            "a cloud worker manager needs children_address: an address its provisioned resources can reach"
-        )
-    return worker_manager_config.children_address
-
-
 def child_link_arguments(
     worker_manager_config: WorkerManagerConfig,
     cloud_children_config: CloudChildrenConfig,
@@ -45,5 +35,5 @@ def child_link_arguments(
     task_concurrency: int,
 ) -> str:
     """The command line arguments that make a child native manager serve this manager as unit `unit_id`."""
-    parent_address = cloud_children_config.advertised_children_address or cloud_children_address(worker_manager_config)
+    parent_address = cloud_children_config.advertised_children_address or worker_manager_config.children_address
     return f"--parent-address {parent_address} --unit-id {unit_id} --max-task-concurrency {task_concurrency}"

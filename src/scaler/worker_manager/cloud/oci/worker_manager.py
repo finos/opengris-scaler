@@ -16,7 +16,6 @@ from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.cloud.child_command import (
     child_link_arguments,
-    cloud_children_address,
     format_capabilities,
     load_requirements_content,
 )
@@ -254,7 +253,7 @@ class OCIInstancesWorkerManager:
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_instances,
             worker_provisioner=provisioner,
-            children_address=cloud_children_address(config.worker_manager_config),
+            children_address=config.worker_manager_config.children_address,
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=workers_per_instance,
         )

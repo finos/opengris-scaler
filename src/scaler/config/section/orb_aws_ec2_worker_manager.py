@@ -51,6 +51,8 @@ class ORBAWSEC2WorkerManagerConfig(ConfigClass):
                 raise ValueError(
                     "Both --python-version and --requirements-txt must be provided when --image-id is not specified"
                 )
+        if self.worker_manager_config.children_address is None:
+            raise ValueError("children_address must be an address the provisioned resources can reach.")
 
     aws_profile: Optional[str] = dataclasses.field(
         default=None,

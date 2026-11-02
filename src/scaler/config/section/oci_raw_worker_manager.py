@@ -42,3 +42,5 @@ class OCIRawWorkerManagerConfig(ConfigClass):
             raise ValueError("--requirements-txt must be provided")
         if not self.python_worker_environment.python_version:
             raise ValueError("--python-version must be provided")
+        if self.worker_manager_config.children_address is None:
+            raise ValueError("children_address must be an address the provisioned resources can reach.")
