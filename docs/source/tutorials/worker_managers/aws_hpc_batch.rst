@@ -347,6 +347,7 @@ AWS HPC Parameters
 * ``--aws-region``: AWS region (default: ``us-east-1``).
 * ``--s3-prefix``: S3 key prefix (default: ``scaler-tasks``).
 * ``--max-concurrent-jobs`` (``-mcj``): Max concurrent Batch jobs (default: ``100``).
+  The worker manager runs at most ``ceil(--max-task-concurrency / --max-concurrent-jobs)`` worker processes, each submitting up to ``--max-concurrent-jobs`` jobs.
 * ``--job-timeout-minutes``: Max job runtime in minutes (default: ``60``).
 * ``--backend`` (``-b``): HPC backend (default: ``batch``).
 * ``--name`` (``-n``): Custom name for the worker manager instance.
