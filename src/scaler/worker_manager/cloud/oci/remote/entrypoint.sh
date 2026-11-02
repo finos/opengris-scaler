@@ -19,15 +19,21 @@ if grep -qE 'git\+|@ git\+' /tmp/requirements.txt; then
     rm -rf /var/lib/apt/lists/*
 
     # Ubuntu's libssl-dev lacks the OpenSSL CMake package scaler needs, so build OpenSSL with the repo's library_tool.sh
-    read -r clone_url clone_branch < <(/opt/opengris-scaler/bin/python - <<'EOF'
+    scaler_source=$(/opt/opengris-scaler/bin/python - <<'EOF'
 import re, urllib.parse
-url = urllib.parse.urlsplit(re.search(r"git\+([^\s;]+)", open("/tmp/requirements.txt").read()).group(1))
-path, _, branch = url.path.partition("@")
-print(urllib.parse.urlunsplit(url._replace(path=path, fragment="")), branch)
+requirement = r"^\s*opengris[-_.]scaler\s*(\[[^\]]*\])?\s*@\s*git\+([^\s;]+)"
+match = re.search(requirement, open("/tmp/requirements.txt").read(), re.IGNORECASE | re.MULTILINE)
+if match:
+    url = urllib.parse.urlsplit(match.group(2))
+    path, _, branch = url.path.partition("@")
+    print(urllib.parse.urlunsplit(url._replace(path=path, fragment="")), branch)
 EOF
 )
-    git clone --depth 1 ${clone_branch:+--branch "${clone_branch}"} "${clone_url}" /tmp/scaler-src
-    for step in download compile install; do /tmp/scaler-src/scripts/library_tool.sh openssl "${step}"; done
+    if [ -n "${scaler_source}" ]; then
+        read -r clone_url clone_branch <<< "${scaler_source}"
+        git clone --depth 1 ${clone_branch:+--branch "${clone_branch}"} "${clone_url}" /tmp/scaler-src
+        for step in download compile install; do /tmp/scaler-src/scripts/library_tool.sh openssl "${step}"; done
+    fi
 fi
 
 uv pip install --no-cache -q --python /opt/opengris-scaler -r /tmp/requirements.txt
