@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  tests:
     name: Build And Test
     runs-on: ${{ matrix.os }}
     strategy:
