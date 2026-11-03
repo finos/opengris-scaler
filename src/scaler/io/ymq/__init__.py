@@ -13,6 +13,7 @@ __all__ = [
     "TLSConfig",
     # Exception types
     "YMQException",
+    "ConnectionLostError",
     "ConnectorSocketClosedByRemoteEndError",
     "InvalidAddressFormatError",
     "InvalidPortFormatError",
@@ -32,6 +33,7 @@ if sys.platform == "emscripten":
         AddressType,
         BinderSocket,
         Bytes,
+        ConnectionLostError,
         ConnectorSocket,
         ConnectorSocketClosedByRemoteEndError,
         ErrorCode,
@@ -51,6 +53,7 @@ else:
         Address,
         AddressType,
         Bytes,
+        ConnectionLostError,
         ConnectorSocketClosedByRemoteEndError,
         ErrorCode,
         InvalidAddressFormatError,

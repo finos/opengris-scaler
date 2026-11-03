@@ -3,6 +3,7 @@
 #include <chrono>
 #include <expected>
 #include <future>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,13 @@
 namespace {
 
 const std::string messagePayload = "Hello from ConnectorSocket!";
+
+// More than loopback's socket buffers hold, so a send to a peer that does not read stays in flight.
+constexpr size_t stalledSendBytes = 16 * 1024 * 1024;
+// Longer than a debug build takes to mask a WebSocket frame of that size, measured at 1.5 s.
+constexpr std::chrono::seconds sendSettleTime {2};
+constexpr std::chrono::seconds sendFailTimeout {5};
+constexpr std::chrono::seconds reconnectTimeout {10};
 
 }  // namespace
 
@@ -378,6 +386,79 @@ TEST_P(YMQConnectorSocketTest, Reconnect)
 
     while (!server.established()) {
         loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_TRUE(server.established());
+}
+
+TEST_P(YMQConnectorSocketTest, ConnectionLostUnderInFlightSend)
+{
+    // A connection lost under a send fails it with ConnectionLost, not SocketStopRequested: nobody stopped the
+    // socket, it reconnects on its own, and the caller can send again.
+
+    if (GetParam() == "tls" || GetParam() == "wss") {
+        GTEST_SKIP() << "SecureSocket acknowledges a write once queued on its transport, so none stays in flight";
+    }
+
+    ConnectorServerPair connections(
+        GetParam(),
+
+        // Server callbacks
+        []([[maybe_unused]] auto identity) {},  // onRemoteIdentity
+        []([[maybe_unused]] auto reason) {},    // onRemoteDisconnect
+        []([[maybe_unused]] auto message) {},   // onMessage
+
+        // Connector callback
+        []([[maybe_unused]] auto result) {});
+
+    scaler::ymq::internal::MessageConnection& server = connections.server();
+    scaler::ymq::ConnectorSocket& connector          = connections.connector();
+    scaler::wrapper::uv::Loop& loop                  = connections.loop();
+
+    // Send a message from the server to the client.
+    // Required as Linux might not send a RST segment if both connections are not fully initialized.
+
+    std::promise<void> messageReceived {};
+    auto onConnectorRecvMessage = [&](auto) { messageReceived.set_value(); };
+
+    connector.recvMessage(onConnectorRecvMessage);
+
+    bool sendCalled = false;
+    server.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), [&](auto, auto) { sendCalled = true; });
+
+    while (!sendCalled) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_EQ(messageReceived.get_future().wait_for(std::chrono::seconds {5}), std::future_status::ready);
+
+    // The server's loop does not run until the abort, so it stops reading and the send stays in flight.
+
+    auto sendDone   = std::make_shared<std::promise<std::expected<void, scaler::ymq::Error>>>();
+    auto sendResult = sendDone->get_future();
+    connector.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(std::string(stalledSendBytes, 'x')),
+        [sendDone](auto result, [[maybe_unused]] auto payload) { sendDone->set_value(std::move(result)); });
+
+    ASSERT_EQ(sendResult.wait_for(sendSettleTime), std::future_status::timeout);
+
+    server.abort();
+    ASSERT_FALSE(server.connected());
+
+    ASSERT_EQ(sendResult.wait_for(sendFailTimeout), std::future_status::ready);
+    const auto result = sendResult.get();
+
+    // A write the OS itself failed reports success (see MessageConnection::onWriteDone), so only a failure is pinned.
+    if (!result.has_value()) {
+        ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectionLost);
+    }
+
+    // The socket keeps running.
+
+    const auto deadline = std::chrono::steady_clock::now() + reconnectTimeout;
+    while (!server.established() && std::chrono::steady_clock::now() < deadline) {
+        loop.run(UV_RUN_NOWAIT);
     }
 
     ASSERT_TRUE(server.established());

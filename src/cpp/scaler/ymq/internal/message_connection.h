@@ -126,6 +126,9 @@ private:
 
     std::optional<Client> _client {};
 
+    // What in-flight writes fail with if libuv cancels them. Shared as the writes can outlive this object.
+    std::shared_ptr<Error::ErrorCode> _writeCancelError {};
+
     // Sent buffers not yet submitted to the remote.
     std::queue<SendOperation> _sendPending {};
 
@@ -150,7 +153,10 @@ private:
 
     void recvMessage() noexcept;
 
-    static void onWriteDone(SendCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
+    static void onWriteDone(
+        SendCallback callback,
+        Error::ErrorCode writeCancelError,
+        std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
 
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 
