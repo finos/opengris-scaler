@@ -17,9 +17,9 @@ runs:
       shell: bash
       run: uv pip install --system "websockets>=12.0"
 
-    - name: Install pytest and pytest-xdist to run the unit tests in parallel
+    - name: Install pytest, pytest-xdist to run the unit tests in parallel, and pytest-timeout to fail hung tests
       shell: bash
-      run: uv pip install --system "pytest>=9.1.1" "pytest-xdist>=3.8.0"
+      run: uv pip install --system "pytest>=9.1.1" "pytest-timeout>=2.4.0" "pytest-xdist>=3.8.0"
 
     - name: Install ray for the ray compatibility tests
       shell: bash
@@ -63,6 +63,20 @@ runs:
       shell: bash
       run: |
         python -m pytest -n auto -v tests
+
+    - name: Dump the stacks of the Python processes left after a failed test run (Linux/macOS)
+      if: failure() && (inputs.os == 'Linux' || inputs.os == 'macOS')
+      shell: bash
+      # py-spy needs root to attach. sudo resets PATH, so pass py-spy's full path.
+      run: |
+        uv pip install --system "py-spy>=0.4.0"
+        py_spy=$(command -v py-spy)
+        for pid in $(pgrep -i python); do
+          echo "::group::py-spy dump --pid $pid"
+          ps -o pid=,ppid=,command= -p "$pid" || true
+          sudo "$py_spy" dump --pid "$pid" || true
+          echo "::endgroup::"
+        done
 
     - name: Run Examples (Linux)
       if: inputs.os == 'Linux'
