@@ -627,6 +627,190 @@ TEST_F(ObjectStorageServerTest, TestPartiallyDeliveredRequestIsDropped)
     }
 }
 
+TEST_F(ObjectStorageServerTest, TestPartiallyDeliveredRequestOfHeaderSizeIsDropped)
+{
+    // A payload announced at the size of a header leaves the length unable to tell the next request's header from
+    // the missing payload. The header arrives on a new connection, and that is what must drop the stale request.
+
+    ObjectResponseHeader responseHeader;
+    std::optional<ReceivedPayload> responsePayload;
+    uint64_t requestID = 300;
+
+    const std::string identity {"ReconnectingClient"};
+    const ObjectID abandonedObjectID {8, 9, 10, 11};
+    const ObjectID objectID {12, 13, 14, 15};
+
+    // Announce a payload of a header's size, then go away without sending it
+    {
+        auto client = getClient(identity);
+
+        ObjectRequestHeader requestHeader {
+            .objectID      = abandonedObjectID,
+            .payloadLength = capnpHeaderSize,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+    }
+
+    auto client = getClient(identity);
+
+    // The next request must be answered as itself
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = payloadContent.size(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, payloadSpan);
+        client->readResponse(responseHeader, responsePayload);
+
+        EXPECT_EQ(responseHeader.objectID, objectID);
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
+    }
+
+    // The abandoned request must not have stored the next request's header
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = abandonedObjectID,
+            .payloadLength = 0,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::DELETE_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+        client->readResponse(responseHeader, responsePayload);
+
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::DEL_NOT_EXISTS);
+    }
+}
+
+TEST_F(ObjectStorageServerTest, TestPayloadOfHeaderSize)
+{
+    // On one connection, a message of a header's size that follows an announced payload of that size is the payload.
+
+    ObjectResponseHeader responseHeader;
+    std::optional<ReceivedPayload> responsePayload;
+    uint64_t requestID = 400;
+
+    const ObjectID objectID {16, 17, 18, 19};
+    const std::string payload(capnpHeaderSize, 'p');
+    const std::span<const uint8_t> headerSizedPayloadSpan {
+        reinterpret_cast<const uint8_t*>(payload.data()), payload.size()};
+
+    auto client = getClient();
+
+    ObjectRequestHeader setHeader {
+        .objectID      = objectID,
+        .payloadLength = payload.size(),
+        .requestID     = requestID++,
+        .requestType   = ObjectRequestType::SET_OBJECT,
+    };
+
+    client->writeRequest(setHeader, headerSizedPayloadSpan);
+    client->readResponse(responseHeader, responsePayload);
+
+    EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
+
+    ObjectRequestHeader getHeader {
+        .objectID      = objectID,
+        .payloadLength = UINT64_MAX,
+        .requestID     = requestID++,
+        .requestType   = ObjectRequestType::GET_OBJECT,
+    };
+
+    client->writeRequest(getHeader, std::nullopt);
+    client->readResponse(responseHeader, responsePayload);
+
+    EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
+    ASSERT_TRUE(responsePayload.has_value());
+    EXPECT_EQ((*responsePayload)->asString(), payload);
+}
+
+TEST_F(ObjectStorageServerTest, TestPayloadAfterReconnectCompletesRequest)
+{
+    // A connector queues a send across a reconnect, so a header and its payload can arrive on two connections. A
+    // message that is not a header's size can only be the payload, so the request still completes.
+
+    ObjectResponseHeader responseHeader;
+    std::optional<ReceivedPayload> responsePayload;
+    uint64_t requestID = 500;
+
+    const std::string identity {"ReconnectingClient"};
+    const ObjectID objectID {20, 21, 22, 23};
+
+    {
+        auto client = getClient(identity);
+
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = payloadContent.size(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+    }
+
+    auto client = getClient(identity);
+
+    client->writeYMQMessage(std::make_unique<BufferedBytes>(payloadContent));
+    client->readResponse(responseHeader, responsePayload);
+
+    EXPECT_EQ(responseHeader.objectID, objectID);
+    EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
+}
+
+TEST_F(ObjectStorageServerTest, TestPayloadOfHeaderSizeAfterReconnectFailsLoudly)
+{
+    // A header-sized payload that crosses a reconnect cannot be told from a header, so it is read as one. The bytes of
+    // a payload do not parse as a header: the client's connection closes and nothing is stored under the object's ID.
+
+    ObjectResponseHeader responseHeader;
+    std::optional<ReceivedPayload> responsePayload;
+    uint64_t requestID = 600;
+
+    const std::string identity {"ReconnectingClient"};
+    const ObjectID objectID {24, 25, 26, 27};
+
+    {
+        auto client = getClient(identity);
+
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = capnpHeaderSize,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+    }
+
+    {
+        auto client = getClient(identity);
+
+        client->writeYMQMessage(std::make_unique<BufferedBytes>(std::string(capnpHeaderSize, 'p')));
+        EXPECT_FALSE(client->readYMQMessage().has_value());
+    }
+
+    auto client = getClient();
+
+    ObjectRequestHeader requestHeader {
+        .objectID      = objectID,
+        .payloadLength = 0,
+        .requestID     = requestID++,
+        .requestType   = ObjectRequestType::DELETE_OBJECT,
+    };
+
+    client->writeRequest(requestHeader, std::nullopt);
+    client->readResponse(responseHeader, responsePayload);
+
+    EXPECT_EQ(responseHeader.responseType, ObjectResponseType::DEL_NOT_EXISTS);
+}
+
 TEST_F(ObjectStorageServerTest, TestMalformedHeader)
 {
     ObjectResponseHeader responseHeader;

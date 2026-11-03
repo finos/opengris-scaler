@@ -17,6 +17,22 @@ namespace object_storage {
 // How often the receive loop wakes up to check for a shutdown request.
 static constexpr std::chrono::milliseconds shutdownPollInterval {100};
 
+// The header of a set or duplicate request, until its payload arrives.
+struct AnnouncedRequest {
+    ObjectRequestHeader header;
+    uint64_t connectionID;
+};
+
+static bool isAnnouncedPayload(const AnnouncedRequest& request, size_t messageSize, uint64_t connectionID)
+{
+    if (messageSize != request.header.payloadLength) {
+        return false;
+    }
+
+    // A header has a fixed size, so any other size is the payload, even if a connector queued it across a reconnect.
+    return messageSize != ObjectRequestHeader::bufferSize() || connectionID == request.connectionID;
+}
+
 // Global atomic flag to indicate termination request
 static std::atomic<bool> sigRequestStop {false};
 
@@ -117,7 +133,7 @@ void ObjectStorageServer::closeServerReadyFds()
 void ObjectStorageServer::processRequests(std::function<bool()> running)
 {
     Identity lastMessageIdentity;
-    std::map<Identity, std::pair<ObjectRequestHeader, std::unique_ptr<scaler::ymq::Bytes>>> identityToFullRequest;
+    std::map<Identity, AnnouncedRequest> identityToAnnouncedRequest;
     while (true) {
         try {
             auto invalids = std::ranges::remove_if(_pendingSendMessageFuts, [](const auto& x) { return !x.valid(); });
@@ -178,41 +194,42 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             lastMessageIdentity  = identity;
             auto headerOrPayload = std::move(maybeMessage->payload);
 
-            auto it = identityToFullRequest.find(identity);
+            auto it = identityToAnnouncedRequest.find(identity);
 
-            // A pending request's payload always arrives as one message of exactly the announced length. A
-            // client that reconnects after a request was only partially delivered breaks that: its next
-            // message is a new header, and the payload it was waiting for can never arrive. Drop the stale
-            // request instead of completing it with the bytes of the next one, which would store the header
-            // as the object's content.
-            if (it != identityToFullRequest.end() && it->second.first.payloadLength != headerOrPayload->size()) {
+            // A client that reconnected mid-request sends a new header next, as the payload it announced never arrives.
+            if (it != identityToAnnouncedRequest.end() &&
+                !isAnnouncedPayload(it->second, headerOrPayload->size(), maybeMessage->connectionID)) {
                 _logger.log(
                     scaler::ymq::Logger::LoggingLevel::error,
                     "ObjectStorageServer: dropping a partially delivered request, expected a payload of ",
-                    it->second.first.payloadLength,
-                    " bytes, got a message of ",
+                    it->second.header.payloadLength,
+                    " bytes on connection ",
+                    it->second.connectionID,
+                    ", got a message of ",
                     headerOrPayload->size(),
-                    " bytes");
+                    " bytes on connection ",
+                    maybeMessage->connectionID);
 
-                identityToFullRequest.erase(it);
-                it = identityToFullRequest.end();
+                identityToAnnouncedRequest.erase(it);
+                it = identityToAnnouncedRequest.end();
             }
 
-            if (it == identityToFullRequest.end()) {
-                identityToFullRequest[identity].first = ObjectRequestHeader::fromBuffer(*headerOrPayload);
-                const auto& requestType               = identityToFullRequest[identity].first.requestType;
-                if (requestType == ObjectRequestType::DUPLICATE_OBJECT_I_D ||
-                    requestType == ObjectRequestType::SET_OBJECT) {
+            std::pair<ObjectRequestHeader, std::unique_ptr<scaler::ymq::Bytes>> request;
+
+            if (it == identityToAnnouncedRequest.end()) {
+                request.first = ObjectRequestHeader::fromBuffer(*headerOrPayload);
+                if (request.first.requestType == ObjectRequestType::DUPLICATE_OBJECT_I_D ||
+                    request.first.requestType == ObjectRequestType::SET_OBJECT) {
+                    identityToAnnouncedRequest[identity] = {request.first, maybeMessage->connectionID};
                     continue;
                 }
             } else {
-                (it->second).second = std::move(headerOrPayload);
+                request = {it->second.header, std::move(headerOrPayload)};
+                identityToAnnouncedRequest.erase(it);
             }
 
             // NOTE: PostCondition of the previous statement: We have a full request here
 
-            auto request = std::move(identityToFullRequest[identity]);
-            identityToFullRequest.erase(identity);
             auto client = std::make_shared<Client>(identity);
 
             switch (request.first.requestType) {
