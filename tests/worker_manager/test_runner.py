@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import unittest
-from typing import Optional
+from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.config.common.worker_manager import WorkerManagerConfig
@@ -41,7 +41,6 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         self.provisioner.task_concurrency_per_unit.return_value = 1
         self.send_mock = AsyncMock()
         self.runner = WorkerManagerRunner(
-            name="test_runner",
             worker_manager_config=WorkerManagerConfig(
                 scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"), worker_manager_id="mgr"
             ),
@@ -133,6 +132,30 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(message.force)
 
 
+class TestWorkerManagerRunnerIdentity(unittest.TestCase):
+    @staticmethod
+    def _runner(**config: Any) -> WorkerManagerRunner:
+        return WorkerManagerRunner(
+            worker_manager_config=WorkerManagerConfig(
+                scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"), worker_manager_id="mgr", **config
+            ),
+            heartbeat_interval_seconds=5,
+            capabilities={},
+            provisioner=MagicMock(spec=UnitProvisioner),
+            children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
+        )
+
+    def test_a_top_level_manager_is_known_by_its_worker_manager_id(self) -> None:
+        runner = self._runner()
+        self.assertEqual(runner._ident, b"mgr")
+        self.assertRegex(runner._unit_controller._new_unit_id(), r"^mgr/[a-z0-9]{10}$")
+
+    def test_a_child_manager_is_known_by_its_unit_id_and_nests_its_units_under_it(self) -> None:
+        runner = self._runner(parent_address=AddressConfig.from_string("tcp://127.0.0.1:3"), unit_id="mgr/abc")
+        self.assertEqual(runner._ident, b"mgr/abc")
+        self.assertRegex(runner._unit_controller._new_unit_id(), r"^mgr/abc/[a-z0-9]{10}$")
+
+
 class TestWorkerManagerReadyFile(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         setup_logger()
@@ -140,7 +163,6 @@ class TestWorkerManagerReadyFile(unittest.IsolatedAsyncioTestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.ready_file = os.path.join(self.directory.name, "ready")
         self.runner = WorkerManagerRunner(
-            name="test_runner",
             worker_manager_config=WorkerManagerConfig(
                 scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"), worker_manager_id="mgr"
             ),
@@ -189,7 +211,6 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
         task_manager.on_object_instruction = self.on_object_instruction
 
         self.wp = WorkerProcess(
-            name="test_worker",
             address=MagicMock(),
             object_storage_address=None,
             capabilities={},

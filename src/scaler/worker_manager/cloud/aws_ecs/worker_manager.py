@@ -99,7 +99,6 @@ class ECSWorkerProvisioner(UnitProvisioner):
         command = (
             f"scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} "
             f"{child_link_arguments(self._worker_manager_config, unit_id, self._ecs_task_cpu)} "
-            f"--worker-type ECS "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "
             f"--task-timeout-seconds {self._task_timeout_seconds} "
@@ -184,7 +183,6 @@ class ECSWorkerProvisioner(UnitProvisioner):
 class ECSWorkerManager:
     def __init__(self, config: ECSWorkerManagerConfig) -> None:
         self._runner = WorkerManagerRunner(
-            name="worker_manager_ecs",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,

@@ -10,7 +10,6 @@ def _make_provisioner(max_task_concurrency: int = -1) -> NativeWorkerProvisioner
     config.worker_config.per_worker_capabilities.capabilities = {}
     config.worker_manager_config.max_task_concurrency = max_task_concurrency
     config.worker_manager_config.worker_manager_id = "test-wm"
-    config.worker_type = "NAT"
     return NativeWorkerProvisioner(config, AddressConfig.from_string("tcp://127.0.0.1:2"))
 
 
@@ -20,10 +19,10 @@ class TestNativeWorkerProvisioner(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provisioner.task_concurrency_per_unit(), 1)
         self.assertEqual(provisioner.max_units(), 4)
 
-    async def test_create_unit_names_the_worker_after_the_unit(self) -> None:
+    async def test_create_unit_starts_a_worker_known_by_the_unit_id(self) -> None:
         provisioner = _make_provisioner()
         with patch("scaler.worker_manager.native.worker_manager.Worker") as worker_class:
             handle = await provisioner.create_unit("unit-1")
         self.assertIs(handle, worker_class.return_value)
-        self.assertEqual(worker_class.call_args.kwargs["name"], "NAT|unit-1")
+        self.assertEqual(worker_class.call_args.kwargs["unit_id"], "unit-1")
         worker_class.return_value.start.assert_called_once()

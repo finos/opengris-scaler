@@ -95,7 +95,8 @@ class ORBWorkerProvisioner(UnitProvisioner):
         self._startup_timeout_seconds = startup_timeout_seconds
 
     async def create_unit(self, unit_id: str) -> UnitHandle:
-        template_id = f"opengris-orb-{unit_id}"
+        # The template id names AWS resources: keep the '/' of a unit id out of it.
+        template_id = f"opengris-orb-{unit_id.replace('/', '-')}"
         await self._sdk.create_template(
             template_id=template_id,
             name=template_id,
@@ -302,7 +303,6 @@ class ORBAWSEC2WorkerManager:
             startup_timeout_seconds=self._config.worker_manager_config.unit_startup_timeout_seconds,
         )
         self._runner = WorkerManagerRunner(
-            name="worker_manager_orb_aws_ec2",
             worker_manager_config=self._config.worker_manager_config,
             heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
@@ -466,7 +466,6 @@ set +e
         wm_id = shlex.quote(worker_manager_config.worker_manager_id)
         script += f"""{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
     {child_link_arguments(worker_manager_config, unit_id, workers_per_instance)} \\
-    --worker-type ORB \\
     --worker-manager-id {wm_id} \\
     --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \\
     --heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} \\

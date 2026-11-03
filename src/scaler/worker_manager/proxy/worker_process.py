@@ -46,7 +46,6 @@ DRAIN_CHECK_INTERVAL_SECONDS = 1
 class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
     def __init__(
         self,
-        name: str,
         address: AddressConfig,
         object_storage_address: Optional[AddressConfig],
         capabilities: Dict[str, int],
@@ -64,17 +63,16 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         idle_sleep_seconds: float = 0.0,
         security_config: Optional[SecurityConfig] = None,
     ) -> None:
-        super().__init__(name=name)
+        super().__init__(name=unit_id)
 
         self._event_loop = event_loop
-        self._name = name
         self._address = address
         self._object_storage_address = object_storage_address
         self._capabilities = capabilities
         self._io_threads = io_threads
         self._security_config = security_config
 
-        self._ident = WorkerID.generate_worker_id(name)
+        self._ident = WorkerID(unit_id.encode())
 
         self._base_concurrency = base_concurrency
 
@@ -83,7 +81,6 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._task_queue_size = task_queue_size
         self._worker_manager_id = worker_manager_id
         self._worker_manager_address = worker_manager_address
-        self._unit_id = unit_id
 
         self._processor_status_provider_factory = processor_status_provider_factory
         self._execution_backend_factory = execution_backend_factory
@@ -184,9 +181,8 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             identity=self._ident, callback=self.__on_receive_external
         )
 
-        # The manager knows this worker by the unit id it chose, not by the worker id the scheduler sees.
         self._connector_manager = self._backend.create_async_connector(
-            identity=self._unit_id.encode(), callback=self.__on_receive_manager
+            identity=self._ident, callback=self.__on_receive_manager
         )
 
         self._connector_storage = self._backend.create_async_object_storage_connector(identity=self._ident)

@@ -9,7 +9,6 @@ from scaler.worker_manager.proxy.worker_process import WorkerProcess
 
 
 def create_oci_worker(
-    name: str,
     address: AddressConfig,
     object_storage_address: Optional[AddressConfig],
     worker_manager_id: bytes,
@@ -38,7 +37,6 @@ def create_oci_worker(
     auth_type: OCIAuthType = OCIAuthType.config_file,
 ) -> WorkerProcess:
     return WorkerProcess(
-        name=name,
         address=address,
         object_storage_address=object_storage_address,
         capabilities=capabilities or {},

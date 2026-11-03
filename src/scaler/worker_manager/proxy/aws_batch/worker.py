@@ -4,7 +4,6 @@ AWS Batch worker factory.
 Creates a WorkerProcess configured to submit tasks to AWS Batch for execution.
 """
 
-import uuid
 from functools import partial
 from typing import Dict, Optional
 
@@ -24,7 +23,6 @@ def create_aws_batch_worker(
     worker_manager_id: bytes,
     worker_manager_address: AddressConfig,
     unit_id: str,
-    name: Optional[str] = None,
     s3_prefix: str = "scaler-tasks",
     capabilities: Optional[Dict[str, int]] = None,
     base_concurrency: int = 100,
@@ -36,7 +34,6 @@ def create_aws_batch_worker(
     job_timeout_seconds: int = 3600,
 ) -> WorkerProcess:
     return WorkerProcess(
-        name=name or f"AWS|{uuid.uuid4().hex}",
         address=address,
         object_storage_address=object_storage_address,
         capabilities=capabilities or {},

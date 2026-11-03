@@ -349,7 +349,6 @@ AWS HPC Parameters
 * ``--max-concurrent-jobs`` (``-mcj``): Max concurrent Batch jobs (default: ``100``).
 * ``--job-timeout-minutes``: Max job runtime in minutes (default: ``60``).
 * ``--backend`` (``-b``): HPC backend (default: ``batch``).
-* ``--name`` (``-n``): Custom name for the worker manager instance.
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~

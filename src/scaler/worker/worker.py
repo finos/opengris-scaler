@@ -56,7 +56,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __init__(
         self,
         event_loop: str,
-        name: str,
         address: AddressConfig,
         object_storage_address: Optional[AddressConfig],
         preload: Optional[str],
@@ -74,13 +73,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         worker_manager_id: bytes,
         worker_manager_address: AddressConfig,
         unit_id: str,
-        deterministic_worker_ids: bool = False,
         security_config: Optional[SecurityConfig] = None,
     ):
         super().__init__(name="Agent")
 
         self._event_loop = event_loop
-        self._name = name
         self._address = address
         self._object_storage_address = object_storage_address
         self._preload = preload
@@ -89,10 +86,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_queue_size = task_queue_size
         self._security_config = security_config
 
-        if deterministic_worker_ids:
-            self._ident = WorkerID(name.encode())
-        else:
-            self._ident = WorkerID.generate_worker_id(name)
+        self._ident = WorkerID(unit_id.encode())
 
         self._address_internal: Optional[AddressConfig] = None
 
@@ -108,7 +102,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_level = logging_level
         self._worker_manager_id = worker_manager_id
         self._worker_manager_address = worker_manager_address
-        self._unit_id = unit_id
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -210,9 +203,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             identity=self._ident, callback=self.__on_receive_external
         )
 
-        # The manager knows this worker by the unit id it chose, not by the worker id the scheduler sees.
         self._connector_manager = self._backend.create_async_connector(
-            identity=self._unit_id.encode(), callback=self.__on_receive_manager
+            identity=self._ident, callback=self.__on_receive_manager
         )
 
         self._binder_internal = self._backend.create_async_binder(

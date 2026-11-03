@@ -63,7 +63,6 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
         # collaborator slots and reaches a name-mangled private method, which the type system rejects.
         worker: Any = Worker(
             event_loop="builtin",
-            name="test-worker",
             address=AddressConfig.from_string("tcp://127.0.0.1:2345"),
             object_storage_address=None,
             preload=None,

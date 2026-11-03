@@ -20,3 +20,14 @@ class TestDrainTimeout(unittest.TestCase):
                 worker_manager_id="m",
                 drain_timeout_seconds=DRAIN_TIMEOUT_NONE - 1,
             )
+
+
+class TestWorkerManagerID(unittest.TestCase):
+    def test_an_id_that_cannot_start_a_unit_id_path_is_refused(self):
+        """A '/' or whitespace in worker_manager_id would blur the unit ids that start with it."""
+        for worker_manager_id in ("a/b", "a b", "a\tb"):
+            with self.subTest(worker_manager_id=worker_manager_id), self.assertRaises(ValueError):
+                WorkerManagerConfig(
+                    scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"),
+                    worker_manager_id=worker_manager_id,
+                )

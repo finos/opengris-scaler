@@ -57,7 +57,6 @@ class _FakeManager:
 def _worker(combo: SchedulerClusterCombo, manager: _FakeManager) -> Worker:
     return Worker(
         event_loop="builtin",
-        name="manager_link",
         address=AddressConfig.from_string(combo.get_address()),
         object_storage_address=None,
         preload=None,

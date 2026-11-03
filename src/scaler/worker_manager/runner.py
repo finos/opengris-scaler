@@ -15,7 +15,6 @@ from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.mixins import AsyncBinder, AsyncConnector, ConnectorRemoteType, NetworkBackend
 from scaler.io.network_backends import get_network_backend_from_env
-from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
     UnitShutdown,
@@ -50,7 +49,6 @@ class WorkerManagerRunner:
 
     def __init__(
         self,
-        name: str,
         worker_manager_config: WorkerManagerConfig,
         heartbeat_interval_seconds: int,
         capabilities: Dict[str, int],
@@ -60,9 +58,10 @@ class WorkerManagerRunner:
         security_config: Optional[SecurityConfig] = None,
         ready_file: Optional[str] = None,
     ) -> None:
-        self._name = name
         self._parent_address = worker_manager_config.parent_address or worker_manager_config.scheduler_address
-        self._unit_id = worker_manager_config.unit_id
+        # A child manager is known to its parent by the unit id the parent chose.
+        unit_id = worker_manager_config.unit_id
+        self._ident = (unit_id if unit_id is not None else worker_manager_config.worker_manager_id).encode()
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._capabilities = capabilities
         self._worker_manager_id = worker_manager_config.worker_manager_id.encode()
@@ -74,6 +73,7 @@ class WorkerManagerRunner:
 
         self._unit_controller = UnitController(
             provisioner,
+            unit_id_prefix=self._ident.decode(),
             scale_down_cooldown_seconds=worker_manager_config.scale_down_cooldown_seconds,
             unit_timeout_seconds=worker_manager_config.unit_timeout_seconds,
             drain_timeout_seconds=worker_manager_config.drain_timeout_seconds,
@@ -86,12 +86,9 @@ class WorkerManagerRunner:
         self._backend: Optional[NetworkBackend] = None
         self._connector_parent: Optional[AsyncConnector] = None
         self._binder_children: Optional[AsyncBinder] = None
-        self._ident: bytes = b""
         self._task: Optional[asyncio.Task] = None
 
     async def _initialize_network(self) -> None:
-        # A child manager is known to its parent by the unit id the parent chose.
-        self._ident = self._unit_id.encode() if self._unit_id is not None else generate_identity_from_name(self._name)
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)
         self._connector_parent = self._backend.create_async_connector(
             identity=self._ident, callback=self._on_receive_parent

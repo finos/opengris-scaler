@@ -72,7 +72,6 @@ class SymphonyWorkerManager:
         children_address = local_children_address(config.worker_manager_config)
         provisioner = SymphonyWorkerProvisioner(config, children_address)
         self._runner = WorkerManagerRunner(
-            name="worker_manager_symphony",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,

@@ -31,7 +31,6 @@ class TestDeathTimeout(unittest.TestCase):
         """A worker that never reaches a scheduler quits once its death timeout passes."""
         worker = Worker(
             event_loop="builtin",
-            name="no_scheduler",
             address=AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
             object_storage_address=None,
             preload=None,

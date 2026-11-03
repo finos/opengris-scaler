@@ -80,7 +80,6 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
 
         command = f"""scaler_worker_manager baremetal_native {scheduler_address!r} \
 {child_link_arguments(config.worker_manager_config, unit_id, num_workers)} \
---worker-type OCI_RAW \
 --worker-manager-id {config.worker_manager_config.worker_manager_id} \
 --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \
 --heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} \
@@ -217,7 +216,6 @@ class OCIInstancesWorkerManager:
         max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
         provisioner = OCIInstancesWorkerProvisioner(config, max_instances)
         self._runner = WorkerManagerRunner(
-            name="worker_manager_oci_raw",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,

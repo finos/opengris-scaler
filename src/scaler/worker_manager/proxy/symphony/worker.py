@@ -1,4 +1,3 @@
-import uuid
 from functools import partial
 from typing import Dict, Optional
 
@@ -24,7 +23,6 @@ def create_symphony_worker(
     unit_id: str,
 ) -> WorkerProcess:
     return WorkerProcess(
-        name=f"SYM|{uuid.uuid4().hex}",
         address=address,
         object_storage_address=object_storage_address,
         capabilities=capabilities,

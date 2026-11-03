@@ -28,7 +28,6 @@ class OCIJobsWorkerProvisioner(UnitProvisioner):
         config = self._config
         container_instance_config = config.container_instance_config
         worker = create_oci_worker(
-            name=f"oci-hpc-{unit_id}",
             address=config.worker_manager_config.effective_worker_scheduler_address,
             object_storage_address=config.worker_manager_config.object_storage_address,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
@@ -94,7 +93,6 @@ class OCIJobsWorkerManager:
         children_address = local_children_address(config.worker_manager_config)
         provisioner = OCIJobsWorkerProvisioner(config, children_address)
         runner = WorkerManagerRunner(
-            name="worker_manager_oci_hpc",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,

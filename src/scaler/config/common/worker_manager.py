@@ -13,7 +13,9 @@ class WorkerManagerConfig(ConfigClass):
     )
 
     worker_manager_id: str = dataclasses.field(
-        metadata=dict(short="-wmi", required=True, help="worker manager ID to identify this manager")
+        metadata=dict(
+            short="-wmi", required=True, help="worker manager ID to identify this manager, without '/' or whitespace"
+        )
     )
 
     worker_scheduler_address: Optional[AddressConfig] = dataclasses.field(
@@ -129,6 +131,8 @@ class WorkerManagerConfig(ConfigClass):
     def __post_init__(self) -> None:
         if not self.worker_manager_id:
             raise ValueError("worker_manager_id cannot be an empty string.")
+        if "/" in self.worker_manager_id or any(char.isspace() for char in self.worker_manager_id):
+            raise ValueError("worker_manager_id cannot contain '/' or whitespace: it starts the path of each unit id.")
         if self.max_task_concurrency != -1 and self.max_task_concurrency < 0:
             raise ValueError("max_task_concurrency must be -1 (no limit) or a non-negative integer.")
         if self.scale_down_cooldown_seconds < 0:

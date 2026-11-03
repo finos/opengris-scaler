@@ -69,6 +69,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
     ) -> UnitController:
         return UnitController(
             provisioner,
+            unit_id_prefix="test",
             scale_down_cooldown_seconds=scale_down_cooldown_seconds,
             unit_timeout_seconds=UNIT_TIMEOUT_SECONDS,
             drain_timeout_seconds=drain_timeout_seconds,
@@ -96,6 +97,13 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.controller.set_desired_task_concurrency(5)
         await self.__tick(self.controller)
         self.assertEqual(len(self.provisioner.created), 3)
+
+    async def test_each_unit_id_is_a_distinct_random_tag_under_the_prefix(self) -> None:
+        self.controller.set_desired_task_concurrency(5)
+        await self.__tick(self.controller)
+        for unit_id in self.provisioner.created:
+            self.assertRegex(unit_id, r"^test/[a-z0-9]{10}$")
+        self.assertEqual(len(set(self.provisioner.created)), 3)
 
     async def test_max_units_caps_the_fleet(self) -> None:
         provisioner = _FakeProvisioner(max_units=2)

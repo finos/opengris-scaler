@@ -19,8 +19,6 @@ class NativeWorkerManagerConfig(ConfigClass):
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
     security: SecurityConfig = dataclasses.field(default_factory=SecurityConfig)
 
-    worker_type: str = dataclasses.field(default="NAT", metadata=dict(help="worker type prefix used in worker IDs"))
-
     ready_file: Optional[str] = dataclasses.field(
         default=None,
         metadata=dict(

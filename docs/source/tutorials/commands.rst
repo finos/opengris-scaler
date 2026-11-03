@@ -423,7 +423,7 @@ Arguments (shared by all subcommands)
    * - ``-wmi``, ``--worker-manager-id``
      - Yes
      - -
-     - Logical ID for this worker manager.
+     - Logical ID for this worker manager, without ``/`` or whitespace. It starts the ID of each of its workers, such as ``native/k3f9c1x2a8``.
    * - ``-osa``, ``--object-storage-address``
      - No
      - ``None``
@@ -587,10 +587,6 @@ Local-process worker manager: runs as many worker processes as the scheduler ask
      - Required
      - Default
      - Description
-   * - ``--worker-type``
-     - No
-     - ``NAT``
-     - Worker ID prefix override.
    * - ``-n``, ``--num-of-workers``
      - No
      - -
@@ -808,10 +804,6 @@ AWS Batch worker manager.
      - No
      - ``batch``
      - AWS HPC backend type.
-   * - ``-n``, ``--name``
-     - No
-     - ``None``
-     - Worker name override.
    * - ``--aws-region``
      - No
      - ``us-east-1``

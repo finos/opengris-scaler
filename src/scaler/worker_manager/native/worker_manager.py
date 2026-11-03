@@ -38,11 +38,8 @@ class NativeWorkerProvisioner(UnitProvisioner):
         self._logging_level = config.logging_config.level
         self._security_config = config.security
 
-        self._worker_prefix = config.worker_type
-
     def _create_worker(self, unit_id: str) -> Worker:
         return Worker(
-            name=f"{self._worker_prefix}|{unit_id}",
             address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
             preload=self._preload,
@@ -98,7 +95,6 @@ class NativeWorkerManager:
         provisioner = NativeWorkerProvisioner(self._config, children_address)
 
         runner = WorkerManagerRunner(
-            name="worker_manager_native",
             worker_manager_config=self._config.worker_manager_config,
             heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,

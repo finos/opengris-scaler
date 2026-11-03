@@ -4,8 +4,9 @@ import enum
 import functools
 import logging
 import math
+import random
+import string
 import time
-import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from scaler.config.defaults import DRAIN_TIMEOUT_DESTROY_AT_ONCE, DRAIN_TIMEOUT_NONE
@@ -20,6 +21,10 @@ UNIT_STABLE_SECONDS = 60
 
 # The crash-loop backoff doubles on each consecutive loss, up to this many times.
 MAX_RESTART_BACKOFF_DOUBLINGS = 5
+
+# Random, not a counter: a restarted manager must not reuse the id of a unit that is still draining.
+UNIT_TAG_LENGTH = 10
+UNIT_TAG_ALPHABET = string.ascii_lowercase + string.digits
 
 
 class UnitState(enum.Enum):
@@ -64,12 +69,14 @@ class UnitController(Looper, Reporter):
     def __init__(
         self,
         provisioner: UnitProvisioner,
+        unit_id_prefix: str,
         scale_down_cooldown_seconds: float,
         unit_timeout_seconds: float,
         drain_timeout_seconds: float,
         restart_backoff_seconds: float,
     ) -> None:
         self._provisioner = provisioner
+        self._unit_id_prefix = unit_id_prefix
         self._scale_down_cooldown = Cooldown(scale_down_cooldown_seconds)
         self._unit_timeout_seconds = unit_timeout_seconds
         self._drain_timeout_seconds = drain_timeout_seconds
@@ -293,10 +300,13 @@ class UnitController(Looper, Reporter):
         if self._shutting_down or time.monotonic() < self._create_not_before:
             return
 
-        unit = Unit(unit_id=uuid.uuid4().hex, handle=None, state=UnitState.pending, state_since=time.monotonic())
+        unit = Unit(unit_id=self._new_unit_id(), handle=None, state=UnitState.pending, state_since=time.monotonic())
         self._units[unit.unit_id] = unit
         logger.info(f"creating unit {unit.unit_id!r}")
         self._start_task(self._provisioner.create_unit(unit.unit_id), functools.partial(self._on_create_done, unit))
+
+    def _new_unit_id(self) -> str:
+        return f"{self._unit_id_prefix}/{''.join(random.choices(UNIT_TAG_ALPHABET, k=UNIT_TAG_LENGTH))}"
 
     def _on_create_done(self, unit: Unit, task: asyncio.Task) -> None:
         error = _failure_of(task)

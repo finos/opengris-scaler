@@ -1,6 +1,6 @@
 import dataclasses
 import enum
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
@@ -35,9 +35,6 @@ class AWSBatchWorkerManagerConfig(ConfigClass):
 
     backend: AWSHPCBackend = dataclasses.field(
         default=AWSHPCBackend.batch, metadata=dict(short="-b", help="AWS HPC backend")
-    )
-    name: Optional[str] = dataclasses.field(
-        default=None, metadata=dict(short="-n", help="worker name (default: aws-{backend}-worker)")
     )
     aws_region: str = dataclasses.field(default=DEFAULT_AWS_REGION, metadata=dict(help="AWS region"))
     s3_prefix: str = dataclasses.field(default=DEFAULT_S3_PREFIX, metadata=dict(help="S3 prefix for task data"))

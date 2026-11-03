@@ -27,7 +27,6 @@ class AWSBatchWorkerProvisioner(UnitProvisioner):
     async def create_unit(self, unit_id: str) -> UnitHandle:
         config = self._config
         worker = create_aws_batch_worker(
-            name=config.name,
             address=config.worker_manager_config.effective_worker_scheduler_address,
             object_storage_address=config.worker_manager_config.object_storage_address,
             job_queue=config.job_queue,
@@ -80,7 +79,6 @@ class AWSBatchWorkerManager:
 
         provisioner = AWSBatchWorkerProvisioner(config, children_address)
         runner = WorkerManagerRunner(
-            name="worker_manager_aws_hpc",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
