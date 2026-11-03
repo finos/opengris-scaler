@@ -669,7 +669,17 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
     async def __send_task_to_worker(self, worker_id: WorkerID, task_id: TaskID) -> None:
         task = self._task_id_to_task[task_id]
-        await self._binder.send(worker_id, task, detached=True)
+
+        # on_task_new made capabilities a dict, which capnp serializes as empty entries
+        task_message = Task(
+            taskId=task.taskId,
+            source=task.source,
+            metadata=task.metadata,
+            funcObjectId=task.funcObjectId,
+            functionArgs=task.functionArgs,
+            capabilities=dict_to_capabilities(task.capabilities),
+        )
+        await self._binder.send(worker_id, task_message, detached=True)
 
     async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel) -> bool:
         """Send a cancel to the worker that holds the task, return False if no worker holds it anymore."""
