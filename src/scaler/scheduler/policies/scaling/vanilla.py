@@ -7,7 +7,7 @@ from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds, WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
@@ -21,16 +21,16 @@ class VanillaScalingPolicy(ScalingPolicy):
     Each manager's count is kept within its bounds; a manager without bounds ranges from 0 to its advertised maximum.
     """
 
-    def __init__(self, bounds: Dict[bytes, WorkerManagerBounds]):
+    def __init__(self, bounds: Dict[WorkerManagerID, WorkerManagerBounds]):
         self._bounds = bounds
-        self._logged_desired_by_manager: Dict[bytes, int] = {}
+        self._logged_desired_by_manager: Dict[WorkerManagerID, int] = {}
 
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         # the manager being answered counts as live even if no snapshot was built for it
         live_manager_ids = set(worker_manager_snapshots) | {worker_manager_heartbeat.workerManagerID}
@@ -47,7 +47,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> int:
         """Compute the target worker count for this manager from current task and worker observations.
 
@@ -70,7 +70,9 @@ class VanillaScalingPolicy(ScalingPolicy):
         self.__log_decision(manager_id, task_count, worker_count, current, desired)
         return desired
 
-    def __log_decision(self, manager_id: bytes, task_count: int, worker_count: int, current: int, desired: int) -> None:
+    def __log_decision(
+        self, manager_id: WorkerManagerID, task_count: int, worker_count: int, current: int, desired: int
+    ) -> None:
         """Logs a request to change a manager's worker count, once per run of that same request.
 
         The request repeats every heartbeat until the manager reaches the count, and forever if it cannot.
@@ -116,7 +118,9 @@ def clamp_to_bounds(desired: int, bounds: WorkerManagerBounds, advertised_max_ta
 
 
 def floor_held_worker_count(
-    manager_id: bytes, bounds_by_manager: Dict[bytes, WorkerManagerBounds], worker_count_by_manager: Dict[bytes, int]
+    manager_id: WorkerManagerID,
+    bounds_by_manager: Dict[WorkerManagerID, WorkerManagerBounds],
+    worker_count_by_manager: Dict[WorkerManagerID, int],
 ) -> int:
     """The connected workers that managers other than `manager_id` hold at their floors.
 

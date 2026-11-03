@@ -4,7 +4,7 @@ from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.snapshot import InformationSnapshot
 
 
@@ -15,7 +15,7 @@ class StaticScalingPolicy(ScalingPolicy):
     With no count, a manager is asked for the maximum task concurrency it advertises, which also caps every count.
     """
 
-    def __init__(self, task_concurrency: Optional[int], task_concurrency_by_manager: Dict[bytes, int]):
+    def __init__(self, task_concurrency: Optional[int], task_concurrency_by_manager: Dict[WorkerManagerID, int]):
         self._task_concurrency = task_concurrency
         self._task_concurrency_by_manager = task_concurrency_by_manager
 
@@ -24,7 +24,7 @@ class StaticScalingPolicy(ScalingPolicy):
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         desired = worker_manager_heartbeat.maxTaskConcurrency
         task_concurrency = self._task_concurrency_by_manager.get(

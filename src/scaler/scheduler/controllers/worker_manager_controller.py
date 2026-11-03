@@ -16,7 +16,7 @@ from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.controllers.worker_manager_utilities import build_scaling_manager_status
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -38,7 +38,7 @@ class WorkerManagerController(Looper, Reporter):
         self._manager_alive_since: Dict[bytes, Tuple[float, WorkerManagerHeartbeat]] = {}
 
         # Reverse map: worker_manager_id -> source (for duplicate detection)
-        self._manager_id_to_source: Dict[bytes, bytes] = {}
+        self._manager_id_to_source: Dict[WorkerManagerID, bytes] = {}
 
         # Per-manager total desired worker count from the latest setDesiredTaskConcurrency command.
         # Used to report pendingWorkers = max(0, last_desired - connected_count) to the monitor.
@@ -56,13 +56,13 @@ class WorkerManagerController(Looper, Reporter):
             existing_source = self._manager_id_to_source.get(manager_id)
             if existing_source is not None and existing_source != source:
                 logger.warning(
-                    f"Duplicate worker_manager_id {manager_id!r}: source {source!r} rejected, "
+                    f"Duplicate {manager_id!r}: source {source!r} rejected, "
                     f"already registered by source {existing_source!r}"
                 )
                 return
             self._manager_id_to_source[manager_id] = source
 
-            logger.info(f"WorkerManager {manager_id!r} connected")
+            logger.info(f"{manager_id!r} connected")
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
@@ -107,9 +107,9 @@ class WorkerManagerController(Looper, Reporter):
 
         return build_scaling_manager_status(managed_workers, details)
 
-    def get_managed_workers(self) -> Dict[bytes, List[WorkerID]]:
+    def get_managed_workers(self) -> Dict[WorkerManagerID, List[WorkerID]]:
         """Return managed workers keyed by worker_manager_id (from heartbeat)."""
-        result: Dict[bytes, List[WorkerID]] = {}
+        result: Dict[WorkerManagerID, List[WorkerID]] = {}
         for source, (_, heartbeat) in self._manager_alive_since.items():
             manager_id = heartbeat.workerManagerID
             result[manager_id] = self._worker_controller.get_workers_by_manager_id(manager_id)
@@ -118,12 +118,14 @@ class WorkerManagerController(Looper, Reporter):
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
         await self._binder.send(source, command, detached=True)
 
-    def _build_manager_snapshots(self, information_snapshot: InformationSnapshot) -> Dict[bytes, WorkerManagerSnapshot]:
+    def _build_manager_snapshots(
+        self, information_snapshot: InformationSnapshot
+    ) -> Dict[WorkerManagerID, WorkerManagerSnapshot]:
         """Build cross-manager snapshots from all known managers, keyed by worker_manager_id.
 
         A manager's worker count leaves out its draining workers: they take no new task, and the manager does not
         count them as supply either."""
-        snapshots: Dict[bytes, WorkerManagerSnapshot] = {}
+        snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot] = {}
         for source, (last_seen, heartbeat) in self._manager_alive_since.items():
             manager_id = heartbeat.workerManagerID
             worker_count = sum(

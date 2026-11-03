@@ -12,6 +12,7 @@ import psutil
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.utility.exitcode import describe_exitcode
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.worker.worker import Worker
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.desired_concurrency import extract_desired_count
@@ -29,7 +30,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+        self._worker_manager_id = WorkerManagerID.from_string(config.worker_manager_config.worker_manager_id)
         self._io_threads = config.worker_config.io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
@@ -194,7 +195,7 @@ class NativeWorkerManager:
             heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=self._config.worker_manager_config.max_task_concurrency,
-            worker_manager_id=self._config.worker_manager_config.worker_manager_id.encode(),
+            worker_manager_id=WorkerManagerID.from_string(self._config.worker_manager_config.worker_manager_id),
             worker_provisioner=provisioner,
             io_threads=self._config.worker_config.io_threads,
             security_config=self._config.security,

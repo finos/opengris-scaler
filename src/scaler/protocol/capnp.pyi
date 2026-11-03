@@ -3,7 +3,7 @@ from typing import Any, ClassVar
 
 from scaler.utility.identifiers import ClientID
 from scaler.utility.identifiers import ObjectID as ScalerObjectID
-from scaler.utility.identifiers import TaskID, WorkerID
+from scaler.utility.identifiers import TaskID, WorkerID, WorkerManagerID
 
 class CapnpStruct:
     def __init__(self, **kwargs: Any) -> None: ...
@@ -139,11 +139,11 @@ class WorkerManagerStatus(CapnpStruct):
 
 class ScalingManagerStatus(CapnpStruct):
     class Pair(CapnpStruct):
-        workerManagerID: bytes
+        workerManagerID: WorkerManagerID
         workerIDs: Any
 
     class WorkerManagerDetail(CapnpStruct):
-        workerManagerID: bytes
+        workerManagerID: WorkerManagerID
         identity: str
         lastSeenSeconds: int
         maxTaskConcurrency: int
@@ -235,7 +235,7 @@ class WorkerHeartbeat(BaseMessage):
     taskLock: bool
     processors: Any
     capabilities: Any
-    workerManagerID: bytes
+    workerManagerID: WorkerManagerID
     memLimit: int
     hostname: str
     netSentBytes: int
@@ -248,7 +248,7 @@ class WorkerHeartbeatEcho(BaseMessage):
 class WorkerManagerHeartbeat(BaseMessage):
     maxTaskConcurrency: int
     capabilities: Any
-    workerManagerID: bytes
+    workerManagerID: WorkerManagerID
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 

@@ -3,15 +3,15 @@ from unittest.mock import MagicMock
 
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 
-MANAGER_ID = b"manager"
-OTHER_MANAGER_ID = b"other-manager"
+MANAGER_ID = WorkerManagerID(b"manager")
+OTHER_MANAGER_ID = WorkerManagerID(b"other-manager")
 VANILLA_LOGGER = "scaler.scheduler.policies.scaling.vanilla"
 CAPABILITY_LOGGER = "scaler.scheduler.policies.scaling.capability"
 
 
-def _heartbeat(manager_id: bytes = MANAGER_ID) -> MagicMock:
+def _heartbeat(manager_id: WorkerManagerID = MANAGER_ID) -> MagicMock:
     heartbeat = MagicMock()
     heartbeat.workerManagerID = manager_id
     heartbeat.maxTaskConcurrency = -1
@@ -108,7 +108,7 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
     """
 
     @staticmethod
-    def _snapshots(*manager_ids: bytes) -> dict:
+    def _snapshots(*manager_ids: WorkerManagerID) -> dict:
         return {manager_id: MagicMock() for manager_id in manager_ids}
 
     def test_vanilla_forgets_a_manager_the_scheduler_no_longer_knows(self):

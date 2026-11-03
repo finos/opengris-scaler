@@ -11,12 +11,12 @@ from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.scheduler.policies.utility import create_policies
-from scaler.utility.identifiers import ClientID, TaskID, WorkerID
+from scaler.utility.identifiers import ClientID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
 _WORKER_ID = WorkerID(b"worker_aaa")
-_MANAGER_ID = b"manager_bbb"
+_MANAGER_ID = WorkerManagerID(b"manager_bbb")
 _TASK_ID = TaskID(b"0" * 16)
 
 
@@ -196,7 +196,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
 
         # Register N workers with a stale last-heartbeat so the sweep times all of them out at once
         # (bypassing on_heartbeat; replicate the state it maintains).
-        manager_id = b"worker-manager"
+        manager_id = WorkerManagerID(b"worker-manager")
         for i in range(self.N_WORKERS):
             worker_id = WorkerID(f"worker-{i}".encode())
             allocation_policy.add_worker(worker_id, {"capA": -1}, 10)
