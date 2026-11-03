@@ -157,6 +157,10 @@ void MessageConnection::shutdownClient() noexcept
             return;  // Ignore connection errors during shutdown
         }
 
+        if (!result.has_value() && result.error().code() == UV_ECANCELED) {
+            return;  // The event loop stopped before the peer read our remaining writes
+        }
+
         UV_EXIT_ON_ERROR(result);
     };
 

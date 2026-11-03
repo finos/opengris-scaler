@@ -3,7 +3,9 @@
 #include <chrono>
 #include <expected>
 #include <future>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "scaler/wrapper/uv/error.h"
@@ -21,6 +23,11 @@
 namespace {
 
 const std::string messagePayload = "Hello from ConnectorSocket!";
+
+// More than loopback's socket buffers hold, so a send to a peer that does not read stays in flight.
+constexpr size_t stalledSendBytes = 64 * 1024 * 1024;
+constexpr std::chrono::milliseconds sendSettleTime {200};
+constexpr std::chrono::seconds teardownTimeout {10};
 
 }  // namespace
 
@@ -381,6 +388,71 @@ TEST_P(YMQConnectorSocketTest, Reconnect)
     }
 
     ASSERT_TRUE(server.established());
+}
+
+TEST_P(YMQConnectorSocketTest, TeardownWithStalledPeer)
+{
+    // A peer that stopped reading keeps a stopped socket's graceful shutdown waiting on its writes. Destroying the
+    // IOContext must cancel them rather than wait for a peer that may never read again.
+
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
+
+    scaler::ymq::internal::MessageConnection stalledPeer(
+        "stalled-peer",
+        std::nullopt,
+        []([[maybe_unused]] auto identity) {},
+        []([[maybe_unused]] auto reason) {},
+        []([[maybe_unused]] auto message) {});
+
+    const auto listenAddress =
+        scaler::ymq::Address::fromString(getTransportAddress(GetParam(), 0), getTLSConfig(GetParam())).value();
+
+    auto server =
+        scaler::ymq::internal::AcceptServer::init(
+            loop, listenAddress, std::bind_front(&scaler::ymq::internal::MessageConnection::connect, &stalledPeer))
+            .value();
+
+    auto context   = std::make_unique<scaler::ymq::IOContext>();
+    auto connector = std::make_unique<scaler::ymq::ConnectorSocket>(scaler::ymq::ConnectorSocket::connect(
+        *context, "connector", server.address().toString().value(), []([[maybe_unused]] auto result) {}));
+
+    while (!stalledPeer.established()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    // The peer's loop does not run from here on, so it stops reading and the send stays in flight.
+
+    auto sendDone   = std::make_shared<std::promise<std::expected<void, scaler::ymq::Error>>>();
+    auto sendResult = sendDone->get_future();
+    connector->sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(std::string(stalledSendBytes, 'x')),
+        [sendDone](auto result, [[maybe_unused]] auto payload) { sendDone->set_value(std::move(result)); });
+
+    // SecureSocket acknowledges a write once queued on its transport, so TLS only pins that the teardown returns.
+    const bool sendStaysInFlight = GetParam() != "tls" && GetParam() != "wss";
+
+    if (sendStaysInFlight) {
+        ASSERT_EQ(sendResult.wait_for(sendSettleTime), std::future_status::timeout);
+    }
+
+    connector.reset();
+
+    // Detached: a teardown that hangs must fail this test, not block it forever.
+    auto contextDestroyed       = std::make_shared<std::promise<void>>();
+    auto contextDestroyedResult = contextDestroyed->get_future();
+    std::thread([context = std::move(context), contextDestroyed]() mutable {
+        context.reset();
+        contextDestroyed->set_value();
+    }).detach();
+
+    ASSERT_EQ(contextDestroyedResult.wait_for(teardownTimeout), std::future_status::ready);
+
+    if (sendStaysInFlight) {
+        ASSERT_EQ(sendResult.wait_for(std::chrono::seconds {0}), std::future_status::ready);
+        const auto result = sendResult.get();
+        ASSERT_FALSE(result.has_value());
+        ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::SocketStopRequested);
+    }
 }
 
 TEST_P(YMQConnectorSocketTest, Bind)
