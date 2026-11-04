@@ -71,7 +71,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._exit_backoff_seconds = 0.0
         self._last_pod_exit_at = -math.inf
         self._starts_held = False
-        self._backoff_reconcile_task: Optional[asyncio.Future] = None
+        self._backoff_task: Optional[asyncio.Future] = None
 
         self._watcher = kubernetes.watch.Watch()
         self._watch_stop = threading.Event()
@@ -146,7 +146,6 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
     def _handle_external_pod_deletion(self, pod_name: str) -> None:
         if pod_name in self._pods:
             self._pods.remove(pod_name)
-            asyncio.ensure_future(self._capacity_coordinator.request_reconcile())
 
     def _handle_exited_pod(self, pod_name: str) -> None:
         # stop_units may have untracked the pod while the event was in flight.
@@ -166,14 +165,13 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._starts_held = True
         logger.warning(f"Delaying replacement pods by {self._exit_backoff_seconds:.0f}s after a worker pod exit")
 
-        if self._backoff_reconcile_task is not None:
-            self._backoff_reconcile_task.cancel()
-        self._backoff_reconcile_task = asyncio.ensure_future(self._reconcile_after(self._exit_backoff_seconds))
+        if self._backoff_task is not None:
+            self._backoff_task.cancel()
+        self._backoff_task = asyncio.ensure_future(self._release_starts_after(self._exit_backoff_seconds))
 
-    async def _reconcile_after(self, delay_seconds: float) -> None:
+    async def _release_starts_after(self, delay_seconds: float) -> None:
         await asyncio.sleep(delay_seconds)
         self._starts_held = False
-        await self._capacity_coordinator.request_reconcile()
 
     def _stop_pod_watch(self) -> None:
         # No join: stream() drops a stop() that lands before it connects, and the read then blocks until the next event.
@@ -238,7 +236,7 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
         await self._capacity_coordinator.set_desired_unit_count(desired_pods)
 
     async def start_units(self, count: int) -> None:
-        # _reconcile_after requests another reconcile once the backoff ends.
+        # The scheduler resends the desired count on every heartbeat, so held starts retry once the backoff ends.
         if self._starts_held:
             logger.info(f"Holding {count} pod start(s) until the worker pod exit backoff ends")
             return
@@ -343,8 +341,8 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     async def terminate(self) -> None:
         self._stop_pod_watch()
-        if self._backoff_reconcile_task is not None:
-            self._backoff_reconcile_task.cancel()
+        if self._backoff_task is not None:
+            self._backoff_task.cancel()
         self._capacity_coordinator.cancel()
         await self.stop_units(len(self._pods))
 

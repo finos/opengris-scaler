@@ -286,22 +286,19 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(provisioner.active_unit_count(), 1)
 
-    async def test_exited_pod_is_deleted_untracked_and_replaced(self) -> None:
-        """A tracked pod reported in Failed or Succeeded is deleted, untracked, and triggers a reconcile."""
+    async def test_exited_pod_is_deleted_untracked_and_backed_off(self) -> None:
+        """A tracked pod reported in Failed or Succeeded is deleted, untracked, and starts a backoff."""
         for event_type, phase in (("MODIFIED", "Failed"), ("MODIFIED", "Succeeded"), ("ADDED", "Failed")):
             with self.subTest(event_type=event_type, phase=phase):
                 provisioner, core_v1 = _make_provisioner()
                 await provisioner.start_units(2)
                 exited_name, surviving_name = provisioner._pods
 
-                with patch.object(
-                    provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock
-                ) as rec:
-                    await _run_pod_watch(provisioner, [{"type": event_type, "object": _exited_pod(exited_name, phase)}])
+                await _run_pod_watch(provisioner, [{"type": event_type, "object": _exited_pod(exited_name, phase)}])
 
                 self.assertEqual(provisioner._pods, [surviving_name])
                 self.assertEqual([c.args[0] for c in core_v1.delete_namespaced_pod.call_args_list], [exited_name])
-                rec.assert_awaited_once()
+                self.assertGreater(provisioner._exit_backoff_seconds, 0.0)
 
     async def test_watch_starts_from_a_pod_list(self) -> None:
         """Each connect lists pods, handles tracked pods deleted or exited while unwatched, and watches from there."""
@@ -313,8 +310,7 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
             [_pod(exited_name, "Failed"), _pod(running_name, "Running")], resource_version="42"
         )
 
-        with patch.object(provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock):
-            stream_kwargs = await _run_pod_watch(provisioner, [])
+        stream_kwargs = await _run_pod_watch(provisioner, [])
 
         self.assertEqual(provisioner._pods, [running_name])
         self.assertEqual([c.args[0] for c in core_v1.delete_namespaced_pod.call_args_list], [exited_name])
@@ -341,11 +337,10 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
         pod_name = provisioner._pods[0]
         await provisioner.stop_units(1)
 
-        with patch.object(provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock) as rec:
-            await _run_pod_watch(provisioner, [{"type": "MODIFIED", "object": _exited_pod(pod_name, "Failed")}])
+        await _run_pod_watch(provisioner, [{"type": "MODIFIED", "object": _exited_pod(pod_name, "Failed")}])
 
         self.assertEqual(core_v1.delete_namespaced_pod.call_count, 1)
-        rec.assert_not_awaited()
+        self.assertEqual(provisioner._exit_backoff_seconds, 0.0)
 
     async def test_deleted_pod_is_replaced_on_the_next_desired_count(self) -> None:
         """A pod deleted outside Scaler is replaced when the scheduler next sends the same desired count."""
@@ -376,15 +371,12 @@ class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(worker_manager_module, "time", MagicMock(monotonic=MagicMock(return_value=1000.0))),
             patch.object(worker_manager_module, "POD_EXIT_BACKOFF_INITIAL_SECONDS", 0.05),
-            patch.object(provisioner._capacity_coordinator, "request_reconcile", new_callable=AsyncMock) as rec,
         ):
             provisioner._handle_exited_pod(provisioner._pods[0])
             await provisioner.start_units(1)
             self.assertEqual(core_v1.create_namespaced_pod.call_count, 1)
-            rec.assert_not_awaited()
 
-            await provisioner._backoff_reconcile_task
-            rec.assert_awaited_once()
+            await provisioner._backoff_task
             await provisioner.start_units(1)
             self.assertEqual(core_v1.create_namespaced_pod.call_count, 2)
 
@@ -405,7 +397,7 @@ class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.01)
             self.assertEqual(core_v1.create_namespaced_pod.call_count, 2)
 
-            await provisioner._backoff_reconcile_task
+            await provisioner._backoff_task
             await provisioner.set_desired_task_concurrency([request])
             await asyncio.sleep(0.01)
 
@@ -426,7 +418,7 @@ class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
         provisioner._last_pod_exit_at -= worker_manager_module.POD_EXIT_BACKOFF_RESET_SECONDS + 1
         provisioner._handle_exited_pod(provisioner._pods[0])
         self.assertEqual(provisioner._exit_backoff_seconds, 10.0)
-        provisioner._backoff_reconcile_task.cancel()
+        provisioner._backoff_task.cancel()
 
     async def test_watch_waits_before_reconnecting_after_an_error(self) -> None:
         """A failing watch waits before reconnecting instead of retrying in a tight loop, and still stops at once."""
