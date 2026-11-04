@@ -75,6 +75,7 @@ dev = [
     "nbsphinx",
     "pyodide-build==0.39.0; python_version >= '3.12'",
     "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.8.0",
     "ray>=2.59.0",
     "shibuya",
@@ -206,6 +207,14 @@ extend_skip_glob = [
     "scripts/*",
     "venv*",
 ]
+
+[tool.pytest.ini_options]
+# The slowest test takes 83s on the CI macOS runner.
+# The stack dump comes from faulthandler because xdist drops the dump pytest-timeout prints.
+faulthandler_timeout = 600
+# The thread method kills only the hung xdist worker, so the processes it started stay alive for py-spy.
+timeout = 660
+timeout_method = "thread"
 
 [tool.cibuildwheel]
 skip = "cp38-* cp39-*"
