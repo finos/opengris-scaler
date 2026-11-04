@@ -63,8 +63,8 @@ Copy ``config.toml`` below, replace the placeholder values, then start services:
          type = "oci_raw"
          scheduler_address = "tcp://127.0.0.1:8516"
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
-         children_address = "tcp://0.0.0.0:8518"
-         advertised_children_address = "tcp://<PUBLIC_IP>:8518"
+         children_address = "tcp://0.0.0.0:8519"
+         advertised_children_address = "tcp://<PUBLIC_IP>:8519"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          worker_manager_id = "wm-oci-raw"
          oci_region = "us-ashburn-1"
@@ -97,8 +97,8 @@ Copy ``config.toml`` below, replace the placeholder values, then start services:
              --policy-content "allocate=even_load; scaling=vanilla"
          scaler_worker_manager oci_raw tcp://127.0.0.1:8516 \
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
-             --children-address tcp://0.0.0.0:8518 \
-             --advertised-children-address tcp://<PUBLIC_IP>:8518 \
+             --children-address tcp://0.0.0.0:8519 \
+             --advertised-children-address tcp://<PUBLIC_IP>:8519 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --worker-manager-id wm-oci-raw \
              --oci-region us-ashburn-1 \

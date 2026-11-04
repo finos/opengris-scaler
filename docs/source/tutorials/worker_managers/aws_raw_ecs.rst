@@ -133,8 +133,8 @@ services:
          type = "aws_raw_ecs"
          scheduler_address = "tcp://127.0.0.1:8516"
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
-         children_address = "tcp://0.0.0.0:8518"
-         advertised_children_address = "tcp://<PUBLIC_IP>:8518"
+         children_address = "tcp://0.0.0.0:8519"
+         advertised_children_address = "tcp://<PUBLIC_IP>:8519"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          worker_manager_id = "wm-ecs"
          ecs_subnets = "subnet-0abc1234def56789a"
@@ -157,8 +157,8 @@ services:
          scaler_scheduler tcp://0.0.0.0:8516 --object-storage-address tcp://127.0.0.1:8517 --policy-content "allocate=even_load; scaling=vanilla"
          scaler_worker_manager aws_raw_ecs tcp://127.0.0.1:8516 \
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
-             --children-address tcp://0.0.0.0:8518 \
-             --advertised-children-address tcp://<PUBLIC_IP>:8518 \
+             --children-address tcp://0.0.0.0:8519 \
+             --advertised-children-address tcp://<PUBLIC_IP>:8519 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --worker-manager-id wm-ecs \
              --ecs-subnets subnet-0abc1234def56789a \
@@ -228,8 +228,8 @@ Step 3: Start the AWS Raw ECS Worker Manager
          type = "aws_raw_ecs"
          scheduler_address = "tcp://127.0.0.1:8516"
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
-         children_address = "tcp://0.0.0.0:8518"
-         advertised_children_address = "tcp://<PUBLIC_IP>:8518"
+         children_address = "tcp://0.0.0.0:8519"
+         advertised_children_address = "tcp://<PUBLIC_IP>:8519"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          worker_manager_id = "wm-ecs"
          ecs_subnets = "subnet-0abc1234def56789a"
@@ -253,8 +253,8 @@ Step 3: Start the AWS Raw ECS Worker Manager
 
          scaler_worker_manager aws_raw_ecs tcp://127.0.0.1:8516 \
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
-             --children-address tcp://0.0.0.0:8518 \
-             --advertised-children-address tcp://<PUBLIC_IP>:8518 \
+             --children-address tcp://0.0.0.0:8519 \
+             --advertised-children-address tcp://<PUBLIC_IP>:8519 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --worker-manager-id wm-ecs \
              --ecs-subnets subnet-0abc1234def56789a \
