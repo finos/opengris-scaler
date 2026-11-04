@@ -15,7 +15,7 @@ from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 
 logger = logging.getLogger(__name__)
 
-# A unit that stays active this long proves the unit recipe works, so the crash-loop backoff starts over.
+# A unit active this long since the last loss proves the unit recipe works, so the crash-loop backoff starts over.
 UNIT_STABLE_SECONDS = 60
 
 # The crash-loop backoff doubles on each consecutive loss, up to this many times.
@@ -87,6 +87,7 @@ class UnitController(Looper, Reporter):
         self._shut_down = asyncio.Event()  # set once is_shut_down() holds
 
         self._consecutive_unit_losses = 0
+        self._last_unit_loss_at = 0.0  # time.monotonic()
         self._create_not_before = 0.0  # time.monotonic()
 
     def set_desired_task_concurrency(self, task_concurrency: int) -> None:
@@ -104,7 +105,8 @@ class UnitController(Looper, Reporter):
         unit.active_task_concurrency = active_task_concurrency
         unit.occupancy = occupancy
 
-        if unit.state == UnitState.active and now - unit.state_since > UNIT_STABLE_SECONDS:
+        is_stable = unit.state == UnitState.active and now - unit.state_since > UNIT_STABLE_SECONDS
+        if is_stable and unit.state_since > self._last_unit_loss_at:
             self._consecutive_unit_losses = 0
 
         # A heartbeat that beats create_unit back waits for the next one: an active unit always has a handle.
@@ -202,6 +204,7 @@ class UnitController(Looper, Reporter):
 
     def _on_unit_lost(self) -> None:
         self._consecutive_unit_losses += 1
+        self._last_unit_loss_at = time.monotonic()
         doublings = min(self._consecutive_unit_losses - 1, MAX_RESTART_BACKOFF_DOUBLINGS)
         backoff_seconds = self._restart_backoff_seconds * 2**doublings
         self._create_not_before = time.monotonic() + backoff_seconds

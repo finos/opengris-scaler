@@ -194,6 +194,20 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.__heartbeat_all(self.controller, self.provisioner)
         self.assertEqual(self.controller._consecutive_unit_losses, 0)
 
+    async def test_a_unit_stable_before_the_losses_does_not_reset_the_backoff(self) -> None:
+        """Failing creates keep doubling the backoff while an older unit serves: it proves nothing about new creates."""
+        (stable_unit_id,) = await self.__active_units(1)
+        self.controller._units[stable_unit_id].state_since -= UNIT_STABLE_SECONDS + 1
+
+        self.provisioner.fail_creates = True
+        self.controller.set_desired_task_concurrency(2 * TASK_CONCURRENCY_PER_UNIT)
+        await self.__tick(self.controller)
+        self.__heartbeat_all(self.controller, self.provisioner)
+
+        self.controller._create_not_before = 0
+        await self.__tick(self.controller)
+        self.assertEqual(self.controller._consecutive_unit_losses, 2)
+
     async def test_a_failed_create_leaves_no_unit_and_arms_the_backoff(self) -> None:
         self.provisioner.fail_creates = True
         self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
