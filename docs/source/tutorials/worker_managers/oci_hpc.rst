@@ -163,6 +163,7 @@ OCI HPC Parameters
 * ``--object-storage-bucket`` (required): OCI Object Storage bucket name for task payloads and results.
 * ``--object-storage-prefix``: Key prefix for task objects (default: ``scaler-tasks``).
 * ``--base-concurrency`` (``-bc``): Maximum number of concurrently running container instances (default: ``100``).
+  The worker manager runs at most ``ceil(--max-task-concurrency / --base-concurrency)`` worker processes, each running up to ``--base-concurrency`` container instances.
 * ``--job-timeout-seconds``: Maximum runtime in seconds for a single container instance (default: ``3600``).
 
 Container Instance Config

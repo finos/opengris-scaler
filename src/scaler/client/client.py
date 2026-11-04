@@ -21,7 +21,7 @@ from scaler.io.mixins import NetworkBackend, SyncConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
-from scaler.protocol.helpers import dict_to_capabilities
+from scaler.protocol.helpers import capabilities_to_dict, dict_to_capabilities
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -67,6 +67,7 @@ class Client:
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
         security_config: Optional[SecurityConfig] = None,
+        capabilities: Optional[Dict[str, int]] = None,
     ):
         """
         The Scaler Client used to send tasks to a scheduler.
@@ -87,6 +88,10 @@ class Client:
                                        its worker's address. Any other client uses the address the
                                        scheduler advertises.
         :type object_storage_address: Optional[str]
+        :param capabilities: Capabilities of every task this client submits, e.g. `{"gpu": 1}`. A submission's own
+                             `capabilities` replaces them. If None, a client inside a worker takes the capabilities of
+                             the task it runs in, and any other client uses `{}`.
+        :type capabilities: Optional[Dict[str, int]]
         """
         self.__initialize__(
             address,
@@ -97,6 +102,7 @@ class Client:
             stream_output,
             object_storage_address,
             security_config,
+            capabilities,
         )
 
     def __initialize__(
@@ -109,6 +115,7 @@ class Client:
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
         security_config: Optional[SecurityConfig] = None,
+        capabilities: Optional[Dict[str, int]] = None,
     ):
         check_browser_runtime()
 
@@ -122,6 +129,7 @@ class Client:
         self._stream_output = stream_output
         self._identity = ClientID.generate_client_id()
         self._security_config = security_config
+        self._capabilities = self.__resolve_capabilities(capabilities)
 
         self._backend: NetworkBackend = get_network_backend_from_env()
 
@@ -195,8 +203,8 @@ class Client:
             print(client.submit(fibonacci, client, 7).result())
 
 
-        When serializing the client, only saves the address parameters. When deserialized, a new client object
-        connecting to the same scheduler and remote logger will be instantiated.
+        When serializing the client, only saves the address parameters and the capabilities. When deserialized, a new
+        client object connecting to the same scheduler and remote logger will be instantiated.
         """
 
         return {
@@ -205,6 +213,7 @@ class Client:
             "stream_output": self._stream_output,
             "timeout_seconds": self._timeout_seconds,
             "heartbeat_interval_seconds": self._heartbeat_interval_seconds,
+            "capabilities": self._capabilities,
         }
 
     def __setstate__(self, state: dict) -> None:
@@ -215,6 +224,7 @@ class Client:
             stream_output=state["stream_output"],
             timeout_seconds=state["timeout_seconds"],
             heartbeat_interval_seconds=state["heartbeat_interval_seconds"],
+            capabilities=state["capabilities"],
         )
 
     def submit(self, fn: Callable, *args, **kwargs) -> ScalerFuture:
@@ -250,6 +260,7 @@ class Client:
         :param args: positional arguments will be passed to function
         :param kwargs: keyword arguments will be passed to function
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+                             If None, uses the client's capabilities.
         :type capabilities: Optional[Dict[str, int]]
         :param reserialize: If True, re-serialize this task's argument objects instead of reusing a cached snapshot,
                             and refresh the cache. Because identical content uploads once, the re-serialized bytes are
@@ -297,6 +308,7 @@ class Client:
         :param iterables: one or more iterables, each providing one argument to the function
         :type iterables: Iterable[Any]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+                             If None, uses the client's capabilities.
         :type capabilities: Optional[Dict[str, int]]
         :param reserialize: If True, re-serialize the argument objects instead of reusing a cached snapshot, and refresh
                             the cache. Because identical content uploads once, the re-serialized bytes are re-uploaded
@@ -335,6 +347,7 @@ class Client:
         :param iterable: iterable of argument iterables to unpack and pass to the function
         :type iterable: Iterable[Iterable[Any]]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+                             If None, uses the client's capabilities.
         :type capabilities: Optional[Dict[str, int]]
         :param reserialize: If True, re-serialize the argument objects instead of reusing a cached snapshot, and refresh
                             the cache. Because identical content uploads once, the re-serialized bytes are re-uploaded
@@ -398,6 +411,7 @@ class Client:
         :param block: if True, it will directly return a dictionary that maps from keys to results
         :return: dictionary of mapping keys to futures, or map to results if block=True is specified
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+                             If None, uses the client's capabilities.
         :type capabilities: Optional[Dict[str, int]]
         :param reserialize: If True, re-serialize the graph's data nodes instead of reusing a cached snapshot, and
                             refresh the cache. Because identical content uploads once, the re-serialized bytes are
@@ -410,7 +424,8 @@ class Client:
 
         self.__assert_client_not_stopped()
 
-        capabilities = capabilities or {}
+        if capabilities is None:
+            capabilities = self._capabilities
 
         graph = cull_graph(graph, keys)
 
@@ -577,7 +592,8 @@ class Client:
     ) -> Tuple[Task, ScalerFuture]:
         task_id = TaskID.generate_task_id()
 
-        capabilities = capabilities or {}
+        if capabilities is None:
+            capabilities = self._capabilities
 
         function_args: List[Union[ObjectID, TaskID]] = []
         for arg in args:
@@ -805,6 +821,21 @@ class Client:
         assert current_task is not None
 
         return retrieve_task_flags_from_task(current_task).priority
+
+    @staticmethod
+    def __resolve_capabilities(capabilities: Optional[Dict[str, int]]) -> Dict[str, int]:
+        """The capabilities of the client's tasks: a client inside a worker given none takes its task's."""
+        if capabilities is not None:
+            return dict(capabilities)
+
+        current_processor = Processor.get_current_processor() if Processor is not None else None
+        if current_processor is None:
+            return {}
+
+        current_task = current_processor.current_task()
+        assert current_task is not None
+
+        return capabilities_to_dict(current_task.capabilities)
 
     def __resolve_scheduler_address(self, address: Optional[str]) -> AddressConfig:
         """Resolve the scheduler address based on the provided address and worker context."""
