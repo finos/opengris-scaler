@@ -13,6 +13,8 @@ jobs:
   tests:
     name: Build And Test
     runs-on: ${{ matrix.os }}
+    # The slowest successful job takes 31 minutes, on Ubuntu.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
