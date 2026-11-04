@@ -309,16 +309,6 @@ Invalid YAML, a template that is not a mapping, or a path to a missing file stop
    pod_image = "myregistry.example.com/scaler:latest"
    workers_per_pod = 4
 
-   [worker_manager.node_selector]
-   nodepool = "compute"
-
-   [worker_manager.resource_requests]
-   cpu = "4"
-   memory = "16Gi"
-
-   [worker_manager.resource_limits]
-   memory = "32Gi"
-
    # pod_template as an inline YAML string:
    pod_template = """
    metadata:
@@ -344,6 +334,16 @@ Invalid YAML, a template that is not a mapping, or a path to a missing file stop
          capabilities:
            drop: ["ALL"]
    """
+
+   [worker_manager.node_selector]
+   nodepool = "compute"
+
+   [worker_manager.resource_requests]
+   cpu = "4"
+   memory = "16Gi"
+
+   [worker_manager.resource_limits]
+   memory = "32Gi"
 
 Alternatively, point ``pod_template`` at a YAML file:
 
