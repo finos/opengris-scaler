@@ -145,6 +145,9 @@
       "output": {
         "outputOnFailure": true
       },
+      "execution": {
+        "timeout": 300
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -156,6 +159,9 @@
       "configurePreset": "linux-aarch64",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 300
       },
       "condition": {
         "type": "equals",
@@ -169,6 +175,9 @@
       "output": {
         "outputOnFailure": true
       },
+      "execution": {
+        "timeout": 300
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -180,6 +189,9 @@
       "configurePreset": "darwin-x86_64",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 300
       },
       "condition": {
         "type": "equals",
@@ -194,6 +206,9 @@
       "output": {
         "outputOnFailure": true
       },
+      "execution": {
+        "timeout": 300
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -206,6 +221,9 @@
       "configuration": "Release",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 300
       },
       "condition": {
         "type": "equals",
