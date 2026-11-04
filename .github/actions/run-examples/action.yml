@@ -33,23 +33,12 @@ runs:
 
         uv pip install --system -r examples/applications/requirements_applications.txt
         for example in "./examples/applications"/*.py; do
-          if python -c 'import sys; sys.exit(not sys.version_info <= (3, 10))'; then
-            if [ "$example" = "./examples/applications/yfinance_historical_price.py" ]; then
-              echo "Skipping $example"
-              continue;
-            fi
-          fi
-
           echo "Running $example"
           python $example
         done
 
-        if python -c 'import sys; sys.exit(not sys.version_info >= (3, 10))'; then
-          uv pip install --system -r examples/libraries/requirements.txt
-          for example in "./examples/libraries"/*.py; do
-            echo "Running $example"
-            python $example
-          done
-        else
-          echo "Skipping examples/libraries on Python < 3.10"
-        fi
+        uv pip install --system -r examples/libraries/requirements.txt
+        for example in "./examples/libraries"/*.py; do
+          echo "Running $example"
+          python $example
+        done
