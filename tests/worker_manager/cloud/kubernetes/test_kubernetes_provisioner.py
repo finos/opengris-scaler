@@ -347,6 +347,22 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(core_v1.delete_namespaced_pod.call_count, 1)
         rec.assert_not_awaited()
 
+    async def test_deleted_pod_is_replaced_on_the_next_desired_count(self) -> None:
+        """A pod deleted outside Scaler is replaced when the scheduler next sends the same desired count."""
+        provisioner, core_v1 = _make_provisioner()
+        self.addCleanup(provisioner._capacity_coordinator.cancel)
+        request = _make_request(task_concurrency=4)
+
+        with patch.object(provisioner, "_start_pod_watch"):
+            await provisioner.set_desired_task_concurrency([request])
+            await asyncio.sleep(0.05)
+            provisioner._handle_external_pod_deletion(provisioner._pods[0])
+            await provisioner.set_desired_task_concurrency([request])
+            await asyncio.sleep(0.05)
+
+        self.assertEqual(provisioner.active_unit_count(), 2)
+        self.assertEqual(core_v1.create_namespaced_pod.call_count, 3)
+
 
 class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
     """Tests for the backoff that keeps a crashing pod from being replaced in a tight loop."""
@@ -371,6 +387,30 @@ class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
             rec.assert_awaited_once()
             await provisioner.start_units(1)
             self.assertEqual(core_v1.create_namespaced_pod.call_count, 2)
+
+    async def test_exited_pod_is_replaced_on_the_first_desired_count_after_backoff(self) -> None:
+        """A desired count during the backoff starts nothing, and the first one after it replaces the exited pod."""
+        provisioner, core_v1 = _make_provisioner()
+        self.addCleanup(provisioner._capacity_coordinator.cancel)
+        request = _make_request(task_concurrency=4)
+
+        with (
+            patch.object(provisioner, "_start_pod_watch"),
+            patch.object(worker_manager_module, "POD_EXIT_BACKOFF_INITIAL_SECONDS", 0.05),
+        ):
+            await provisioner.set_desired_task_concurrency([request])
+            await asyncio.sleep(0.01)
+            provisioner._handle_exited_pod(provisioner._pods[0])
+            await provisioner.set_desired_task_concurrency([request])
+            await asyncio.sleep(0.01)
+            self.assertEqual(core_v1.create_namespaced_pod.call_count, 2)
+
+            await provisioner._backoff_reconcile_task
+            await provisioner.set_desired_task_concurrency([request])
+            await asyncio.sleep(0.01)
+
+        self.assertEqual(provisioner.active_unit_count(), 2)
+        self.assertEqual(core_v1.create_namespaced_pod.call_count, 3)
 
     async def test_backoff_doubles_to_max_and_resets_after_quiet_period(self) -> None:
         """Consecutive exits double the backoff up to the max, and an exit after a quiet period starts over."""
