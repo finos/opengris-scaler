@@ -141,11 +141,13 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
 
         loop = asyncio.get_running_loop()
         try:
+            # The SDK retries a throttled create inside the call, holding an executor thread the ACTIVE polls need
             response = await loop.run_in_executor(
                 None,
                 functools.partial(
                     self._container_instances_client.create_container_instance,
                     create_container_instance_details=create_details,
+                    retry_strategy=oci.retry.NoneRetryStrategy(),
                 ),
             )
         except oci.exceptions.ServiceError as exc:
