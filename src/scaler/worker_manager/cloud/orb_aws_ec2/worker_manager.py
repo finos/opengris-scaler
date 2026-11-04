@@ -40,12 +40,12 @@ ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
 
 
 def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str, str]]:
-    """Return (clone_url, branch) for the first git+ requirement, or None.
+    """Return (clone_url, branch) for the opengris-scaler git+ requirement, or None.
 
     Only PEP 508 VCS form is supported: name @ git+<url>[@branch]
-      scaler @ git+https://github.com/org/repo.git@main      -> ("https://github.com/org/repo.git", "main")
-      scaler @ git+ssh://git@github.com/org/repo.git@main    -> ("ssh://git@github.com/org/repo.git", "main")
-      scaler @ git+https://TOKEN@github.com/org/repo.git     -> ("https://TOKEN@github.com/org/repo.git", "")
+      opengris-scaler @ git+https://github.com/org/repo.git@main      -> ("https://github.com/org/repo.git", "main")
+      opengris-scaler @ git+ssh://git@github.com/org/repo.git@main    -> ("ssh://git@github.com/org/repo.git", "main")
+      opengris-scaler @ git+https://TOKEN@github.com/org/repo.git     -> ("https://TOKEN@github.com/org/repo.git", "")
     """
     for line in requirements_content.splitlines():
         line = line.strip()
@@ -57,7 +57,7 @@ def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str
             req = Requirement(line.partition(";")[0].rstrip())
         except Exception:
             continue
-        if not req.url or not req.url.startswith("git+"):
+        if canonicalize_name(req.name) != "opengris-scaler" or not req.url or not req.url.startswith("git+"):
             continue
         parsed = urlsplit(req.url)
         at_idx = parsed.path.find("@")

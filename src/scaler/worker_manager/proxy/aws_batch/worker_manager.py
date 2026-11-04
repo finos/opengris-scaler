@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class AWSBatchWorkerProvisioner(DeclarativeWorkerProvisioner):
-    def __init__(self, config: AWSBatchWorkerManagerConfig) -> None:
+    def __init__(self, config: AWSBatchWorkerManagerConfig, max_units: int) -> None:
         self._config = config
         self._base_concurrency = config.max_concurrent_jobs
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -29,7 +29,7 @@ class AWSBatchWorkerProvisioner(DeclarativeWorkerProvisioner):
             start_units=self.start_units,
             stop_units=self.stop_units,
             active_unit_count=self.active_unit_count,
-            max_unit_count=-1,
+            max_unit_count=max_units,
             scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
         )
 
@@ -98,13 +98,15 @@ class AWSBatchWorkerManager:
         if config.backend != AWSHPCBackend.batch:
             raise NotImplementedError(f"backend {config.backend.name!r} is not yet implemented")
 
-        provisioner = AWSBatchWorkerProvisioner(config)
+        mtc = config.worker_manager_config.max_task_concurrency
+        max_units = math.ceil(mtc / config.max_concurrent_jobs) if mtc != -1 else -1
+        provisioner = AWSBatchWorkerProvisioner(config, max_units)
         runner = WorkerManagerRunner(
             name="worker_manager_aws_hpc",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=-1,
+            max_provisioner_units=max_units,
             worker_provisioner=provisioner,
             children_address=local_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,

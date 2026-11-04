@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class OCIJobsWorkerProvisioner(DeclarativeWorkerProvisioner):
-    def __init__(self, config: OCIHPCWorkerManagerConfig) -> None:
+    def __init__(self, config: OCIHPCWorkerManagerConfig, max_units: int) -> None:
         self._config = config
         self._base_concurrency = config.base_concurrency
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -29,7 +29,7 @@ class OCIJobsWorkerProvisioner(DeclarativeWorkerProvisioner):
             start_units=self.start_units,
             stop_units=self.stop_units,
             active_unit_count=self.active_unit_count,
-            max_unit_count=-1,
+            max_unit_count=max_units,
             scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
         )
 
@@ -113,13 +113,15 @@ class OCIJobsWorkerManager:
             f"  Max Concurrent Jobs: {config.base_concurrency}\n"
             f"  Job Timeout: {config.job_timeout_seconds}s"
         )
-        provisioner = OCIJobsWorkerProvisioner(config)
+        mtc = config.worker_manager_config.max_task_concurrency
+        max_units = math.ceil(mtc / config.base_concurrency) if mtc != -1 else -1
+        provisioner = OCIJobsWorkerProvisioner(config, max_units)
         runner = WorkerManagerRunner(
             name="worker_manager_oci_hpc",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=-1,
+            max_provisioner_units=max_units,
             worker_provisioner=provisioner,
             children_address=local_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
