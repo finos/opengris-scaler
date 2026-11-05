@@ -421,11 +421,9 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
                 logger.exception(f"Error monitoring job {job_id}: {e}")
 
     async def _cancel_batch_job(self, job_id: str) -> None:
-        try:
-            await self._run_in_executor(self._batch_client.terminate_job, jobId=job_id, reason="Canceled by Scaler")
-            logger.info(f"Canceled Batch job {job_id}")
-        except Exception as e:
-            logger.warning(f"Failed to cancel Batch job {job_id}: {e}")
+        # Raises rather than logs: the job is still running, and the task manager reports cancelFailed.
+        await self._run_in_executor(self._batch_client.terminate_job, jobId=job_id, reason="Canceled by Scaler")
+        logger.info(f"Canceled Batch job {job_id}")
 
     async def _fetch_job_logs(self, job_id: str) -> str:
         try:

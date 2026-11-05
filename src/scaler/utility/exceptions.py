@@ -18,6 +18,12 @@ class ProcessorDiedError(Exception):
     pass
 
 
+class TaskCancelUnsupportedError(Exception):
+    """A proxy execution backend cannot stop a running task, so the cancel fails and the task reports its result."""
+
+    pass
+
+
 class SchedulerError(Exception):
     """The scheduler failed while it was applying a transition for this task, so the task cannot continue."""
 
