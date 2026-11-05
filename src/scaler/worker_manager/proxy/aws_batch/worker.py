@@ -55,5 +55,4 @@ def create_aws_batch_worker(
             s3_prefix=s3_prefix,
             job_timeout_seconds=job_timeout_seconds,
         ),
-        idle_sleep_seconds=0.1,
     )

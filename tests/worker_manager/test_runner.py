@@ -17,6 +17,7 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.proxy.mixins import ExecutionBackend
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
 from tests.utility.utility import logging_test_name
@@ -74,6 +75,45 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(any("Unknown action" in m or "unrecognized" in m for m in captured.output))
         self.send_mock.assert_not_called()
+
+
+class TestWorkerProcessCleanup(unittest.TestCase):
+    """The execution backend is the only place a worker can release what it holds off-process.
+
+    Symphony's is the case that forced this: soamapi tears its shared libraries down at process exit in
+    an order that corrupts the heap, so a worker that exits without closing its session dies of SIGABRT.
+    """
+
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+        self.worker_process = WorkerProcess(
+            name="test_worker",
+            address=MagicMock(),
+            object_storage_address=None,
+            capabilities={},
+            base_concurrency=1,
+            heartbeat_interval_seconds=1,
+            death_timeout_seconds=10,
+            task_queue_size=10,
+            io_threads=1,
+            event_loop="asyncio",
+            worker_manager_id=b"mgr",
+            processor_status_provider_factory=MagicMock(),
+            execution_backend_factory=MagicMock(),
+        )
+
+    def test_the_execution_backend_is_closed(self) -> None:
+        backend = MagicMock(spec=ExecutionBackend)
+        self.worker_process._execution_backend = backend
+
+        self.worker_process._cleanup()
+
+        backend.close.assert_called_once_with()
+
+    def test_a_worker_that_never_built_a_backend_cleans_up_anyway(self) -> None:
+        """__initialize can fail before the factory runs, and cleanup still has to finish."""
+        self.worker_process._cleanup()
 
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):

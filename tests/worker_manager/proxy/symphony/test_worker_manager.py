@@ -3,12 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-try:
-    from scaler.worker_manager.proxy.symphony.worker_manager import SymphonyWorkerProvisioner
-
-    _SYMPHONY_AVAILABLE = True
-except ImportError:
-    _SYMPHONY_AVAILABLE = False
+from scaler.worker_manager.proxy.symphony.worker_manager import SymphonyWorkerProvisioner
 
 
 def _make_provisioner(max_task_concurrency: int = -1) -> SymphonyWorkerProvisioner:
@@ -16,6 +11,7 @@ def _make_provisioner(max_task_concurrency: int = -1) -> SymphonyWorkerProvision
     config.worker_config.per_worker_capabilities.capabilities = {}
     config.worker_manager_config.max_task_concurrency = max_task_concurrency
     config.worker_manager_config.worker_manager_id = "test-wm"
+    config.worker_manager_config.scale_down_cooldown_seconds = 0
     config.service_name = "test-service"
     return SymphonyWorkerProvisioner(config)
 
@@ -27,7 +23,6 @@ def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:
     return request
 
 
-@unittest.skipUnless(_SYMPHONY_AVAILABLE, "soamapi not installed")
 class TestSymphonyWorkerProvisionerConcurrencyConversion(unittest.IsolatedAsyncioTestCase):
     async def test_passes_task_concurrency_directly_as_desired_unit_count(self) -> None:
         provisioner = _make_provisioner()

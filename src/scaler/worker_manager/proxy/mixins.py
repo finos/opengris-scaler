@@ -34,7 +34,8 @@ class ExecutionBackend(ABC):
     async def execute(self, task: Task) -> asyncio.Future: ...
 
     @abstractmethod
-    async def on_cancel(self, task_cancel: TaskCancel) -> None: ...
+    async def on_cancel(self, task_cancel: TaskCancel) -> None:
+        """Stop the task's remote work, or raise TaskCancelUnsupportedError when the backend cannot stop it."""
 
     @abstractmethod
     def on_cleanup(self, task_id: TaskID) -> None: ...
@@ -44,3 +45,12 @@ class ExecutionBackend(ABC):
 
     @abstractmethod
     def register(self, load_task_inputs: TaskDeserializer) -> None: ...
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release whatever the backend holds outside the process, before the worker exits.
+
+        Called once from WorkerProcess after its event loop has stopped, so it cannot await. A backend
+        whose remote resources outlive an un-torn-down process, or whose library needs an orderly
+        shutdown, does that work here."""
+        ...
