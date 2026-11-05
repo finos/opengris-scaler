@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 ORB_AWS_EC2_POLLING_INTERVAL_SECONDS = 5
 ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
+ORB_AWS_EC2_FAILURE_STATUSES = frozenset({"failed", "cancelled", "partial", "timeout"})
 
 
 def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str, str]]:
@@ -109,36 +110,64 @@ class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
         logger.info(f"ORB request {request_id} submitted, polling for {count} instance ID(s)...")
         timeout_seconds = ORB_AWS_EC2_MAX_POLLING_ATTEMPTS * ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
         elapsed = 0
+        machine_ids: List[str] = []
 
-        while elapsed < timeout_seconds:
-            await asyncio.sleep(ORB_AWS_EC2_POLLING_INTERVAL_SECONDS)
-            elapsed += ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
+        try:
+            while elapsed < timeout_seconds:
+                await asyncio.sleep(ORB_AWS_EC2_POLLING_INTERVAL_SECONDS)
+                elapsed += ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
 
-            status_response = await self._sdk.get_request_status(request_ids=[request_id])
+                status_response = await self._sdk.get_request_status(request_ids=[request_id])
 
-            requests = status_response.get("requests", []) if isinstance(status_response, dict) else []
-            if not requests:
-                continue
+                requests = status_response.get("requests", []) if isinstance(status_response, dict) else []
+                if not requests:
+                    continue
 
-            req = requests[0] if isinstance(requests[0], dict) else {}
-            status = req.get("status", "")
-            machine_ids = req.get("machine_ids", [])
+                req = requests[0] if isinstance(requests[0], dict) else {}
+                status = req.get("status", "")
+                machine_ids = req.get("machine_ids", [])
 
-            if len(machine_ids) >= count:
-                for instance_id in machine_ids:
-                    logger.info(f"ORB request {request_id}: instance {instance_id} ready")
-                self._units.extend(machine_ids)
-                return
+                if len(machine_ids) >= count:
+                    for instance_id in machine_ids:
+                        logger.info(f"ORB request {request_id}: instance {instance_id} ready")
+                    self._units.extend(machine_ids)
+                    return
 
-            if status.lower() in {"failed", "error", "cancelled", "canceled"}:
-                raise RuntimeError(
-                    f"ORB request {request_id} reached terminal status '{status}' "
-                    f"with {len(machine_ids)}/{count} instances fulfilled."
-                )
+                if status.lower() in ORB_AWS_EC2_FAILURE_STATUSES:
+                    raise RuntimeError(
+                        f"ORB request {request_id} reached terminal status '{status}' "
+                        f"with {len(machine_ids)}/{count} instances fulfilled."
+                    )
 
-        raise TimeoutError(
-            f"ORB request {request_id} timed out after {timeout_seconds:.0f}s " f"with 0/{count} instances fulfilled."
+            raise TimeoutError(
+                f"ORB request {request_id} timed out after {timeout_seconds:.0f}s "
+                f"with {len(machine_ids)}/{count} instances fulfilled."
+            )
+        except BaseException:
+            await self._cancel_request(request_id)
+            raise
+
+    async def _cancel_request(self, request_id: str) -> None:
+        try:
+            cancel_response = await self._sdk.cancel_request(request_id=request_id)
+        except Exception as exc:
+            logger.error(f"Failed to cancel ORB request {request_id}: {exc}")
+            return
+
+        if not isinstance(cancel_response, dict):
+            return
+
+        requests = cancel_response.get("requests")
+        req = requests[0] if isinstance(requests, list) and requests and isinstance(requests[0], dict) else {}
+        return_status = cancel_response.get("return_status") or req.get("return_status")
+        return_message = (
+            cancel_response.get("return_message") or req.get("return_message") or cancel_response.get("error")
         )
+        if (isinstance(return_status, str) and return_status.lower() in ORB_AWS_EC2_FAILURE_STATUSES) or (
+            return_status is None and "error" in cancel_response
+        ):
+            detail = f": {return_message}" if return_message else f" (return_status={return_status!r})"
+            logger.error(f"ORB cancel_request for {request_id} reported a failed return{detail}")
 
     async def stop_units(self, count: int) -> None:
         unit_ids = self._units[:count]
