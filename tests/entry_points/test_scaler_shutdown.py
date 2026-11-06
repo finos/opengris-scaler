@@ -1,4 +1,5 @@
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -6,12 +7,11 @@ import sys
 import tempfile
 import time
 import unittest
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set
 
 import psutil
 
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 STARTUP_TIMEOUT_SECONDS = 60
@@ -19,17 +19,17 @@ SHUTDOWN_TIMEOUT_SECONDS = 30
 DESCENDANT_EXIT_TIMEOUT_SECONDS = 15
 
 
-def _pick_cluster_ports() -> Tuple[int, int, int]:
-    """Pick a scheduler, monitor and object storage port that do not collide with each other.
+# the processes bind port 0 and log the ports they got
+_BOUND_PORT_LOG_PATTERNS = (
+    re.compile(r"ObjectStorageServer: started, listening to tcp://[^:]+:(\d+)"),
+    re.compile(r"listen to scheduler address tcp://[^:]+:(\d+)"),
+    re.compile(r"listen to scheduler monitor address tcp://[^:]+:(\d+)"),
+)
 
-    The monitor port is set explicitly because the scheduler otherwise binds scheduler port + 2
-    without checking availability."""
-    while True:
-        scheduler_port = get_available_tcp_port()
-        monitor_port = get_available_tcp_port()
-        object_storage_port = get_available_tcp_port()
-        if len({scheduler_port, monitor_port, object_storage_port}) == 3:
-            return scheduler_port, monitor_port, object_storage_port
+
+def _bound_ports(log_content: str) -> Set[int]:
+    """The ports the object storage, scheduler and monitor logged as bound so far."""
+    return {int(match.group(1)) for pattern in _BOUND_PORT_LOG_PATTERNS for match in pattern.finditer(log_content)}
 
 
 def _ports_listening(ports: Set[int]) -> Set[int]:
@@ -58,29 +58,25 @@ class TestScalerShutdown(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
 
-        self._scheduler_port, self._monitor_port, self._object_storage_port = _pick_cluster_ports()
-        self._ports = {self._scheduler_port, self._monitor_port, self._object_storage_port}
-
         self._temp_dir = tempfile.TemporaryDirectory()
         self._config_path = os.path.join(self._temp_dir.name, "scaler_all.toml")
         with open(self._config_path, "w") as config_file:
-            config_file.write(f"""
+            config_file.write("""
 [object_storage_server]
-bind_address = "tcp://127.0.0.1:{self._object_storage_port}"
+bind_address = "tcp://127.0.0.1:0"
 
 [scheduler]
-bind_address = "tcp://127.0.0.1:{self._scheduler_port}"
-object_storage_address = "tcp://127.0.0.1:{self._object_storage_port}"
-monitor_address = "tcp://127.0.0.1:{self._monitor_port}"
+bind_address = "tcp://127.0.0.1:0"
+object_storage_address = "tcp://127.0.0.1:0"
 policy_content = "allocate=even_load; scaling=static"
 protected = false
 event_loop = "builtin"
 
 [[worker_manager]]
 type = "baremetal_native"
-scheduler_address = "tcp://127.0.0.1:{self._scheduler_port}"
+scheduler_address = "tcp://127.0.0.1:0"
 worker_manager_id = "wm-shutdown-test"
-object_storage_address = "tcp://127.0.0.1:{self._object_storage_port}"
+object_storage_address = "tcp://127.0.0.1:0"
 max_task_concurrency = 1
 """)
 
@@ -126,11 +122,15 @@ max_task_concurrency = 1
             if process.poll() is not None:
                 with open(self._log_path) as log_file:
                     self.fail(f"scaler exited during startup (code {process.returncode}):\n{log_file.read()}")
-            if _ports_listening(self._ports) == self._ports:
+            ports = _bound_ports(self._read_log())
+            if len(ports) == len(_BOUND_PORT_LOG_PATTERNS) and _ports_listening(ports) == ports:
                 return
             time.sleep(0.25)
-        listening = _ports_listening(self._ports)
-        self.fail(f"cluster did not start within {STARTUP_TIMEOUT_SECONDS}s; listening: {listening}")
+        self.fail(f"cluster did not start within {STARTUP_TIMEOUT_SECONDS}s:\n{self._read_log()}")
+
+    def _read_log(self) -> str:
+        with open(self._log_path) as log_file:
+            return log_file.read()
 
     def _descendants(self, process: subprocess.Popen) -> List[psutil.Process]:
         try:
@@ -155,10 +155,11 @@ max_task_concurrency = 1
                 survivors.append(f"pid={survivor.pid}")
         self.assertEqual([], survivors, "descendant processes survived shutdown")
 
+        ports = _bound_ports(self._read_log())
         deadline = time.monotonic() + DESCENDANT_EXIT_TIMEOUT_SECONDS
-        while time.monotonic() < deadline and _ports_listening(self._ports):
+        while time.monotonic() < deadline and _ports_listening(ports):
             time.sleep(0.25)
-        self.assertEqual(set(), _ports_listening(self._ports), "ports still bound after shutdown")
+        self.assertEqual(set(), _ports_listening(ports), "ports still bound after shutdown")
 
     def test_sigterm_terminates_whole_cluster(self) -> None:
         process = self._start_scaler()

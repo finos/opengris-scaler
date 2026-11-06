@@ -17,15 +17,15 @@ from scaler.config.section.webgui import WebGUIConfig
 from scaler.config.types.address import AddressConfig
 from scaler.ui.app import BROWSER_QUEUE_MAX_PAYLOADS, WebUIApp
 from scaler.ui.server import WebGUIServer
-from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.network_util import OS_PICKED_PORT
 
 
 class TestWebGUIServer(unittest.TestCase):
     def setUp(self) -> None:
         config = WebGUIConfig(monitor_address=AddressConfig.from_string("tcp://127.0.0.1:6380"))
         self.app = WebUIApp(config)
-        self.port = get_available_tcp_port()
-        self.server = WebGUIServer(("127.0.0.1", self.port), self.app, config.security)
+        self.server = WebGUIServer(("127.0.0.1", OS_PICKED_PORT), self.app, config.security)
+        self.port = self.server.server_address[1]
         self.base = f"http://127.0.0.1:{self.port}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 

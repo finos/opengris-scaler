@@ -64,9 +64,12 @@ void ObjectStorageServer::run(
             throw bindResult.error();
         }
 
-        setServerReadyFd();
+        _logger.log(
+            scaler::ymq::Logger::LoggingLevel::info,
+            "ObjectStorageServer: started, listening to ",
+            bindResult->toString().value_or("<unprintable address>"));
 
-        _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: started");
+        setServerReadyFd(std::move(bindResult.value()));
 
         processRequests(running);
     } catch (const std::exception& e) {
@@ -77,10 +80,11 @@ void ObjectStorageServer::run(
     }
 }
 
-void ObjectStorageServer::waitUntilReady()
+std::optional<scaler::ymq::Address> ObjectStorageServer::waitUntilReady()
 {
     std::unique_lock<std::mutex> lock {this->_serverReadyMutex};
     this->_serverReadyConditionVariable.wait(lock, [this] { return this->_isServerReady; });
+    return this->_boundAddress;
 }
 
 void ObjectStorageServer::shutdown()
@@ -96,10 +100,11 @@ void ObjectStorageServer::initServerReadyFds()
     this->_isServerReady = false;
 }
 
-void ObjectStorageServer::setServerReadyFd()
+void ObjectStorageServer::setServerReadyFd(scaler::ymq::Address boundAddress)
 {
     {
         std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
+        this->_boundAddress  = std::move(boundAddress);
         this->_isServerReady = true;
     }
     this->_serverReadyConditionVariable.notify_all();

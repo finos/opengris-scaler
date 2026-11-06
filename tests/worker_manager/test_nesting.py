@@ -7,11 +7,11 @@ from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
-from scaler.config.types.address import AddressConfig
+from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import BaseMessage, WorkerManagerCommand, WorkerManagerHeartbeat, WorkerManagerHeartbeatEcho
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
@@ -36,8 +36,12 @@ class _FakeParent:
         self._backend = get_network_backend_from_env(io_threads=1)
         self._binder = self._backend.create_async_binder(identity=b"fake-parent", callback=self._on_receive)
 
-    async def run(self) -> None:
+    async def bind(self) -> None:
         await self._binder.bind(self.address)
+        assert self._binder.address is not None
+        self.address = self._binder.address
+
+    async def run(self) -> None:
         while True:
             await self._binder.routine()
 
@@ -83,13 +87,13 @@ class TestChildManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_child_manager_runs_the_workers_its_parent_asks_for(self) -> None:
         """The task waits while the parent asks for no worker, and runs once the parent asks for one."""
+        parent = _FakeParent(AddressConfig(SocketType.tcp, "127.0.0.1", OS_PICKED_PORT))
+        await parent.bind()  # the child dials the address the parent bound
         combo = SchedulerClusterCombo(n_workers=0)
-        parent = _FakeParent(AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"))
         parent_task = asyncio.ensure_future(parent.run())
         child_process = _child_manager_process(combo, parent)
         loop = asyncio.get_running_loop()
         try:
-            await asyncio.sleep(0.5)  # let the fake parent bind before the child dials it
             child_process.start()
 
             with Client(address=combo.get_address()) as client:

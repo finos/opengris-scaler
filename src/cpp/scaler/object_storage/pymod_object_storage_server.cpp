@@ -106,15 +106,30 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 
 static PyObject* PyObjectStorageServerWaitUntilReady(PyObject* self, [[maybe_unused]] PyObject* args)
 {
+    std::optional<scaler::ymq::Address> boundAddress;
     Py_BEGIN_ALLOW_THREADS;
-    ((PyObjectStorageServer*)self)->server.waitUntilReady();
+    boundAddress = ((PyObjectStorageServer*)self)->server.waitUntilReady();
     Py_END_ALLOW_THREADS;
-    Py_RETURN_NONE;
+
+    if (!boundAddress) {
+        Py_RETURN_NONE;
+    }
+
+    auto addressString = boundAddress->toString();
+    if (!addressString) {
+        PyErr_SetString(PyExc_RuntimeError, "ObjectStorageServer: cannot print the bound address");
+        return nullptr;
+    }
+
+    return PyUnicode_FromString(addressString->c_str());
 }
 
 static PyMethodDef PyObjectStorageServerMethods[] = {
     {"run", PyObjectStorageServerRun, METH_VARARGS, "Run object storage server on address:port with logging config"},
-    {"wait_until_ready", PyObjectStorageServerWaitUntilReady, METH_NOARGS, "Wait until the server is ready"},
+    {"wait_until_ready",
+     PyObjectStorageServerWaitUntilReady,
+     METH_NOARGS,
+     "Wait until the server listens, return its address or None"},
     {nullptr, nullptr, 0, nullptr},
 };
 
