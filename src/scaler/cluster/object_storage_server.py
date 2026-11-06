@@ -1,7 +1,6 @@
 import logging
 import multiprocessing
 import multiprocessing.connection
-import threading
 from typing import Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
@@ -71,17 +70,16 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         tls_key = self._security_config.tls_key if self._security_config is not None else None
 
         self._server = ObjectStorageServer()
-        threading.Thread(target=self._report_bound_address, daemon=True).start()
         try:
             self._server.run(
-                repr(self._bind_address), self._ident, log_level_str, log_format_str, logging_paths, tls_cert, tls_key
+                repr(self._bind_address),
+                self._ident,
+                log_level_str,
+                log_format_str,
+                logging_paths,
+                tls_cert,
+                tls_key,
+                lambda bound_address: self._ready_sender.send(AddressConfig.from_string(bound_address)),
             )
         except KeyboardInterrupt:
             logger.info("ObjectStorageServer: received KeyboardInterrupt, shutting down")
-
-    def _report_bound_address(self) -> None:
-        bound_address = self._server.wait_until_ready()
-        if bound_address is None:  # the server stopped before binding and logged why
-            return
-
-        self._ready_sender.send(AddressConfig.from_string(bound_address))

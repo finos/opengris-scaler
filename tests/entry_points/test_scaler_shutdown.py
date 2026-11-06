@@ -35,7 +35,7 @@ def _bound_ports(log_content: str) -> Set[int]:
 def _ports_listening(ports: Set[int]) -> Set[int]:
     """Return the subset of loopback ports currently accepting TCP connections.
 
-    Probes with an actual connection (as ObjectStorageServerProcess.wait_until_ready does)
+    Probes with an actual connection
     rather than psutil.net_connections(), which requires root privileges on macOS while the
     Python test suite does not run as root."""
     listening = set()
