@@ -6,7 +6,7 @@ import signal
 import sys
 import time
 from multiprocessing.connection import Connection
-from typing import List, Optional, cast
+from typing import List, Optional, Tuple, cast
 
 import psutil
 
@@ -98,40 +98,59 @@ def _run_gui(config: WebGUIConfig) -> None:
     _main(config)
 
 
-# every process this command starts runs on this machine, so loopback reaches a server bound to every interface
+# binding it means every interface, but connecting to it is not portable
 WILDCARD_HOST = "0.0.0.0"
-LOOPBACK_HOST = "127.0.0.1"
 
 
-def _port_zero_without_target(config: ScalerAllConfig) -> List[str]:
-    """The connecting fields that name port 0 although this config starts no process for them to reach."""
-    fields = []
-    if config.object_storage is None and config.scheduler is not None:
-        if config.scheduler.object_storage_address.port == OS_PICKED_PORT:
-            fields.append("scheduler.object_storage_address")
+def _port_zero_connecting_addresses(config: ScalerAllConfig) -> List[Tuple[str, AddressConfig, bool]]:
+    """Each connecting field that names port 0, its address, and whether a section in this config binds it."""
+    fields: List[Tuple[str, AddressConfig, bool]] = []
+    if config.scheduler is not None:
+        fields.append(
+            (
+                "scheduler.object_storage_address",
+                config.scheduler.object_storage_address,
+                config.object_storage is not None,
+            )
+        )
 
     for wm_config in config.worker_managers:
         wm_addresses = wm_config.worker_manager_config
-        if config.scheduler is None and wm_addresses.scheduler_address.port == OS_PICKED_PORT:
-            fields.append(f"{wm_config._tag}.scheduler_address")
-        object_storage_address = wm_addresses.object_storage_address
-        if config.object_storage is None and object_storage_address is not None:
-            if object_storage_address.port == OS_PICKED_PORT:
-                fields.append(f"{wm_config._tag}.object_storage_address")
+        fields.append(
+            (f"{wm_config._tag}.scheduler_address", wm_addresses.scheduler_address, config.scheduler is not None)
+        )
+        if wm_addresses.object_storage_address is not None:
+            fields.append(
+                (
+                    f"{wm_config._tag}.object_storage_address",
+                    wm_addresses.object_storage_address,
+                    config.object_storage is not None,
+                )
+            )
 
-    if config.scheduler is None and config.gui is not None and config.gui.monitor_address.port == OS_PICKED_PORT:
-        fields.append("gui.monitor_address")
+    if config.gui is not None:
+        fields.append(("gui.monitor_address", config.gui.monitor_address, config.scheduler is not None))
 
-    return fields
+    return [(name, address, has_target) for name, address, has_target in fields if address.port == OS_PICKED_PORT]
+
+
+def _port_zero_errors(config: ScalerAllConfig) -> List[str]:
+    """Why each connecting field naming port 0 cannot be resolved, if it cannot."""
+    errors = []
+    for name, address, has_target in _port_zero_connecting_addresses(config):
+        if not has_target:
+            errors.append(f"{name} names port 0, but no section in this config binds it")
+        if address.host == WILDCARD_HOST:
+            errors.append(f"{name} names {WILDCARD_HOST}, which cannot be connected to: name 127.0.0.1 or another host")
+    return errors
 
 
 def _resolve(address: AddressConfig, bound: AddressConfig) -> AddressConfig:
-    """`address` with the port `bound` got when `address` names port 0, keeping the host it names."""
+    """`address` with the port `bound` got when `address` names port 0."""
     if address.port != OS_PICKED_PORT:
         return address
 
-    host = LOOPBACK_HOST if address.host == WILDCARD_HOST else address.host
-    return dataclasses.replace(address, host=host, port=bound.port)
+    return dataclasses.replace(address, port=bound.port)
 
 
 def _resolve_worker_manager(
@@ -214,11 +233,10 @@ def main() -> None:
         print("scaler: no any recognized section found in config file", file=sys.stderr)
         sys.exit(1)
 
-    port_zero_fields = _port_zero_without_target(config)
-    if port_zero_fields:
-        print(
-            f"scaler: port 0 needs a section in this config to bind it: {', '.join(port_zero_fields)}", file=sys.stderr
-        )
+    port_zero_errors = _port_zero_errors(config)
+    if port_zero_errors:
+        for error in port_zero_errors:
+            print(f"scaler: {error}", file=sys.stderr)
         sys.exit(1)
 
     def _raise_keyboard_interrupt(*_args: object) -> None:

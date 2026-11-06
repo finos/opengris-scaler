@@ -162,11 +162,11 @@ Port 0
 
 A section can bind port 0, and the OS picks a free port at bind time.
 
-- A connecting address that names port 0 connects to the section in the same file that binds it, on the port that section got.
+- A connecting address that names port 0 connects to the section in the same file that binds it.
 - The connecting fields are ``object_storage_address`` in ``[scheduler]``, ``scheduler_address`` and ``object_storage_address`` in ``[[worker_manager]]``, and ``monitor_address`` in ``[gui]``.
-- The connecting address keeps the host it names, except ``0.0.0.0``, which becomes ``127.0.0.1`` because every process runs on this machine.
-- ``scaler`` exits with an error when a connecting address names port 0 and no section in the file binds it.
-- Workers on other machines cannot reach ``127.0.0.1``: set ``advertised_object_storage_address`` for them, see :ref:`object-storage-addresses`.
+- Before starting a section, ``scaler`` replaces port 0 in its connecting addresses with the port the other section bound, and leaves the host as written.
+- Such an address cannot name ``0.0.0.0``, which means "every interface" only when binding: name ``127.0.0.1`` or another host.
+- ``scaler`` exits with an error, before starting any section, when such an address names ``0.0.0.0`` or no section in the file binds it.
 
 .. code-block:: toml
 
