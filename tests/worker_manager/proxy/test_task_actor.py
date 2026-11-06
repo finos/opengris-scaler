@@ -225,6 +225,35 @@ class TestTaskActorConcurrency(_TaskActorTestCase):
         self.assertTrue(self.actor.has_free_permit)
 
 
+class TestTaskActorMixedPriorityPermits(_TaskActorTestCase):
+    BASE_CONCURRENCY = 2
+
+    async def test_a_task_bypasses_only_above_every_permit_holder(self) -> None:
+        """A new task between the permit holders' priorities queues: it must outrank the highest one to bypass."""
+        await self._start_task(_make_task(priority=1))
+        await self._start_task(_make_task(priority=5))
+
+        self.actor.post_task_new(_make_task(priority=3))
+        await self._settle()
+
+        self.assertEqual(self.backend.execute.await_count, 1)
+        self.assertEqual(self.actor.processing_task_count, 2)
+        self.assertEqual(self.actor.queued_task_count, 1)
+
+    async def test_a_task_above_every_permit_holder_bypasses(self) -> None:
+        await self._start_task(_make_task(priority=1))
+        await self._start_task(_make_task(priority=5))
+
+        new_task = _make_task(priority=6)
+        self.backend.execute = AsyncMock(return_value=asyncio.get_running_loop().create_future())
+        self.actor.post_task_new(new_task)
+        await self._settle()
+
+        self.backend.execute.assert_called_once_with(new_task)
+        self.assertEqual(self.actor.processing_task_count, 3)
+        self.assertEqual(self.actor.queued_task_count, 0)
+
+
 class TestTaskActorCancel(_TaskActorTestCase):
     async def test_cancel_nonexistent_sends_cancel_not_found(self) -> None:
         await self._cancel(TaskID.generate_task_id(), force=False)

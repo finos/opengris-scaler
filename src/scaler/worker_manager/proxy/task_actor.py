@@ -29,7 +29,6 @@ class _TaskState(enum.Enum):
 class _TaskEntry:
     task: Task
     state: _TaskState
-    holds_permit: bool = False
     start_time: Optional[float] = None
     future: Optional[asyncio.Future] = None
 
@@ -82,7 +81,7 @@ class TaskActor:
 
         self._task_id_to_entry: Dict[TaskID, _TaskEntry] = dict()
         self._queued_task_id_queue: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
-        self._permits_held = 0
+        self._permit_holder_queue: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
 
     def post_task_new(self, task: Task) -> None:
         self._events.put_nowait(_TaskNew(task))
@@ -96,7 +95,7 @@ class TaskActor:
 
     @property
     def has_free_permit(self) -> bool:
-        return self._permits_held < self._base_concurrency
+        return len(self._permit_holder_queue) < self._base_concurrency
 
     @property
     def processing_task_count(self) -> int:
@@ -122,14 +121,12 @@ class TaskActor:
         entry = _TaskEntry(task=task, state=_TaskState.QUEUED)
         self._task_id_to_entry[task.taskId] = entry
 
-        if self._permits_held == self._base_concurrency and all(
-            task_priority > self._get_task_priority(other.task)
-            for other in self._task_id_to_entry.values()
-            if other.holds_permit
-        ):
-            # Bypass tasks intentionally exceed base_concurrency to service higher-priority requests immediately.
-            self._start_task(entry, holds_permit=False)
-            return
+        if len(self._permit_holder_queue) == self._base_concurrency:
+            negated_highest_held_priority, _ = self._permit_holder_queue.max_priority_item()
+            if task_priority > -negated_highest_held_priority:
+                # Bypass tasks intentionally exceed base_concurrency to service higher-priority requests immediately.
+                self._start_task(entry, holds_permit=False)
+                return
 
         self._queued_task_id_queue.put(-task_priority, task.taskId)
         self._start_queued_tasks()
@@ -172,8 +169,8 @@ class TaskActor:
 
     def _handle_finished(self, task_id: TaskID, future: asyncio.Future) -> None:
         entry = self._task_id_to_entry.pop(task_id)
-        if entry.holds_permit:
-            self._permits_held -= 1
+        if task_id in self._permit_holder_queue:
+            self._permit_holder_queue.remove(task_id)
         self._execution_backend.on_cleanup(task_id)
         self._start_queued_tasks()
 
@@ -183,16 +180,15 @@ class TaskActor:
             self._report_result(entry.task, future, profile_result)
 
     def _start_queued_tasks(self) -> None:
-        while self._permits_held < self._base_concurrency and len(self._queued_task_id_queue) > 0:
+        while self.has_free_permit and len(self._queued_task_id_queue) > 0:
             _, task_id = self._queued_task_id_queue.get()
             self._start_task(self._task_id_to_entry[task_id], holds_permit=True)
 
     def _start_task(self, entry: _TaskEntry, holds_permit: bool) -> None:
         entry.state = _TaskState.STARTING
-        entry.holds_permit = holds_permit
         entry.start_time = time.monotonic()
         if holds_permit:
-            self._permits_held += 1
+            self._permit_holder_queue.put(-self._get_task_priority(entry.task), entry.task.taskId)
         self._spawn(self._execute(entry.task))
 
     def _spawn(self, coroutine: Coroutine[Any, Any, None]) -> None:
