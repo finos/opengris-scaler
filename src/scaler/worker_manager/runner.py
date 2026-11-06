@@ -9,7 +9,15 @@ from scaler.io import ymq
 from scaler.io.mixins import AsyncBinder, AsyncConnector, ConnectorRemoteType, NetworkBackend
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
-from scaler.protocol.capnp import BaseMessage, WorkerManagerCommand, WorkerManagerHeartbeat, WorkerManagerHeartbeatEcho
+from scaler.protocol.capnp import (
+    BaseMessage,
+    WorkerDisconnectNotification,
+    WorkerHeartbeat,
+    WorkerHeartbeatEcho,
+    WorkerManagerCommand,
+    WorkerManagerHeartbeat,
+    WorkerManagerHeartbeatEcho,
+)
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.signal_handler import install_async_shutdown_handler
@@ -21,8 +29,8 @@ logger = logging.getLogger(__name__)
 class WorkerManagerRunner:
     """Connects a worker provisioner to its parent (the scheduler, or a parent worker manager) and to its units.
 
-    A unit that runs a child worker manager dials the children address. It is asked for the task concurrency of one
-    whole unit on every heartbeat.
+    Every unit dials the children address with its unit id as identity: a worker, or a child worker manager in a
+    resource. Each unit heartbeat gets an echo, and a child manager is asked for the task concurrency of one whole unit.
     """
 
     def __init__(
@@ -155,9 +163,17 @@ class WorkerManagerRunner:
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:
         unit_id = source.decode()  # each unit dials with the unit id it was created with as its identity
 
+        if isinstance(message, WorkerHeartbeat):
+            await self._binder_children.send(source, WorkerHeartbeatEcho(), detached=True)
+            return
+
         if isinstance(message, WorkerManagerHeartbeat):
             await self._binder_children.send(source, WorkerManagerHeartbeatEcho(), detached=True)
             await self._binder_children.send(source, self._unit_command(), detached=True)
+            return
+
+        if isinstance(message, WorkerDisconnectNotification):
+            logger.info(f"unit {unit_id!r} is exiting")
             return
 
         logger.error(f"unknown message from unit {unit_id!r}: {message}")
