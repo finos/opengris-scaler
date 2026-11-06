@@ -1,0 +1,52 @@
+name: "3rd Party Libraries"
+description: "Download, compile, and install the 3rd party libraries, or restore the installed ones from the cache"
+
+inputs:
+  os:
+    description: "operating system"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    # The env context does not hold variables the runner sets, such as ImageOS
+    - name: Read Runner Image
+      id: runner-image
+      shell: bash
+      run: echo "image-os=${ImageOS}" >> "$GITHUB_OUTPUT"
+
+    # Caches the install prefix: caching the build tree left the Linux install step at 92-182 s per run.
+    - name: Cache Installed Libraries
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+      id: installed-libraries
+      with:
+        path: ${{ env.SCALER_THIRDPARTY_PREFIX }}
+        key: installed-libraries-${{ inputs.os }}-${{ steps.runner-image.outputs.image-os }}-${{ hashFiles('scripts/library_tool.*', 'scripts/install_system_packages.sh', '.github/actions/setup-env/**', '.github/actions/3rd-party-libraries/**') }}
+
+    - name: Download, Compile, And Install Libraries (Linux/macOS)
+      shell: bash
+      if: (inputs.os == 'Linux' || inputs.os == 'macOS') && (steps.installed-libraries.outputs.cache-hit != 'true')
+      run: |
+        ./scripts/library_tool.sh capnp download
+        ./scripts/library_tool.sh libuv download
+        ./scripts/library_tool.sh openssl download
+        ./scripts/library_tool.sh capnp compile --prefix="$SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.sh libuv compile --prefix="$SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.sh openssl compile --prefix="$SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.sh capnp install --prefix="$SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.sh libuv install --prefix="$SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.sh openssl install --prefix="$SCALER_THIRDPARTY_PREFIX"
+
+    - name: Download, Compile, And Install Libraries (Windows)
+      shell: pwsh
+      if: (inputs.os == 'Windows') && (steps.installed-libraries.outputs.cache-hit != 'true')
+      run: |
+        ./scripts/library_tool.ps1 capnp download
+        ./scripts/library_tool.ps1 libuv download
+        ./scripts/library_tool.ps1 openssl download
+        ./scripts/library_tool.ps1 capnp compile --prefix="$env:SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.ps1 libuv compile --prefix="$env:SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.ps1 openssl compile --prefix="$env:SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.ps1 capnp install --prefix="$env:SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.ps1 libuv install --prefix="$env:SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.ps1 openssl install --prefix="$env:SCALER_THIRDPARTY_PREFIX"
