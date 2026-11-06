@@ -1,8 +1,8 @@
 import logging
 import multiprocessing
-import multiprocessing.connection
 from typing import Optional, Tuple
 
+from scaler.cluster.readiness import wait_for_ready_report
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.object_storage.object_storage_server import ObjectStorageServer
@@ -10,9 +10,6 @@ from scaler.utility.logging.utility import get_logger_info
 from scaler.utility.process_bootstrap import bootstrap_process
 
 logger = logging.getLogger(__name__)
-
-
-_READINESS_TIMEOUT_SECONDS = 30
 
 
 class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -43,20 +40,7 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
 
         The bound address differs from the configured one when that names port 0.
         """
-        # the sentinel wakes the wait if the server exits first, without polling its exit code
-        ready = multiprocessing.connection.wait([self._ready_receiver, self.sentinel], _READINESS_TIMEOUT_SECONDS)
-        if self._ready_receiver in ready:
-            return self._ready_receiver.recv()
-
-        if self.sentinel in ready:
-            self.join()
-            raise RuntimeError(
-                f"ObjectStorageServer exited with code {self.exitcode} before listening to {self._bind_address!r}"
-            )
-
-        raise TimeoutError(
-            f"ObjectStorageServer at {self._bind_address!r} failed to start within {_READINESS_TIMEOUT_SECONDS} seconds"
-        )
+        return wait_for_ready_report(self._ready_receiver, self, "ObjectStorageServer", self._bind_address)
 
     def run(self) -> None:
         bootstrap_process(
