@@ -93,7 +93,7 @@ class _TaskActorTestCase(unittest.IsolatedAsyncioTestCase):
         return release, future
 
     async def _cancel(self, task_id: TaskID, force: bool) -> None:
-        self.actor.post_cancel(_make_task_cancel(task_id, force=force))
+        self.actor.post_task_cancel(_make_task_cancel(task_id, force=force))
         await self._settle()
 
     def _cancel_confirm_types(self) -> List[TaskCancelConfirmType]:

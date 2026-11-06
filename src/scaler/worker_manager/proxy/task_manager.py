@@ -70,7 +70,7 @@ class TaskManager(Looper, TaskManagerMixin):
         self._actor.post_task_new(task)
 
     async def on_cancel_task(self, task_cancel: TaskCancel) -> None:
-        self._actor.post_cancel(task_cancel)
+        self._actor.post_task_cancel(task_cancel)
 
     async def on_task_result(self, result: TaskResult) -> None:
         raise NotImplementedError("WorkerProcess never dispatches TaskResult to the proxy task manager")

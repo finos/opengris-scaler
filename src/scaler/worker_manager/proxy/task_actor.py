@@ -87,7 +87,7 @@ class TaskActor:
     def post_task_new(self, task: Task) -> None:
         self._events.put_nowait(_TaskNew(task))
 
-    def post_cancel(self, task_cancel: TaskCancel) -> None:
+    def post_task_cancel(self, task_cancel: TaskCancel) -> None:
         self._events.put_nowait(_CancelRequested(task_cancel))
 
     @property
