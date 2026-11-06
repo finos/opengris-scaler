@@ -8,6 +8,15 @@ def get_available_tcp_port(hostname: str = "127.0.0.1") -> int:
         return sock.getsockname()[1]
 
 
+def is_tcp_port_available(hostname: str, port: int) -> bool:
+    with socket.socket(socket.AddressFamily.AF_INET, socket.SocketKind.SOCK_STREAM) as sock:
+        try:
+            sock.bind((hostname, port))
+        except OSError:
+            return False
+        return True
+
+
 # hostnames that name no machine: container runtimes such as OCI container instances leave the hostname unset
 UNSET_HOSTNAMES = frozenset({"", "localhost", "localhost.localdomain"})
 

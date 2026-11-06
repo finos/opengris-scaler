@@ -38,8 +38,12 @@ from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
+from scaler.utility.network_util import get_available_tcp_port, is_tcp_port_available
 
 logger = logging.getLogger(__name__)
+
+# the monitor binds next to the scheduler unless configured otherwise
+DEFAULT_MONITOR_PORT_OFFSET = 2
 
 
 class Scheduler:
@@ -158,9 +162,9 @@ class Scheduler:
         address = self._address
         assert address.port is not None, "scheduler bind address must have a port"
 
-        default_monitor = AddressConfig(type=address.type, host=address.host, port=address.port + 2, path=address.path)
-
-        monitor_address = self._config_controller.get_config("monitor_address") or default_monitor
+        monitor_address = self._config_controller.get_config("monitor_address") or self.__default_monitor_address(
+            address
+        )
 
         await self._binder_monitor.bind(monitor_address, security_config=self._security_config)
 
@@ -169,6 +173,17 @@ class Scheduler:
         self._config_controller.update_config("monitor_address", monitor_address)
 
         logger.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address!r}")
+
+    def __default_monitor_address(self, address: AddressConfig) -> AddressConfig:
+        """The scheduler port + 2, or a free port when another process holds that one."""
+        assert address.port is not None
+        port = address.port + DEFAULT_MONITOR_PORT_OFFSET
+
+        if not is_tcp_port_available(address.host, port):
+            logger.warning(f"{self.__class__.__name__}: default monitor port {port} is in use, picking a free port")
+            port = get_available_tcp_port(address.host)
+
+        return AddressConfig(type=address.type, host=address.host, port=port, path=address.path)
 
     async def on_receive_message(self, source: bytes, message: BaseMessage):
         # Any inbound message from a tracked client refreshes its liveness

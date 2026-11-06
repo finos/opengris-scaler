@@ -234,7 +234,7 @@ Scheduler arguments
    * - ``-ma``, ``--monitor-address``
      - No
      - Auto from bind address
-     - Monitor endpoint, defaults to ``bind_address.port + 2``.
+     - Monitor endpoint, defaults to ``bind_address.port + 2``, or a free port when that one is in use.
    * - ``-p``, ``--protected``
      - No
      - ``False``
