@@ -1,12 +1,10 @@
 #pragma once
 
 #include <chrono>
-#include <condition_variable>
 #include <expected>
 #include <future>
 #include <iostream>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <set>
 #include <span>
@@ -34,8 +32,6 @@ public:
 
     ObjectStorageServer();
 
-    ~ObjectStorageServer();
-
     void run(
         std::string address,
         Identity identity                               = "ObjectStorageServer",
@@ -43,10 +39,9 @@ public:
         std::string log_format                          = "%(levelname)s: %(message)s",
         std::vector<std::string> log_paths              = {"/dev/stdout"},
         std::function<bool()> running                   = []() { return true; },
-        std::optional<scaler::ymq::TLSConfig> tlsConfig = std::nullopt);
-
-    // The address the server listens on, or std::nullopt when it stops before binding one.
-    std::optional<scaler::ymq::Address> waitUntilReady();
+        std::optional<scaler::ymq::TLSConfig> tlsConfig = std::nullopt,
+        // called on this thread with the bound address, which differs from `address` where that names port 0
+        std::function<void(const scaler::ymq::Address&)> onReady = [](const scaler::ymq::Address&) {});
 
     void shutdown();
 
@@ -68,11 +63,6 @@ private:
     scaler::ymq::IOContext _ioContext;
     std::unique_ptr<scaler::ymq::future::BinderSocket> _socket;
 
-    std::mutex _serverReadyMutex;
-    std::condition_variable _serverReadyConditionVariable;
-    bool _isServerReady {false};
-    std::optional<scaler::ymq::Address> _boundAddress;
-
     ObjectManager objectManager;
 
     // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
@@ -85,12 +75,6 @@ private:
     scaler::ymq::Logger _logger;
 
     std::vector<SendMessageFuture> _pendingSendMessageFuts;
-
-    void initServerReadyFds();
-
-    void setServerReadyFd(scaler::ymq::Address boundAddress);
-
-    void closeServerReadyFds();
 
     void processRequests(std::function<bool()> stopCondition);
 

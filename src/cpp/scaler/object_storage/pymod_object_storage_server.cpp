@@ -39,10 +39,11 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
     PyObject* logging_paths_tuple = nullptr;
     const char* tls_cert          = nullptr;
     const char* tls_key           = nullptr;
+    PyObject* on_ready            = Py_None;
 
     if (!PyArg_ParseTuple(
             args,
-            "ssssO!|zz",
+            "ssssO!|zzO",
             &addr,
             &identity,
             &log_level,
@@ -50,8 +51,14 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
             &PyTuple_Type,
             &logging_paths_tuple,
             &tls_cert,
-            &tls_key))
+            &tls_key,
+            &on_ready))
         return nullptr;
+
+    if (on_ready != Py_None && !PyCallable_Check(on_ready)) {
+        PyErr_SetString(PyExc_TypeError, "on_ready must be callable or None");
+        return nullptr;
+    }
 
     std::vector<std::string> logging_paths;
     Py_ssize_t num_paths = PyTuple_Size(logging_paths_tuple);
@@ -65,11 +72,36 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
     }
 
     int res {};
-    auto running = [&res] -> bool {
+    bool onReadyFailed {false};
+    auto running = [&res, &onReadyFailed] -> bool {
+        if (onReadyFailed) {
+            return false;
+        }
         scaler::utility::pymod::AcquireGIL gil;
         (void)gil;
         res = PyErr_CheckSignals();
         return res == 0;
+    };
+
+    // a failing callback stops the server, and run raises its exception
+    auto onReady = [on_ready, &onReadyFailed](const scaler::ymq::Address& boundAddress) {
+        if (on_ready == Py_None) {
+            return;
+        }
+        scaler::utility::pymod::AcquireGIL gil;
+        (void)gil;
+        auto addressString = boundAddress.toString();
+        if (!addressString) {
+            PyErr_SetString(PyExc_RuntimeError, "ObjectStorageServer: cannot print the bound address");
+            onReadyFailed = true;
+            return;
+        }
+        PyObject* result = PyObject_CallFunction(on_ready, "s", addressString->c_str());
+        if (result == nullptr) {
+            onReadyFailed = true;
+            return;
+        }
+        Py_DECREF(result);
     };
 
     // we have to copy this memory before releasing the GIL
@@ -94,42 +126,22 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
             std::move(logFormatString),
             std::move(logging_paths),
             std::move(running),
-            std::move(tlsConfig));
+            std::move(tlsConfig),
+            std::move(onReady));
     Py_END_ALLOW_THREADS;
 
-    if (!res) {
+    if (!res && !onReadyFailed) {
         Py_RETURN_NONE;
     } else {
         return nullptr;
     }
 }
 
-static PyObject* PyObjectStorageServerWaitUntilReady(PyObject* self, [[maybe_unused]] PyObject* args)
-{
-    std::optional<scaler::ymq::Address> boundAddress;
-    Py_BEGIN_ALLOW_THREADS;
-    boundAddress = ((PyObjectStorageServer*)self)->server.waitUntilReady();
-    Py_END_ALLOW_THREADS;
-
-    if (!boundAddress) {
-        Py_RETURN_NONE;
-    }
-
-    auto addressString = boundAddress->toString();
-    if (!addressString) {
-        PyErr_SetString(PyExc_RuntimeError, "ObjectStorageServer: cannot print the bound address");
-        return nullptr;
-    }
-
-    return PyUnicode_FromString(addressString->c_str());
-}
-
 static PyMethodDef PyObjectStorageServerMethods[] = {
-    {"run", PyObjectStorageServerRun, METH_VARARGS, "Run object storage server on address:port with logging config"},
-    {"wait_until_ready",
-     PyObjectStorageServerWaitUntilReady,
-     METH_NOARGS,
-     "Wait until the server listens, return its address or None"},
+    {"run",
+     PyObjectStorageServerRun,
+     METH_VARARGS,
+     "Run object storage server on address:port, calling on_ready with the bound address"},
     {nullptr, nullptr, 0, nullptr},
 };
 

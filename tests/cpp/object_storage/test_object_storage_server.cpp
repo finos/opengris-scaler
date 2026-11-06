@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <span>
 #include <string>
 #include <thread>
@@ -136,11 +137,21 @@ protected:
     {
         server = std::make_unique<ObjectStorageServer>();
 
-        serverThread = std::thread([this] {
-            server->run("tcp://" + serverHost + ":0", "ObjectStorageServerTest", "INFO", "%(levelname)s: %(message)s");
+        std::promise<int> boundPort;
+        std::future<int> boundPortFuture = boundPort.get_future();
+        serverThread                     = std::thread([this, boundPort = std::move(boundPort)]() mutable {
+            server->run(
+                "tcp://" + serverHost + ":0",
+                "ObjectStorageServerTest",
+                "INFO",
+                "%(levelname)s: %(message)s",
+                {"/dev/stdout"},
+                [] { return true; },
+                std::nullopt,
+                [&boundPort](const scaler::ymq::Address& address) { boundPort.set_value(address.asTCP().port()); });
         });
 
-        serverPort = std::to_string(server->waitUntilReady().value().asTCP().port());
+        serverPort = std::to_string(boundPortFuture.get());
     }
 
     void TearDown() override
@@ -875,15 +886,20 @@ protected:
 
         server = std::make_unique<scaler::object_storage::ObjectStorageServer>();
 
-        serverThread = std::thread([this] {
+        std::promise<int> boundPort;
+        std::future<int> boundPortFuture = boundPort.get_future();
+        serverThread                     = std::thread([this, boundPort = std::move(boundPort)]() mutable {
             server->run(
                 "tcp://" + serverHost + ":0",
                 "ObjectStorageLoggingTest",
                 "INFO",
                 "%(levelname)s: %(message)s",
-                {log_filepath.string()});
+                {log_filepath.string()},
+                [] { return true; },
+                std::nullopt,
+                [&boundPort](const scaler::ymq::Address& address) { boundPort.set_value(address.asTCP().port()); });
         });
-        serverPort   = std::to_string(server->waitUntilReady().value().asTCP().port());
+        serverPort                       = std::to_string(boundPortFuture.get());
     }
 
     void TearDown() override
