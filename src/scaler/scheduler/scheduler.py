@@ -1,7 +1,9 @@
 import asyncio
+import dataclasses
 import logging
 from typing import Callable, Optional
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.address import AddressConfig
@@ -38,8 +40,20 @@ from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
+from scaler.utility.network_util import OS_PICKED_PORT
 
 logger = logging.getLogger(__name__)
+
+# the monitor binds next to the scheduler unless configured otherwise
+DEFAULT_MONITOR_PORT_OFFSET = 2
+
+
+@dataclasses.dataclass(frozen=True)
+class SchedulerAddresses:
+    """The addresses a scheduler bound, which differ from the configured ones where those name port 0."""
+
+    bind_address: AddressConfig
+    monitor_address: AddressConfig
 
 
 class Scheduler:
@@ -155,14 +169,12 @@ class Scheduler:
 
         # Monitor
 
-        address = self._address
-        assert address.port is not None, "scheduler bind address must have a port"
-
-        default_monitor = AddressConfig(type=address.type, host=address.host, port=address.port + 2, path=address.path)
-
-        monitor_address = self._config_controller.get_config("monitor_address") or default_monitor
-
-        await self._binder_monitor.bind(monitor_address, security_config=self._security_config)
+        configured_monitor_address = self._config_controller.get_config("monitor_address")
+        if configured_monitor_address is not None:
+            await self._binder_monitor.bind(configured_monitor_address, security_config=self._security_config)
+        else:
+            assert self._address is not None
+            await bind_default_monitor_address(self._binder_monitor, self._address, self._security_config)
 
         monitor_address = self._binder_monitor.address
         assert monitor_address is not None
@@ -254,10 +266,11 @@ class Scheduler:
 
         logger.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
-    async def get_loops(self, on_ready: Optional[Callable[[], None]] = None) -> None:
+    async def get_loops(self, on_ready: Optional[Callable[[SchedulerAddresses], None]] = None) -> None:
         await self.__initialize_network()
         if on_ready is not None:
-            on_ready()
+            assert self._address is not None and self._binder_monitor.address is not None
+            on_ready(SchedulerAddresses(bind_address=self._address, monitor_address=self._binder_monitor.address))
 
         # swallow_routine_errors=True: a bug in any single routine must not escape to asyncio.gather and
         # tear the whole scheduler down, taking every connected client and worker with it.
@@ -316,3 +329,19 @@ class Scheduler:
         self._binder.destroy()
         self._binder_monitor.destroy()
         self._connector_storage.destroy()
+
+
+async def bind_default_monitor_address(
+    publisher: AsyncPublisher, scheduler_address: AddressConfig, security_config: SecurityConfig
+) -> None:
+    """Binds the scheduler port + 2, or a port the OS picks when that one cannot be bound."""
+    assert scheduler_address.port is not None, "scheduler bind address must have a port"
+
+    default_port = scheduler_address.port + DEFAULT_MONITOR_PORT_OFFSET
+    try:
+        await publisher.bind(dataclasses.replace(scheduler_address, port=default_port), security_config=security_config)
+    except Exception as e:  # noqa: BLE001  any failure to bind the default falls back to an OS-picked port
+        logger.warning(f"Scheduler: cannot bind default monitor port {default_port} ({e!r}), binding port 0")
+        await publisher.bind(
+            dataclasses.replace(scheduler_address, port=OS_PICKED_PORT), security_config=security_config
+        )

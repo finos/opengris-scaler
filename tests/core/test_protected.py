@@ -3,7 +3,6 @@ import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 
@@ -13,10 +12,8 @@ class TestProtected(unittest.TestCase):
         logging_test_name(self)
 
     def test_protected_true(self) -> None:
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        cluster = SchedulerClusterCombo(
-            address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=True
-        )
+        cluster = SchedulerClusterCombo(n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=True)
+        address = cluster.get_address()
         print("wait for 3 seconds")
         time.sleep(3)
 
@@ -29,10 +26,10 @@ class TestProtected(unittest.TestCase):
         cluster.shutdown()
 
     def test_protected_false(self) -> None:
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         cluster = SchedulerClusterCombo(
-            address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
+            n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
         )
+        address = cluster.get_address()
         print("wait for 3 seconds")
         time.sleep(3)
 

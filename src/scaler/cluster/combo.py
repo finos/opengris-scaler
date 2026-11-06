@@ -33,7 +33,7 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.config.types.worker import WorkerCapabilities
-from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 
@@ -86,15 +86,14 @@ class SchedulerClusterCombo:
         self._shutdown_called = False
         self._security_config = security_config if security_config is not None else SecurityConfig()
 
+        # port 0 lets the OS pick each free port at bind time; the processes report back the ports they got
         if address is None:
-            self._address = AddressConfig(SocketType.tcp, "127.0.0.1", get_available_tcp_port())
+            self._address = AddressConfig(SocketType.tcp, "127.0.0.1", OS_PICKED_PORT)
         else:
             self._address = AddressConfig.from_string(address)
 
         if object_storage_address is None:
-            self._object_storage_address = AddressConfig(
-                self._address.type, self._address.host, get_available_tcp_port()
-            )
+            self._object_storage_address = AddressConfig(self._address.type, self._address.host, OS_PICKED_PORT)
         else:
             self._object_storage_address = AddressConfig.from_string(object_storage_address)
 
@@ -112,36 +111,8 @@ class SchedulerClusterCombo:
             security_config=self._security_config,
         )
         self._object_storage.start()
-        self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
-
-        self._worker_manager = NativeWorkerManager(
-            NativeWorkerManagerConfig(
-                worker_manager_config=WorkerManagerConfig(
-                    scheduler_address=self._address,
-                    worker_manager_id=worker_manager_id,
-                    object_storage_address=self._object_storage_address,
-                    max_task_concurrency=n_workers,
-                ),
-                worker_config=WorkerConfig(
-                    per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
-                    per_worker_task_queue_size=per_worker_task_queue_size,
-                    heartbeat_interval_seconds=heartbeat_interval_seconds,
-                    task_timeout_seconds=task_timeout_seconds,
-                    death_timeout_seconds=death_timeout_seconds,
-                    garbage_collect_interval_seconds=garbage_collect_interval_seconds,
-                    trim_memory_threshold_bytes=trim_memory_threshold_bytes,
-                    hard_processor_suspend=hard_processor_suspend,
-                    io_threads=worker_io_threads,
-                    event_loop=event_loop,
-                ),
-                logging_config=LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
-                security=self._security_config,
-            )
-        )
-
-        self._worker_manager_process = multiprocessing.get_context("spawn").Process(
-            target=_run_native_worker_manager, args=(self._worker_manager,)
-        )
+        # object storage should be ready before starting the cluster
+        self._object_storage_address = self._object_storage.wait_until_ready()
 
         # Synthesized signal-disposition for the scheduler. multiprocessing.Process.terminate() is
         # TerminateProcess on Windows, which never runs Python signal handlers, so the scheduler would
@@ -173,8 +144,38 @@ class SchedulerClusterCombo:
         )
 
         self._scheduler.start()
+        # the workers and a client connecting next need the address the scheduler bound
+        self._address = self._scheduler.wait_until_ready().bind_address
+
+        self._worker_manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
+                worker_manager_config=WorkerManagerConfig(
+                    scheduler_address=self._address,
+                    worker_manager_id=worker_manager_id,
+                    object_storage_address=self._object_storage_address,
+                    max_task_concurrency=n_workers,
+                ),
+                worker_config=WorkerConfig(
+                    per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
+                    per_worker_task_queue_size=per_worker_task_queue_size,
+                    heartbeat_interval_seconds=heartbeat_interval_seconds,
+                    task_timeout_seconds=task_timeout_seconds,
+                    death_timeout_seconds=death_timeout_seconds,
+                    garbage_collect_interval_seconds=garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=trim_memory_threshold_bytes,
+                    hard_processor_suspend=hard_processor_suspend,
+                    io_threads=worker_io_threads,
+                    event_loop=event_loop,
+                ),
+                logging_config=LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
+                security=self._security_config,
+            )
+        )
+
+        self._worker_manager_process = multiprocessing.get_context("spawn").Process(
+            target=_run_native_worker_manager, args=(self._worker_manager,)
+        )
         self._worker_manager_process.start()
-        self._scheduler.wait_until_ready()  # a client connecting next must not race the scheduler's startup
         logger.info(f"{self.__get_prefix()} started")
 
     def __del__(self):

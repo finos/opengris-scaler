@@ -47,7 +47,7 @@ Start the scheduler with ``scaling=static``, then start a worker manager, then s
        --policy-content "allocate=even_load; scaling=static"
 
 .. note::
-   The scheduler monitor endpoint defaults to scheduler port + 2 (for example, ``tcp://127.0.0.1:8518``).
+   The scheduler monitor endpoint defaults to scheduler port + 2 (for example, ``tcp://127.0.0.1:8518``), or a port the OS picks when that one cannot be bound.
 
 **Terminal 3 — Workers:**
 

@@ -16,7 +16,6 @@ from scaler import Client, SchedulerClusterCombo
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
@@ -66,13 +65,10 @@ class TestBalance(unittest.TestCase):
         N_TASKS = 8
         N_WORKERS = N_TASKS
 
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         combo = SchedulerClusterCombo(
-            address=address,
-            n_workers=1,
-            per_worker_task_queue_size=N_TASKS,
-            load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
+            n_workers=1, per_worker_task_queue_size=N_TASKS, load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS
         )
+        address = combo.get_address()
 
         client = Client(address=address)
 
@@ -124,9 +120,7 @@ class TestBalance(unittest.TestCase):
         log_fd, log_path = tempfile.mkstemp(prefix="scaler_balance_cancel_worker_death_", suffix=".log")
         os.close(log_fd)
 
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         combo = SchedulerClusterCombo(
-            address=address,
             n_workers=1,
             # A single-task worker has nothing "excess" to balance away (see
             # policies/allocation/even_load.py), so it needs two tasks queued to be a candidate.
@@ -137,6 +131,7 @@ class TestBalance(unittest.TestCase):
             load_balance_trigger_times=1,
             logging_paths=(log_path,),
         )
+        address = combo.get_address()
 
         client = Client(address=address)
         second_manager_process = None
@@ -233,9 +228,7 @@ class TestBalance(unittest.TestCase):
         log_fd, log_path = tempfile.mkstemp(prefix="scaler_balance_cancel_socket_closed_", suffix=".log")
         os.close(log_fd)
 
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         combo = SchedulerClusterCombo(
-            address=address,
             n_workers=1,
             per_worker_capabilities=CAPABILITIES,
             # Two tasks queued so worker_a has something excess to be a balance candidate.
@@ -247,6 +240,7 @@ class TestBalance(unittest.TestCase):
             scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=static"),
             logging_paths=(log_path,),
         )
+        address = combo.get_address()
 
         client = Client(address=address)
         second_manager_process = None

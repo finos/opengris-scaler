@@ -13,15 +13,15 @@ assertions here catch it.
 """
 
 import unittest
+from typing import Tuple
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.config.types.address import AddressConfig
 from scaler.io.network_backends import YMQNetworkBackend
 from scaler.utility.identifiers import ClientID, ObjectID
-from scaler.utility.network_util import get_available_tcp_port
 
 
-def _start_server(address: AddressConfig) -> ObjectStorageServerProcess:
+def _start_server(address: AddressConfig) -> Tuple[ObjectStorageServerProcess, AddressConfig]:
     server = ObjectStorageServerProcess(
         bind_address=address,
         identity="ObjectStorageServer",
@@ -30,8 +30,7 @@ def _start_server(address: AddressConfig) -> ObjectStorageServerProcess:
         logging_level="WARNING",
     )
     server.start()
-    server.wait_until_ready()
-    return server
+    return server, server.wait_until_ready()
 
 
 def _stop_server(server: ObjectStorageServerProcess) -> None:
@@ -44,11 +43,8 @@ class ObjectStorageWsParityTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls._tcp_address = AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
-        cls._ws_address = AddressConfig.from_string(f"ws://127.0.0.1:{get_available_tcp_port()}")
-
-        cls._tcp_server = _start_server(cls._tcp_address)
-        cls._ws_server = _start_server(cls._ws_address)
+        cls._tcp_server, cls._tcp_address = _start_server(AddressConfig.from_string("tcp://127.0.0.1:0"))
+        cls._ws_server, cls._ws_address = _start_server(AddressConfig.from_string("ws://127.0.0.1:0"))
 
         cls._backend = YMQNetworkBackend(num_threads=1)
 

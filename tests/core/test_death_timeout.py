@@ -1,4 +1,5 @@
 import logging
+import socket
 import time
 import unittest
 
@@ -15,7 +16,7 @@ from scaler.config.defaults import (
 )
 from scaler.config.types.address import AddressConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker.worker import Worker
 from tests.utility.utility import logging_test_name
 
@@ -29,10 +30,16 @@ class TestDeathTimeout(unittest.TestCase):
 
     def test_no_scheduler(self):
         """A worker that never reaches a scheduler quits once its death timeout passes."""
+        # a bound socket that never listens refuses every connection, and no other process can take its port
+        refusing_socket = socket.socket(socket.AddressFamily.AF_INET, socket.SocketKind.SOCK_STREAM)
+        self.addCleanup(refusing_socket.close)
+        refusing_socket.bind(("127.0.0.1", OS_PICKED_PORT))
+        refusing_port = refusing_socket.getsockname()[1]
+
         worker = Worker(
             event_loop="builtin",
             name="no_scheduler",
-            address=AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+            address=AddressConfig.from_string(f"tcp://127.0.0.1:{refusing_port}"),
             object_storage_address=None,
             preload=None,
             capabilities={},
@@ -54,10 +61,10 @@ class TestDeathTimeout(unittest.TestCase):
     def test_shutdown(self):
         logging.info("test with explicitly shutdown")
         # Test 2: Running the Combo and sending shutdown
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         cluster = SchedulerClusterCombo(
-            address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
+            n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
         )
+        address = cluster.get_address()
         client = Client(address=address)
 
         time.sleep(10)
@@ -82,14 +89,13 @@ class TestDeathTimeout(unittest.TestCase):
             time.sleep(client_timeout_seconds + 1)  # prevents the parent task to execute.
             return "OK"
 
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         cluster = SchedulerClusterCombo(
-            address=address,
             n_workers=1,
             per_worker_task_queue_size=2,
             event_loop="builtin",
             client_timeout_seconds=client_timeout_seconds,
         )
+        address = cluster.get_address()
 
         try:
             with Client(address, timeout_seconds=client_timeout_seconds) as client:
