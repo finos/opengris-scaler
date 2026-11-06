@@ -5,11 +5,13 @@ import multiprocessing.connection
 import signal
 import sys
 import time
+from multiprocessing.connection import Connection
 from typing import List, Optional, cast
 
 import psutil
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
+from scaler.cluster.scheduler import wait_until_scheduler_ready
 from scaler.config.config_class import ConfigClass
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
@@ -22,7 +24,10 @@ from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.config.section.worker_manager_union import WorkerManagerUnion
+from scaler.config.types.address import AddressConfig
+from scaler.scheduler.scheduler import SchedulerAddresses
 from scaler.utility.event_loop import register_event_loop
+from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.utility.process_bootstrap import bootstrap_process
 
 
@@ -43,10 +48,10 @@ class ScalerAllConfig(ConfigClass):
 # Module-level functions required for multiprocessing spawn compatibility.
 
 
-def _run_scheduler(config: SchedulerConfig) -> None:
+def _run_scheduler(config: SchedulerConfig, ready_sender: Connection) -> None:
     from scaler.entry_points.scheduler import main as _main
 
-    _main(config)
+    _main(config, on_ready=ready_sender.send)
 
 
 def _run_worker_manager(config: WorkerManagerUnion) -> None:
@@ -91,6 +96,59 @@ def _run_gui(config: WebGUIConfig) -> None:
     from scaler.entry_points.webgui import main as _main
 
     _main(config)
+
+
+# every process this command starts runs on this machine, so loopback reaches a server bound to every interface
+WILDCARD_HOST = "0.0.0.0"
+LOOPBACK_HOST = "127.0.0.1"
+
+
+def _port_zero_without_target(config: ScalerAllConfig) -> List[str]:
+    """The connecting fields that name port 0 although this config starts no process for them to reach."""
+    fields = []
+    if config.object_storage is None and config.scheduler is not None:
+        if config.scheduler.object_storage_address.port == OS_PICKED_PORT:
+            fields.append("scheduler.object_storage_address")
+
+    for wm_config in config.worker_managers:
+        wm_addresses = wm_config.worker_manager_config
+        if config.scheduler is None and wm_addresses.scheduler_address.port == OS_PICKED_PORT:
+            fields.append(f"{wm_config._tag}.scheduler_address")
+        object_storage_address = wm_addresses.object_storage_address
+        if config.object_storage is None and object_storage_address is not None:
+            if object_storage_address.port == OS_PICKED_PORT:
+                fields.append(f"{wm_config._tag}.object_storage_address")
+
+    if config.scheduler is None and config.gui is not None and config.gui.monitor_address.port == OS_PICKED_PORT:
+        fields.append("gui.monitor_address")
+
+    return fields
+
+
+def _resolve(address: AddressConfig, bound: AddressConfig) -> AddressConfig:
+    """`address` with the port `bound` got when `address` names port 0, keeping the host it names."""
+    if address.port != OS_PICKED_PORT:
+        return address
+
+    host = LOOPBACK_HOST if address.host == WILDCARD_HOST else address.host
+    return dataclasses.replace(address, host=host, port=bound.port)
+
+
+def _resolve_worker_manager(
+    wm_config: WorkerManagerUnion,
+    scheduler_addresses: Optional[SchedulerAddresses],
+    object_storage_address: Optional[AddressConfig],
+) -> WorkerManagerUnion:
+    wm_addresses = wm_config.worker_manager_config
+    if scheduler_addresses is not None:
+        wm_addresses = dataclasses.replace(
+            wm_addresses, scheduler_address=_resolve(wm_addresses.scheduler_address, scheduler_addresses.bind_address)
+        )
+    if object_storage_address is not None and wm_addresses.object_storage_address is not None:
+        wm_addresses = dataclasses.replace(
+            wm_addresses, object_storage_address=_resolve(wm_addresses.object_storage_address, object_storage_address)
+        )
+    return dataclasses.replace(wm_config, worker_manager_config=wm_addresses)
 
 
 SHUTDOWN_JOIN_TIMEOUT_SECONDS = 10
@@ -156,6 +214,13 @@ def main() -> None:
         print("scaler: no any recognized section found in config file", file=sys.stderr)
         sys.exit(1)
 
+    port_zero_fields = _port_zero_without_target(config)
+    if port_zero_fields:
+        print(
+            f"scaler: port 0 needs a section in this config to bind it: {', '.join(port_zero_fields)}", file=sys.stderr
+        )
+        sys.exit(1)
+
     def _raise_keyboard_interrupt(*_args: object) -> None:
         raise KeyboardInterrupt
 
@@ -167,6 +232,10 @@ def main() -> None:
 
     _spawn_process = multiprocessing.get_context("spawn").Process
     processes: List[multiprocessing.Process] = []
+
+    # the addresses the processes bound, which a later section naming port 0 connects to
+    object_storage_address: Optional[AddressConfig] = None
+    scheduler_addresses: Optional[SchedulerAddresses] = None
 
     exit_code = 0
     try:
@@ -182,20 +251,39 @@ def main() -> None:
             )
             processes.append(oss_process)
             oss_process.start()
-            oss_process.wait_until_ready()
+            object_storage_address = oss_process.wait_until_ready()
 
         if config.scheduler is not None:
-            sched_process = _spawn_process(target=_run_scheduler, args=(config.scheduler,), name="scheduler")
+            scheduler_config = config.scheduler
+            if object_storage_address is not None:
+                scheduler_config = dataclasses.replace(
+                    scheduler_config,
+                    object_storage_address=_resolve(scheduler_config.object_storage_address, object_storage_address),
+                )
+            ready_receiver, ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
+            sched_process = _spawn_process(
+                target=_run_scheduler, args=(scheduler_config, ready_sender), name="scheduler"
+            )
             processes.append(sched_process)  # type: ignore[arg-type]
             sched_process.start()
+            scheduler_addresses = wait_until_scheduler_ready(
+                ready_receiver, sched_process, scheduler_config.bind_address
+            )
 
         for wm_config in config.worker_managers:
+            wm_config = _resolve_worker_manager(wm_config, scheduler_addresses, object_storage_address)
             wm_process = _spawn_process(target=_run_worker_manager, args=(wm_config,), name=wm_config._tag)
             processes.append(wm_process)  # type: ignore[arg-type]
             wm_process.start()
 
         if config.gui is not None:
-            gui_process = _spawn_process(target=_run_gui, args=(config.gui,), name="gui")
+            gui_config = config.gui
+            if scheduler_addresses is not None:
+                gui_config = dataclasses.replace(
+                    gui_config,
+                    monitor_address=_resolve(gui_config.monitor_address, scheduler_addresses.monitor_address),
+                )
+            gui_process = _spawn_process(target=_run_gui, args=(gui_config,), name="gui")
             processes.append(gui_process)  # type: ignore[arg-type]
             gui_process.start()
 

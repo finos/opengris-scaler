@@ -157,6 +157,32 @@ Scaler arguments
 
 If no recognized sections are present, ``scaler`` exits with an error.
 
+Port 0
+~~~~~~
+
+A section can bind port 0, and the OS picks a free port at bind time.
+
+- A connecting address that names port 0 connects to the section in the same file that binds it, on the port that section got.
+- The connecting fields are ``object_storage_address`` in ``[scheduler]``, ``scheduler_address`` and ``object_storage_address`` in ``[[worker_manager]]``, and ``monitor_address`` in ``[gui]``.
+- The connecting address keeps the host it names, except ``0.0.0.0``, which becomes ``127.0.0.1`` because every process runs on this machine.
+- ``scaler`` exits with an error when a connecting address names port 0 and no section in the file binds it.
+- Workers on other machines cannot reach ``127.0.0.1``: set ``advertised_object_storage_address`` for them, see :ref:`object-storage-addresses`.
+
+.. code-block:: toml
+
+    [object_storage_server]
+    bind_address = "tcp://127.0.0.1:0"
+
+    [scheduler]
+    bind_address = "tcp://127.0.0.1:0"
+    object_storage_address = "tcp://127.0.0.1:0"
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    scheduler_address = "tcp://127.0.0.1:0"
+    worker_manager_id = "wm-native"
+    max_task_concurrency = 8
+
 
 .. _cmd-scaler-scheduler:
 
@@ -234,7 +260,7 @@ Scheduler arguments
    * - ``-ma``, ``--monitor-address``
      - No
      - Auto from bind address
-     - Monitor endpoint, defaults to ``bind_address.port + 2``, or a free port when that one is in use.
+     - Monitor endpoint, defaults to ``bind_address.port + 2``, or a port the OS picks when that one cannot be bound.
    * - ``-p``, ``--protected``
      - No
      - ``False``

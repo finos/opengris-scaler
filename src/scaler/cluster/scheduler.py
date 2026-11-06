@@ -1,6 +1,8 @@
 import asyncio
 import multiprocessing
 import multiprocessing.connection
+from multiprocessing.connection import Connection
+from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Event as EventType
 from typing import Callable, Optional, Tuple
 
@@ -8,7 +10,7 @@ from scaler.config.common.security import SecurityConfig
 from scaler.config.constants import SCHEDULER_READINESS_TIMEOUT_SECONDS
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
 from scaler.config.types.address import AddressConfig
-from scaler.scheduler.scheduler import Scheduler
+from scaler.scheduler.scheduler import Scheduler, SchedulerAddresses
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
@@ -20,11 +22,11 @@ def run_scheduler(
     logging_config_file: Optional[str],
     logging_level: str,
     shutdown_event: Optional[EventType] = None,
-    on_ready: Optional[Callable[[], None]] = None,
+    on_ready: Optional[Callable[[SchedulerAddresses], None]] = None,
 ) -> None:
     """Run the scheduler in the current process until SIGINT/SIGTERM (or the optional
     `shutdown_event`) triggers a graceful shutdown. Blocks until the scheduler exited.
-    Calls the optional `on_ready` once the scheduler listens."""
+    Calls the optional `on_ready` with the bound addresses once the scheduler listens."""
 
     loop = asyncio.new_event_loop()
 
@@ -42,6 +44,24 @@ def run_scheduler(
         await task
 
     run_task_forever(loop, _run())
+
+
+def wait_until_scheduler_ready(
+    ready_receiver: Connection, process: BaseProcess, bind_address: AddressConfig
+) -> SchedulerAddresses:
+    """Blocks until the scheduler in `process` reports through `ready_receiver` the addresses it bound."""
+    # the sentinel wakes the wait if the scheduler exits first, without polling its exit code
+    ready = multiprocessing.connection.wait([ready_receiver, process.sentinel], SCHEDULER_READINESS_TIMEOUT_SECONDS)
+    if ready_receiver in ready:
+        return ready_receiver.recv()
+
+    if process.sentinel in ready:
+        process.join()
+        raise RuntimeError(f"Scheduler exited with code {process.exitcode} before listening to {bind_address!r}")
+
+    raise TimeoutError(
+        f"Scheduler at {bind_address!r} failed to start within {SCHEDULER_READINESS_TIMEOUT_SECONDS} seconds"
+    )
 
 
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -96,23 +116,9 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         self._shutdown_event = shutdown_event
         self._ready_receiver, self._ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
 
-    def wait_until_ready(self) -> None:
+    def wait_until_ready(self) -> SchedulerAddresses:
         """Blocks until the scheduler listens, so a client connecting next does not race its startup."""
-        address = self._scheduler_config.bind_address
-        # the sentinel wakes the wait if the scheduler exits first, without polling its exit code
-        ready = multiprocessing.connection.wait(
-            [self._ready_receiver, self.sentinel], SCHEDULER_READINESS_TIMEOUT_SECONDS
-        )
-        if self._ready_receiver in ready:
-            return
-
-        if self.sentinel in ready:
-            self.join()
-            raise RuntimeError(f"Scheduler exited with code {self.exitcode} before listening to {address!r}")
-
-        raise TimeoutError(
-            f"Scheduler at {address!r} failed to start within {SCHEDULER_READINESS_TIMEOUT_SECONDS} seconds"
-        )
+        return wait_until_scheduler_ready(self._ready_receiver, self, self._scheduler_config.bind_address)
 
     def run(self) -> None:
         run_scheduler(
@@ -121,5 +127,5 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             self._logging_config_file,
             self._logging_level,
             self._shutdown_event,
-            lambda: self._ready_sender.send(True),
+            self._ready_sender.send,
         )

@@ -15,9 +15,9 @@
 #include "scaler/logging/logging.h"
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
-#include "scaler/object_storage/io_helper.h"
 #include "scaler/object_storage/message.h"
 #include "scaler/object_storage/object_manager.h"
+#include "scaler/ymq/address.h"
 #include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/future/binder_socket.h"
 #include "scaler/ymq/io_context.h"
@@ -45,7 +45,8 @@ public:
         std::function<bool()> running                   = []() { return true; },
         std::optional<scaler::ymq::TLSConfig> tlsConfig = std::nullopt);
 
-    void waitUntilReady();
+    // The address the server listens on, or std::nullopt when it stops before binding one.
+    std::optional<scaler::ymq::Address> waitUntilReady();
 
     void shutdown();
 
@@ -70,6 +71,7 @@ private:
     std::mutex _serverReadyMutex;
     std::condition_variable _serverReadyConditionVariable;
     bool _isServerReady {false};
+    std::optional<scaler::ymq::Address> _boundAddress;
 
     ObjectManager objectManager;
 
@@ -86,7 +88,7 @@ private:
 
     void initServerReadyFds();
 
-    void setServerReadyFd();
+    void setServerReadyFd(scaler::ymq::Address boundAddress);
 
     void closeServerReadyFds();
 

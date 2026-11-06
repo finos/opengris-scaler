@@ -1,15 +1,12 @@
 import logging
 import multiprocessing
-import time
+import multiprocessing.connection
+import threading
 from typing import Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
-from scaler.io.network_backends import YMQNetworkBackend
-from scaler.io.ymq import YMQException
 from scaler.object_storage.object_storage_server import ObjectStorageServer
-from scaler.utility.exceptions import ObjectStorageException
-from scaler.utility.identifiers import ClientID, ObjectID
 from scaler.utility.logging.utility import get_logger_info
 from scaler.utility.process_bootstrap import bootstrap_process
 
@@ -17,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 _READINESS_TIMEOUT_SECONDS = 30
-_READINESS_RETRY_DELAY_SECONDS = 0.1
 
 
 class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -41,33 +37,27 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         self._bind_address = bind_address
         self._security_config = security_config
 
-    def wait_until_ready(self) -> None:
-        """Blocks until the object storage server is available to serve requests."""
-        backend = YMQNetworkBackend(num_threads=1)
-        identity = ClientID.generate_client_id("ObjectStorageServerReadinessProbe")
-        random_object_id = ObjectID.generate_object_id(identity)
+        self._ready_receiver, self._ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
 
-        try:
-            start_time = time.time()
-            while time.time() - start_time < _READINESS_TIMEOUT_SECONDS:
-                connector = None
-                try:
-                    connector = backend.create_sync_object_storage_connector(
-                        identity=identity, address=self._bind_address
-                    )
+    def wait_until_ready(self) -> AddressConfig:
+        """Blocks until the object storage server listens, returning its bound address.
 
-                    # Delete on a missing object returns immediately (delNotExists) and confirms the OSS is fully ready.
-                    connector.delete_object(random_object_id)
-                    return
-                except (ObjectStorageException, YMQException, OSError):
-                    time.sleep(_READINESS_RETRY_DELAY_SECONDS)
-                finally:
-                    if connector is not None:
-                        connector.destroy()
-        finally:
-            backend.destroy()
+        The bound address differs from the configured one when that names port 0.
+        """
+        # the sentinel wakes the wait if the server exits first, without polling its exit code
+        ready = multiprocessing.connection.wait([self._ready_receiver, self.sentinel], _READINESS_TIMEOUT_SECONDS)
+        if self._ready_receiver in ready:
+            return self._ready_receiver.recv()
 
-        raise TimeoutError(f"ObjectStorageServer at {self._bind_address!r} failed to start within 30 seconds")
+        if self.sentinel in ready:
+            self.join()
+            raise RuntimeError(
+                f"ObjectStorageServer exited with code {self.exitcode} before listening to {self._bind_address!r}"
+            )
+
+        raise TimeoutError(
+            f"ObjectStorageServer at {self._bind_address!r} failed to start within {_READINESS_TIMEOUT_SECONDS} seconds"
+        )
 
     def run(self) -> None:
         bootstrap_process(
@@ -81,9 +71,17 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         tls_key = self._security_config.tls_key if self._security_config is not None else None
 
         self._server = ObjectStorageServer()
+        threading.Thread(target=self._report_bound_address, daemon=True).start()
         try:
             self._server.run(
                 repr(self._bind_address), self._ident, log_level_str, log_format_str, logging_paths, tls_cert, tls_key
             )
         except KeyboardInterrupt:
             logger.info("ObjectStorageServer: received KeyboardInterrupt, shutting down")
+
+    def _report_bound_address(self) -> None:
+        bound_address = self._server.wait_until_ready()
+        if bound_address is None:  # the server stopped before binding and logged why
+            return
+
+        self._ready_sender.send(AddressConfig.from_string(bound_address))
