@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, List
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.desired_concurrency import extract_desired_count
+from scaler.worker_manager.local_process import local_children_address
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.proxy.symphony.worker import create_symphony_worker
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
@@ -91,13 +92,13 @@ class SymphonyWorkerManager:
     def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
         provisioner = SymphonyWorkerProvisioner(config)
         self._runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_symphony",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=config.worker_manager_config.max_task_concurrency,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_address=local_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
         )
 
