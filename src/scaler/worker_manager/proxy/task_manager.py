@@ -92,6 +92,7 @@ class TaskManager(Looper, TaskManagerMixin):
     async def upload_results(self) -> None:
         task, future, profile_result = await self._results.get()
         await self._send_task_result(task, future, profile_result)
+        self._actor.post_result_sent(task.taskId)
 
     async def _send_task_result(self, task: Task, future: asyncio.Future, profile_result: ProfileResult) -> None:
         if future.exception() is None:

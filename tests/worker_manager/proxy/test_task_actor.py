@@ -380,6 +380,18 @@ class TestTaskActorCancel(_TaskActorTestCase):
         self.backend.on_cancel.assert_not_called()
         self.assertEqual(self.actor.processing_task_count, 1)
 
+    async def test_a_force_cancel_of_a_reporting_task_fails(self) -> None:
+        """A finished task whose result is not yet sent refuses a force cancel: the result is already on its way."""
+        task = _make_task()
+        future = await self._start_task(task)
+        future.set_result(None)
+        await self._settle()
+
+        await self._cancel(task.taskId, force=True)
+
+        self.assertEqual(self._cancel_confirm_types(), [TaskCancelConfirmType.cancelFailed])
+        self.backend.on_cancel.assert_not_called()
+
     async def test_a_second_force_cancel_is_not_found(self) -> None:
         task = _make_task()
         release, _ = await self._start_task_with_slow_execute(task)

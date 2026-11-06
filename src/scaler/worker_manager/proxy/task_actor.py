@@ -23,6 +23,7 @@ class _TaskState(enum.Enum):
     STARTING = enum.auto()  # execute() is in flight, so the task has no future yet
     RUNNING = enum.auto()  # execute() returned its future; the result is reported when the future resolves
     CANCELING = enum.auto()  # force-cancelled: its future, once it has one, is cancelled and dropped unreported
+    REPORTING = enum.auto()  # finished: its result is uploading, so a cancel fails rather than reading as not found
 
 
 @dataclasses.dataclass
@@ -55,7 +56,12 @@ class _Finished:
     future: asyncio.Future
 
 
-_Event = Union[_TaskNew, _CancelRequested, _Started, _Finished]
+@dataclasses.dataclass(frozen=True)
+class _ResultSent:
+    task_id: TaskID
+
+
+_Event = Union[_TaskNew, _CancelRequested, _Started, _Finished, _ResultSent]
 
 
 class TaskActor:
@@ -89,6 +95,9 @@ class TaskActor:
     def post_task_cancel(self, task_cancel: TaskCancel) -> None:
         self._events.put_nowait(_CancelRequested(task_cancel))
 
+    def post_result_sent(self, task_id: TaskID) -> None:
+        self._events.put_nowait(_ResultSent(task_id))
+
     @property
     def queued_task_count(self) -> int:
         return len(self._queued_task_id_queue)
@@ -99,7 +108,8 @@ class TaskActor:
 
     @property
     def processing_task_count(self) -> int:
-        return sum(entry.state != _TaskState.QUEUED for entry in self._task_id_to_entry.values())
+        processing_states = (_TaskState.STARTING, _TaskState.RUNNING, _TaskState.CANCELING)
+        return sum(entry.state in processing_states for entry in self._task_id_to_entry.values())
 
     async def routine(self) -> None:
         match await self._events.get():
@@ -111,6 +121,8 @@ class TaskActor:
                 self._handle_started(task_id, future)
             case _Finished(task_id, future):
                 self._handle_finished(task_id, future)
+            case _ResultSent(task_id):
+                self._task_id_to_entry.pop(task_id)
 
     def _handle_task_new(self, task: Task) -> None:
         if task.taskId in self._task_id_to_entry:
@@ -145,7 +157,7 @@ class TaskActor:
             await self._send_cancel_confirm(task_id, TaskCancelConfirmType.canceled)
             return
 
-        if not task_cancel.flags.force:
+        if entry.state == _TaskState.REPORTING or not task_cancel.flags.force:
             await self._send_cancel_confirm(task_id, TaskCancelConfirmType.cancelFailed)
             return
 
@@ -168,16 +180,20 @@ class TaskActor:
         entry.state = _TaskState.RUNNING
 
     def _handle_finished(self, task_id: TaskID, future: asyncio.Future) -> None:
-        entry = self._task_id_to_entry.pop(task_id)
+        entry = self._task_id_to_entry[task_id]
         if task_id in self._permit_holder_queue:
             self._permit_holder_queue.remove(task_id)
         self._execution_backend.on_cleanup(task_id)
         self._start_queued_tasks()
 
-        if entry.state == _TaskState.RUNNING:
-            # the backend reports no CPU time or memory peak, only the duration the worker observed
-            profile_result = ProfileResult(duration_s=time.monotonic() - cast(float, entry.start_time))
-            self._report_result(entry.task, future, profile_result)
+        if entry.state == _TaskState.CANCELING:
+            self._task_id_to_entry.pop(task_id)
+            return
+
+        entry.state = _TaskState.REPORTING
+        # the backend reports no CPU time or memory peak, only the duration the worker observed
+        profile_result = ProfileResult(duration_s=time.monotonic() - cast(float, entry.start_time))
+        self._report_result(entry.task, future, profile_result)
 
     def _start_queued_tasks(self) -> None:
         while self.has_free_permit and len(self._queued_task_id_queue) > 0:

@@ -159,6 +159,31 @@ class TestTaskManagerResults(_TaskManagerTestCase):
 
         self.backend.execute.assert_called_once_with(task)
 
+    async def test_a_task_answers_cancels_as_held_until_its_result_is_sent(self) -> None:
+        """A balance cancel during the upload fails rather than reading as not found, which would run the task again."""
+        upload_release = asyncio.Event()
+
+        async def blocked_set_object(*_: Any) -> None:
+            await upload_release.wait()
+
+        self.connector_storage.set_object = AsyncMock(side_effect=blocked_set_object)
+        task = _make_task()
+        future = await self._start_task(task)
+        future.set_exception(RuntimeError("task failed"))
+        await asyncio.sleep(0)
+        await asyncio.wait_for(self.tm.routine(), timeout=UPLOAD_TIMEOUT_SECONDS)
+        upload = asyncio.create_task(self.tm.upload_results())
+        await asyncio.sleep(0)
+
+        await self.tm.on_cancel_task(_make_task_cancel(task.taskId, force=False))
+        await asyncio.wait_for(self.tm.routine(), timeout=UPLOAD_TIMEOUT_SECONDS)
+        upload_release.set()
+        await asyncio.wait_for(upload, timeout=UPLOAD_TIMEOUT_SECONDS)
+        await self._cancel(task.taskId, force=False)
+
+        confirm_types = [msg.cancelConfirmType for msg in self._sent() if isinstance(msg, TaskCancelConfirm)]
+        self.assertEqual(confirm_types, [TaskCancelConfirmType.cancelFailed, TaskCancelConfirmType.cancelNotFound])
+
 
 class TestTaskManagerWiring(_TaskManagerTestCase):
     async def test_a_cancel_confirm_reaches_the_scheduler(self) -> None:
