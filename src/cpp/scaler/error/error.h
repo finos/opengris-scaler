@@ -22,6 +22,7 @@ struct Error: public std::exception {
         ConnectorSocketClosedByRemoteEnd,
         SocketStopRequested,
         SysCallError,
+        ConnectionLost,
     };
 
     // NOTE:
@@ -56,6 +57,8 @@ struct Error: public std::exception {
                 return "Your connector socket connection is closed by remote end";
             case ErrorCode::SocketStopRequested: return "Current socket is requested to stop by another thread";
             case ErrorCode::SysCallError: return "A system call error occurred";
+            case ErrorCode::ConnectionLost:
+                return "The connection was lost before the message was sent, the socket was not stopped";
         }
         std::cerr << "Unrecognized ErrorCode value, program exits\n";
         std::exit(1);

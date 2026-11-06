@@ -116,6 +116,7 @@ int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
         {"ConnectorSocketClosedByRemoteEnd", (int)ErrorCode::ConnectorSocketClosedByRemoteEnd},
         {"SocketStopRequested", (int)ErrorCode::SocketStopRequested},
         {"SysCallError", (int)ErrorCode::SysCallError},
+        {"ConnectionLost", (int)ErrorCode::ConnectionLost},
     };
 
     if (YMQ_createIntEnum(pyModule, &state->PyErrorCodeType, "ErrorCode", errorCodeValues) < 0)
@@ -160,6 +161,7 @@ int YMQ_createExceptions(PyObject* pyModule, YMQState* state)
         {ErrorCode::ConnectorSocketClosedByRemoteEnd, "ConnectorSocketClosedByRemoteEndError"},
         {ErrorCode::SocketStopRequested, "SocketStopRequestedError"},
         {ErrorCode::SysCallError, "SysCallError"},
+        {ErrorCode::ConnectionLost, "ConnectionLostError"},
     };
 
     static PyType_Slot slots[] = {{0, nullptr}};
