@@ -2,9 +2,10 @@ import socket
 import unittest
 
 from scaler.config.common.security import SecurityConfig
+from scaler.config.constants import DEFAULT_MONITOR_PORT_OFFSET
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.network_backends import YMQNetworkBackend
-from scaler.scheduler.scheduler import DEFAULT_MONITOR_PORT_OFFSET, bind_default_monitor_address
+from scaler.scheduler.scheduler import bind_default_monitor_address
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
 from tests.utility.utility import logging_test_name

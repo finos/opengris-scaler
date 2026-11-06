@@ -4,6 +4,7 @@ import logging
 from typing import Callable, Optional
 
 from scaler.config.common.security import SecurityConfig
+from scaler.config.constants import DEFAULT_MONITOR_PORT_OFFSET
 from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.address import AddressConfig
@@ -43,9 +44,6 @@ from scaler.utility.identifiers import ClientID, WorkerID
 from scaler.utility.network_util import OS_PICKED_PORT
 
 logger = logging.getLogger(__name__)
-
-# the monitor binds next to the scheduler unless configured otherwise
-DEFAULT_MONITOR_PORT_OFFSET = 2
 
 
 @dataclasses.dataclass(frozen=True)
