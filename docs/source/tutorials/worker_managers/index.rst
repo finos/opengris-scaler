@@ -79,6 +79,18 @@ Unified Entry Points
 The :ref:`scaler_worker_manager <cmd-scaler-worker-manager>` command provides a single entry point for all worker managers.
 The :ref:`scaler <cmd-scaler>` command boots the full stack from a single TOML config file.
 
+Demo Videos
+-----------
+
+.. raw:: html
+
+   <p>Waterfall</p>
+   <video controls preload="metadata" style="width: 100%; max-width: 1000px;" src="https://github.com/user-attachments/assets/45556417-7497-47db-b0f4-c2b4f07662fc"></video>
+   <p>Kubernetes (in development, not part of this release)</p>
+   <video controls preload="metadata" style="width: 100%; max-width: 1000px;" src="https://github.com/user-attachments/assets/a973f03b-f11c-42de-8da3-576e5081d36c"></video>
+   <p>OCI</p>
+   <video controls preload="metadata" style="width: 100%; max-width: 1000px;" src="https://github.com/user-attachments/assets/1e405ae1-29db-4208-b454-1002fd1dcdd6"></video>
+
 .. toctree::
     :maxdepth: 1
     :hidden:
