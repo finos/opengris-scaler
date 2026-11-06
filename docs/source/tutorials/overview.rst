@@ -42,7 +42,7 @@ your deployment style:
   Python flow. See :doc:`worker_managers/baremetal_native`.
 
 * **Local elastic workers managed by a worker manager:** run scheduler +
-  ``baremetal_native`` worker manager in dynamic mode and let scheduler policies
+  ``baremetal_native`` worker manager and let scheduler policies
   scale workers up/down. See :doc:`quickstart`, :doc:`worker_managers/index`,
   and :doc:`policy_engine`.
 

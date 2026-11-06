@@ -55,7 +55,7 @@ Worker Managers Overview
      - AWS ECS Fargate
    * - :doc:`Baremetal Native <baremetal_native>`
      - Spawns workers as local subprocesses. The simplest worker manager and the recommended starting point.
-     - Dynamic or fixed
+     - Dynamic (scheduler-driven)
      - Local machine
    * - :doc:`Symphony <symphony>`
      - Offloads tasks to IBM Spectrum Symphony via the SOAM API.
