@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple, cast
 import psutil
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
-from scaler.cluster.scheduler import wait_until_scheduler_ready
+from scaler.cluster.readiness import wait_for_ready_report
 from scaler.config.config_class import ConfigClass
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
@@ -284,8 +284,8 @@ def main() -> None:
             )
             processes.append(sched_process)  # type: ignore[arg-type]
             sched_process.start()
-            scheduler_addresses = wait_until_scheduler_ready(
-                ready_receiver, sched_process, scheduler_config.bind_address
+            scheduler_addresses = wait_for_ready_report(
+                ready_receiver, sched_process, "Scheduler", scheduler_config.bind_address
             )
 
         for wm_config in config.worker_managers:

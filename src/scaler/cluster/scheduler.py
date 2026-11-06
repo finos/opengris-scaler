@@ -1,13 +1,10 @@
 import asyncio
 import multiprocessing
-import multiprocessing.connection
-from multiprocessing.connection import Connection
-from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Event as EventType
 from typing import Callable, Optional, Tuple
 
+from scaler.cluster.readiness import wait_for_ready_report
 from scaler.config.common.security import SecurityConfig
-from scaler.config.constants import SCHEDULER_READINESS_TIMEOUT_SECONDS
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.scheduler.scheduler import Scheduler, SchedulerAddresses
@@ -44,24 +41,6 @@ def run_scheduler(
         await task
 
     run_task_forever(loop, _run())
-
-
-def wait_until_scheduler_ready(
-    ready_receiver: Connection, process: BaseProcess, bind_address: AddressConfig
-) -> SchedulerAddresses:
-    """Blocks until the scheduler in `process` reports through `ready_receiver` the addresses it bound."""
-    # the sentinel wakes the wait if the scheduler exits first, without polling its exit code
-    ready = multiprocessing.connection.wait([ready_receiver, process.sentinel], SCHEDULER_READINESS_TIMEOUT_SECONDS)
-    if ready_receiver in ready:
-        return ready_receiver.recv()
-
-    if process.sentinel in ready:
-        process.join()
-        raise RuntimeError(f"Scheduler exited with code {process.exitcode} before listening to {bind_address!r}")
-
-    raise TimeoutError(
-        f"Scheduler at {bind_address!r} failed to start within {SCHEDULER_READINESS_TIMEOUT_SECONDS} seconds"
-    )
 
 
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -118,7 +97,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
 
     def wait_until_ready(self) -> SchedulerAddresses:
         """Blocks until the scheduler listens, so a client connecting next does not race its startup."""
-        return wait_until_scheduler_ready(self._ready_receiver, self, self._scheduler_config.bind_address)
+        return wait_for_ready_report(self._ready_receiver, self, "Scheduler", self._scheduler_config.bind_address)
 
     def run(self) -> None:
         run_scheduler(
