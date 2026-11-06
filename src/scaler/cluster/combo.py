@@ -112,7 +112,13 @@ class SchedulerClusterCombo:
             security_config=self._security_config,
         )
         self._object_storage.start()
-        self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
+        try:
+            self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
+        except BaseException:
+            self._shutdown_called = True  # nothing else started, so __del__ must not run shutdown()
+            self._object_storage.terminate()
+            self._object_storage.join()
+            raise
 
         self._worker_manager = NativeWorkerManager(
             NativeWorkerManagerConfig(
@@ -174,7 +180,11 @@ class SchedulerClusterCombo:
 
         self._scheduler.start()
         self._worker_manager_process.start()
-        self._scheduler.wait_until_ready()  # a client connecting next must not race the scheduler's startup
+        try:
+            self._scheduler.wait_until_ready()  # a client connecting next must not race the scheduler's startup
+        except BaseException:
+            self.shutdown()
+            raise
         logger.info(f"{self.__get_prefix()} started")
 
     def __del__(self):
