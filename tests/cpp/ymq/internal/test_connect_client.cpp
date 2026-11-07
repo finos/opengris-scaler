@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <expected>
+#include <optional>
+#include <string>
 
 #include "scaler/error/error.h"
 #include "scaler/wrapper/uv/error.h"
@@ -111,4 +113,58 @@ TEST_F(YMQConnectClientTest, ConnectClientDisconnect)
     while (!callbackCalled) {
         loop.run(UV_RUN_ONCE);
     }
+}
+
+TEST_F(YMQConnectClientTest, ConnectClientDisconnectDuringWebSocketUpgrade)
+{
+    // A WebSocket upgrade's read outlives the disconnect, and a failure it then reports must not start a retry.
+
+    constexpr int maxRetryTimes = 1;
+    constexpr std::chrono::milliseconds initRetryDelay {1};
+
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
+
+    const auto listenAddress = scaler::ymq::Address::fromString("tcp://127.0.0.1:0").value();
+
+    // A temporary TCP server that never answers the upgrade
+    std::optional<scaler::wrapper::uv::TCPServer> server {UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop))};
+    std::optional<scaler::wrapper::uv::TCPSocket> upgradingSocket;
+    bool upgradeRequestReceived = false;
+
+    UV_EXIT_ON_ERROR(server->bind(listenAddress.asTCP(), uv_tcp_flags(0)));
+    UV_EXIT_ON_ERROR(server->listen(16, [&](std::expected<void, scaler::wrapper::uv::Error>) {
+        upgradingSocket.emplace(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop)));
+        UV_EXIT_ON_ERROR(server->accept(*upgradingSocket));
+        UV_EXIT_ON_ERROR(upgradingSocket->readStart([&](auto) { upgradeRequestReceived = true; }));
+    }));
+
+    const std::string tcpAddress = scaler::ymq::Address {UV_EXIT_ON_ERROR(server->getSockName())}.toString().value();
+    const auto address = scaler::ymq::Address::fromString("ws" + tcpAddress.substr(tcpAddress.find(':'))).value();
+
+    std::optional<scaler::ymq::Error::ErrorCode> connectError;
+
+    auto onConnectCallback = [&](std::expected<scaler::ymq::internal::Client, scaler::ymq::Error> result) {
+        ASSERT_FALSE(result.has_value());
+        connectError = result.error()._errorCode;
+    };
+
+    auto connectClient =
+        scaler::ymq::internal::ConnectClient::init(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay)
+            .value();
+
+    while (!upgradeRequestReceived) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    connectClient.disconnect();
+
+    // Fail the upgrade's read, with no server left that a retry could reach.
+    server.reset();
+    upgradingSocket.reset();
+
+    while (!connectError.has_value()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_EQ(*connectError, scaler::ymq::Error::ErrorCode::SocketStopRequested);
 }

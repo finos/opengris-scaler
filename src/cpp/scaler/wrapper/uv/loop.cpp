@@ -2,9 +2,26 @@
 
 #include <cassert>
 
+#include "scaler/wrapper/uv/callback.h"
+#include "scaler/wrapper/uv/handle.h"
+
 namespace scaler {
 namespace wrapper {
 namespace uv {
+
+// A graceful shutdown keeps a stream open until its writes drain, which a stalled peer can prevent forever.
+static void closeLingeringStream(uv_handle_t* handle, [[maybe_unused]] void* arg) noexcept
+{
+    if (uv_is_closing(handle)) {
+        return;
+    }
+
+    switch (uv_handle_get_type(handle)) {
+        case UV_TCP: uv_close(handle, &Handle<uv_tcp_t, ReadCallback>::free); break;
+        case UV_NAMED_PIPE: uv_close(handle, &Handle<uv_pipe_t, ReadCallback>::free); break;
+        default: break;
+    }
+}
 
 std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options) noexcept
 {
@@ -46,10 +63,10 @@ void Loop::stop() noexcept
 
 void Loop::loopDeleter(uv_loop_t* loop) noexcept
 {
+    uv_walk(loop, &closeLingeringStream, nullptr);
+
     if (uv_loop_alive(loop)) {
         // Run a final iteration of the loop until all `uv_close()` callbacks are called.
-        // Because of RAII, it's guaranteed `uv_close()` has been called on all handles and that the loop will
-        // eventually finish.
         [[maybe_unused]] int nActiveHandles = uv_run(loop, UV_RUN_DEFAULT);
         assert(nActiveHandles == 0 && "Loop is still alive");
     }
