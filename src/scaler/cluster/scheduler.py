@@ -7,7 +7,7 @@ from scaler.cluster.readiness import wait_for_ready_report
 from scaler.config.common.security import SecurityConfig
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
 from scaler.config.types.address import AddressConfig
-from scaler.scheduler.scheduler import Scheduler, SchedulerAddresses
+from scaler.scheduler.scheduler import BoundSchedulerAddresses, Scheduler
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
@@ -19,7 +19,7 @@ def run_scheduler(
     logging_config_file: Optional[str],
     logging_level: str,
     shutdown_event: Optional[EventType] = None,
-    on_ready: Optional[Callable[[SchedulerAddresses], None]] = None,
+    on_ready: Optional[Callable[[BoundSchedulerAddresses], None]] = None,
 ) -> None:
     """Run the scheduler in the current process until SIGINT/SIGTERM (or the optional
     `shutdown_event`) triggers a graceful shutdown. Blocks until the scheduler exited.
@@ -95,7 +95,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         self._shutdown_event = shutdown_event
         self._ready_receiver, self._ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
 
-    def wait_until_ready(self) -> SchedulerAddresses:
+    def wait_until_ready(self) -> BoundSchedulerAddresses:
         """Blocks until the scheduler listens, so a client connecting next does not race its startup."""
         return wait_for_ready_report(self._ready_receiver, self, "Scheduler", self._scheduler_config.bind_address)
 

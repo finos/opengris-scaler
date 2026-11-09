@@ -25,7 +25,7 @@ from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerC
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.config.section.worker_manager_union import WorkerManagerUnion
 from scaler.config.types.address import AddressConfig
-from scaler.scheduler.scheduler import SchedulerAddresses
+from scaler.scheduler.scheduler import BoundSchedulerAddresses
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.utility.process_bootstrap import bootstrap_process
@@ -155,13 +155,14 @@ def _resolve(address: AddressConfig, bound: AddressConfig) -> AddressConfig:
 
 def _resolve_worker_manager(
     wm_config: WorkerManagerUnion,
-    scheduler_addresses: Optional[SchedulerAddresses],
+    bound_scheduler_addresses: Optional[BoundSchedulerAddresses],
     object_storage_address: Optional[AddressConfig],
 ) -> WorkerManagerUnion:
     wm_addresses = wm_config.worker_manager_config
-    if scheduler_addresses is not None:
+    if bound_scheduler_addresses is not None:
         wm_addresses = dataclasses.replace(
-            wm_addresses, scheduler_address=_resolve(wm_addresses.scheduler_address, scheduler_addresses.bind_address)
+            wm_addresses,
+            scheduler_address=_resolve(wm_addresses.scheduler_address, bound_scheduler_addresses.bind_address),
         )
     if object_storage_address is not None and wm_addresses.object_storage_address is not None:
         wm_addresses = dataclasses.replace(
@@ -253,7 +254,7 @@ def main() -> None:
 
     # the addresses the processes bound, which a later section naming port 0 connects to
     object_storage_address: Optional[AddressConfig] = None
-    scheduler_addresses: Optional[SchedulerAddresses] = None
+    bound_scheduler_addresses: Optional[BoundSchedulerAddresses] = None
 
     exit_code = 0
     try:
@@ -284,22 +285,22 @@ def main() -> None:
             )
             processes.append(sched_process)  # type: ignore[arg-type]
             sched_process.start()
-            scheduler_addresses = wait_for_ready_report(
+            bound_scheduler_addresses = wait_for_ready_report(
                 ready_receiver, sched_process, "Scheduler", scheduler_config.bind_address
             )
 
         for wm_config in config.worker_managers:
-            wm_config = _resolve_worker_manager(wm_config, scheduler_addresses, object_storage_address)
+            wm_config = _resolve_worker_manager(wm_config, bound_scheduler_addresses, object_storage_address)
             wm_process = _spawn_process(target=_run_worker_manager, args=(wm_config,), name=wm_config._tag)
             processes.append(wm_process)  # type: ignore[arg-type]
             wm_process.start()
 
         if config.gui is not None:
             gui_config = config.gui
-            if scheduler_addresses is not None:
+            if bound_scheduler_addresses is not None:
                 gui_config = dataclasses.replace(
                     gui_config,
-                    monitor_address=_resolve(gui_config.monitor_address, scheduler_addresses.monitor_address),
+                    monitor_address=_resolve(gui_config.monitor_address, bound_scheduler_addresses.monitor_address),
                 )
             gui_process = _spawn_process(target=_run_gui, args=(gui_config,), name="gui")
             processes.append(gui_process)  # type: ignore[arg-type]

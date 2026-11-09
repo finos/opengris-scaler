@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass(frozen=True)
-class SchedulerAddresses:
+class BoundSchedulerAddresses:
     """The addresses a scheduler bound, which differ from the configured ones where those name port 0."""
 
     bind_address: AddressConfig
@@ -264,11 +264,11 @@ class Scheduler:
 
         logger.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
-    async def get_loops(self, on_ready: Optional[Callable[[SchedulerAddresses], None]] = None) -> None:
+    async def get_loops(self, on_ready: Optional[Callable[[BoundSchedulerAddresses], None]] = None) -> None:
         await self.__initialize_network()
         if on_ready is not None:
             assert self._address is not None and self._binder_monitor.address is not None
-            on_ready(SchedulerAddresses(bind_address=self._address, monitor_address=self._binder_monitor.address))
+            on_ready(BoundSchedulerAddresses(bind_address=self._address, monitor_address=self._binder_monitor.address))
 
         # swallow_routine_errors=True: a bug in any single routine must not escape to asyncio.gather and
         # tear the whole scheduler down, taking every connected client and worker with it.
