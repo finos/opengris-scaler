@@ -2,9 +2,10 @@ import asyncio
 import unittest
 from typing import Dict, List, Set
 
+from scaler.config.constants import UNIT_STABLE_SECONDS
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
-from scaler.worker_manager.unit_controller import UNIT_STABLE_SECONDS, UnitController, UnitState
+from scaler.worker_manager.unit_controller import UnitController, UnitState
 from tests.utility.utility import logging_test_name
 
 TASK_CONCURRENCY_PER_UNIT = 2

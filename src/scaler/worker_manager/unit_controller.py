@@ -8,17 +8,12 @@ import time
 import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
+from scaler.config.constants import MAX_RESTART_BACKOFF_DOUBLINGS, UNIT_STABLE_SECONDS
 from scaler.utility.cooldown import Cooldown
 from scaler.utility.mixins import Looper, Reporter
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 
 logger = logging.getLogger(__name__)
-
-# A unit that stays active this long proves the unit recipe works, so the crash-loop backoff starts over.
-UNIT_STABLE_SECONDS = 60
-
-# The crash-loop backoff doubles on each consecutive loss, up to this many times.
-MAX_RESTART_BACKOFF_DOUBLINGS = 5
 
 
 class UnitState(enum.Enum):
