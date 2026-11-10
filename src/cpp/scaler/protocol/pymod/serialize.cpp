@@ -26,7 +26,7 @@ static const char ERR_NOT_ALIGNED[]     = "Cap'n Proto input buffer must be word
 static const char ERR_UNKNOWN_STRUCT[]  = "unknown Cap'n Proto struct type: %s";
 static const char ERR_FROM_BYTES_DATA[] = "from_bytes requires data argument";
 static const char ERR_NO_SUCH_VARIANT[] = "no such Message variant: %s";
-static const char ERR_SERIALIZE[]       = "Cap'n Proto serialization failed";
+static const char ERR_SERIALIZE[]       = "Cap'n Proto serialization failed: %s";
 
 namespace {
 
@@ -98,14 +98,14 @@ OwnedPyObject<> message_to_bytes(const char* variant_name, PyObject* inner)
             PyErr_Format(PyExc_KeyError, ERR_NO_SUCH_VARIANT, variant_name ? variant_name : "<null>");
             return {};
         }
-    } catch (const kj::Exception&) {
+    } catch (const kj::Exception& e) {
         if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, ERR_SERIALIZE);
+            PyErr_Format(PyExc_RuntimeError, ERR_SERIALIZE, e.getDescription().cStr());
         }
         return {};
-    } catch (const std::exception&) {
+    } catch (const std::exception& e) {
         if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, ERR_SERIALIZE);
+            PyErr_Format(PyExc_RuntimeError, ERR_SERIALIZE, e.what());
         }
         return {};
     }
@@ -156,14 +156,14 @@ OwnedPyObject<> struct_to_bytes(const char* type_name, PyObject* obj)
             return nullptr;
         }
         return builder_to_bytes(builder);
-    } catch (const kj::Exception&) {
+    } catch (const kj::Exception& e) {
         if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, ERR_SERIALIZE);
+            PyErr_Format(PyExc_RuntimeError, ERR_SERIALIZE, e.getDescription().cStr());
         }
         return {};
-    } catch (const std::exception&) {
+    } catch (const std::exception& e) {
         if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, ERR_SERIALIZE);
+            PyErr_Format(PyExc_RuntimeError, ERR_SERIALIZE, e.what());
         }
         return {};
     }
