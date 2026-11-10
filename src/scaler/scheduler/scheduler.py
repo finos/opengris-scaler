@@ -3,7 +3,6 @@ import dataclasses
 import logging
 from typing import Callable, Optional
 
-from scaler.config.common.security import SecurityConfig
 from scaler.config.constants import DEFAULT_MONITOR_PORT_OFFSET
 from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
@@ -136,6 +135,7 @@ class Scheduler:
     async def __initialize_network(self) -> None:
         # Scheduler's binder
         assert self._address is not None
+        default_monitor = default_monitor_address(self._address)
 
         await self._binder.bind(self._address, security_config=self._security_config)
 
@@ -167,12 +167,10 @@ class Scheduler:
 
         # Monitor
 
-        configured_monitor_address = self._config_controller.get_config("monitor_address")
-        if configured_monitor_address is not None:
-            await self._binder_monitor.bind(configured_monitor_address, security_config=self._security_config)
-        else:
-            assert self._address is not None
-            await bind_default_monitor_address(self._binder_monitor, self._address, self._security_config)
+        await self._binder_monitor.bind(
+            self._config_controller.get_config("monitor_address") or default_monitor,
+            security_config=self._security_config,
+        )
 
         monitor_address = self._binder_monitor.address
         assert monitor_address is not None
@@ -329,17 +327,11 @@ class Scheduler:
         self._connector_storage.destroy()
 
 
-async def bind_default_monitor_address(
-    publisher: AsyncPublisher, scheduler_address: AddressConfig, security_config: SecurityConfig
-) -> None:
-    """Binds the scheduler port + 2, or a port the OS picks when that one cannot be bound."""
-    assert scheduler_address.port is not None, "scheduler bind address must have a port"
+def default_monitor_address(bind_address: AddressConfig) -> AddressConfig:
+    """The scheduler port + 2, or port 0 when the scheduler binds port 0, whose port + 2 nobody can know ahead."""
+    assert bind_address.port is not None, "scheduler bind address must have a port"
 
-    default_port = scheduler_address.port + DEFAULT_MONITOR_PORT_OFFSET
-    try:
-        await publisher.bind(dataclasses.replace(scheduler_address, port=default_port), security_config=security_config)
-    except Exception as e:  # noqa: BLE001  any failure to bind the default falls back to an OS-picked port
-        logger.warning(f"Scheduler: cannot bind default monitor port {default_port} ({e!r}), binding port 0")
-        await publisher.bind(
-            dataclasses.replace(scheduler_address, port=OS_PICKED_PORT), security_config=security_config
-        )
+    if bind_address.port == OS_PICKED_PORT:
+        return bind_address
+
+    return dataclasses.replace(bind_address, port=bind_address.port + DEFAULT_MONITOR_PORT_OFFSET)
