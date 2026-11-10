@@ -24,7 +24,8 @@ class YMQSyncConnector(SyncConnector):
         self._identity = identity
         self._address = address
 
-        self._socket: Optional[ConnectorSocket] = ConnectorSocket.connect(
+        self._socket: Optional[ConnectorSocket] = None
+        self._socket = ConnectorSocket.connect(
             self._ymq_context, self._identity.decode(), repr(self._address), tls_config=to_tls_config(security_config)
         )
 
