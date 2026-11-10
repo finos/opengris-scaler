@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 class UnitState(enum.Enum):
     pending = enum.auto()  # create dispatched, no heartbeat yet
     active = enum.auto()  # serving
-    stopping = enum.auto()  # teardown dispatched
+    stopping = enum.auto()  # to destroy, no destroy call in flight
+    destroying = enum.auto()  # destroy call in flight
 
 
 @dataclasses.dataclass
@@ -70,7 +71,6 @@ class UnitController(Looper, Reporter):
         # The event loop keeps only a weak reference to a task: without this set, a provisioner call could be
         # collected mid-flight and leak the resource it was creating.
         self._tasks: Set[asyncio.Task] = set()
-        self._destroying_unit_ids: Set[str] = set()
 
         self._consecutive_unit_losses = 0
         self._create_not_before = 0.0  # time.monotonic()
@@ -101,7 +101,7 @@ class UnitController(Looper, Reporter):
     def on_unit_disconnect(self, unit_id: str) -> None:
         """The unit is about to exit on its own: destroy what it runs on now, and count it as lost."""
         unit = self._units.get(unit_id)
-        if unit is None or unit.state == UnitState.stopping or unit.handle is None:
+        if unit is None or unit.state in (UnitState.stopping, UnitState.destroying) or unit.handle is None:
             return
 
         logger.warning(f"unit {unit_id!r} exited on its own from state {unit.state.name}")
@@ -172,8 +172,8 @@ class UnitController(Looper, Reporter):
     def _reconcile(self) -> None:
         """Create or destroy units until the supply matches the desired task concurrency.
 
-        Stopping units are not supply: counting them would destroy one more unit at every routine while a slow
-        destroy runs.
+        Stopping and destroying units are not supply: counting them would destroy one more unit at every routine
+        while a slow destroy runs.
         """
         per_unit = self._provisioner.task_concurrency_per_unit()
         desired_units = math.ceil(self._desired_task_concurrency / per_unit)
@@ -234,20 +234,17 @@ class UnitController(Looper, Reporter):
     def _drive_destroys(self) -> None:
         """Destroy each stopping unit, and retry each destroy that failed."""
         for unit in self._units_in(UnitState.stopping):
-            if unit.unit_id in self._destroying_unit_ids:
-                continue
-
             assert unit.handle is not None, "only a created unit can stop"
-            self._destroying_unit_ids.add(unit.unit_id)
+            self._set_state(unit, UnitState.destroying)
             self._start_task(
                 self._provisioner.destroy_unit(unit.handle), functools.partial(self._on_destroy_done, unit)
             )
 
     def _on_destroy_done(self, unit: Unit, task: asyncio.Task) -> None:
-        self._destroying_unit_ids.discard(unit.unit_id)
         error = _failure_of(task)
         if error is not None:
             logger.error(f"failed to destroy unit {unit.unit_id!r}, retrying: {error!r}")
+            self._set_state(unit, UnitState.stopping)
             return
 
         self._units.pop(unit.unit_id, None)

@@ -15,7 +15,7 @@ STARTUP_TIMEOUT_SECONDS = 60
 
 
 class _FakeProvisioner(UnitProvisioner):
-    """Units that exist until destroyed; each create waits for `release_creates` when `hold_creates` is set."""
+    """Units that exist until destroyed; each create or destroy waits for its release event while held."""
 
     def __init__(self, max_units: int = -1) -> None:
         self._max_units = max_units
@@ -26,6 +26,9 @@ class _FakeProvisioner(UnitProvisioner):
         self.fail_destroys = False
         self.hold_creates = False
         self.release_creates = asyncio.Event()
+        self.destroy_calls = 0
+        self.hold_destroys = False
+        self.release_destroys = asyncio.Event()
 
     async def create_unit(self, unit_id: str) -> UnitHandle:
         if self.hold_creates:
@@ -37,6 +40,9 @@ class _FakeProvisioner(UnitProvisioner):
         return unit_id
 
     async def destroy_unit(self, handle: UnitHandle) -> None:
+        self.destroy_calls += 1
+        if self.hold_destroys:
+            await self.release_destroys.wait()
         if self.fail_destroys:
             raise RuntimeError("api error")
         assert isinstance(handle, str)
@@ -253,6 +259,21 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         await self.__tick(self.controller)
         self.assertEqual(self.controller._units, {})
         self.assertEqual(len(self.provisioner.destroyed), 1)
+
+    async def test_a_slow_destroy_is_not_started_again(self) -> None:
+        await self.__active_units(1)
+
+        self.provisioner.hold_destroys = True
+        self.controller.set_desired_task_concurrency(0)
+        for _ in range(3):
+            await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroy_calls, 1)
+        self.assertEqual(self.__states(self.controller), {UnitState.destroying: 1})
+
+        self.provisioner.release_destroys.set()
+        await self.__tick(self.controller)
+        self.assertEqual(self.controller._units, {})
+        self.assertEqual(self.provisioner.destroy_calls, 1)
 
     async def test_terminate_destroys_every_unit_including_one_still_being_created(self) -> None:
         await self.__active_units(1)
