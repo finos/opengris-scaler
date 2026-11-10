@@ -261,9 +261,10 @@ class UnitController(Looper, Reporter):
 
         Emptying whole units, rather than one worker from each, is what releases a resource that costs money.
         """
-        return sorted(self._units_in(UnitState.active), key=lambda unit: (unit.assigned_tasks, unit.state_since))[
-            :count
-        ]
+        least_loaded_first = sorted(
+            self._units_in(UnitState.active), key=lambda unit: (unit.assigned_tasks, unit.state_since)
+        )
+        return least_loaded_first[:count]
 
     def _set_state(self, unit: Unit, state: UnitState) -> None:
         unit.state = state
