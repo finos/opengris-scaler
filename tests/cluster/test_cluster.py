@@ -1,3 +1,4 @@
+import multiprocessing
 import socket
 import unittest
 
@@ -34,3 +35,19 @@ class TestCluster(unittest.TestCase):
             socket.create_connection(("127.0.0.1", port)).close()
         finally:
             combo.shutdown()
+
+    def test_failed_startup_stops_started_processes(self):
+        """A scheduler that fails to bind makes the combo raise and stop the object storage server it started."""
+        with socket.socket() as taken:
+            taken.bind(("127.0.0.1", 0))
+            taken.listen()
+            port = taken.getsockname()[1]
+
+            with self.assertRaises(RuntimeError):
+                SchedulerClusterCombo(address=f"tcp://127.0.0.1:{port}", n_workers=1)
+
+        leaked = multiprocessing.active_children()
+        for process in leaked:
+            process.terminate()
+            process.join()
+        self.assertEqual(leaked, [])
