@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, List
 import psutil
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.utility.exitcode import describe_exitcode
 from scaler.worker.worker import Worker
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
@@ -25,7 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
-    def __init__(self, config: NativeWorkerManagerConfig) -> None:
+    def __init__(self, config: NativeWorkerManagerConfig, children_address: AddressConfig) -> None:
+        self._children_address = children_address
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -56,9 +58,9 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
         )
 
-    def _create_worker(self) -> Worker:
+    def _create_worker(self, unit_id: str) -> Worker:
         return Worker(
-            name=f"{self._worker_prefix}|{uuid.uuid4().hex}",
+            name=f"{self._worker_prefix}|{unit_id}",
             address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
             preload=self._preload,
@@ -75,6 +77,8 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
             worker_manager_id=self._worker_manager_id,
+            worker_manager_address=self._children_address,
+            unit_id=unit_id,
             security_config=self._security_config,
         )
 
@@ -100,7 +104,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     async def start_units(self, count: int) -> None:
         for _ in range(count):
-            worker = self._create_worker()
+            worker = self._create_worker(uuid.uuid4().hex)
             worker.start()
             self._workers.append(worker)
             logger.info(f"Started native worker {worker.identity!r}")
@@ -135,7 +139,8 @@ class NativeWorkerManager:
         return self._config
 
     def run(self) -> None:
-        provisioner = NativeWorkerProvisioner(self._config)
+        children_address = local_children_address(self._config.worker_manager_config)
+        provisioner = NativeWorkerProvisioner(self._config, children_address)
 
         runner = WorkerManagerRunner(
             name="worker_manager_native",
@@ -144,7 +149,7 @@ class NativeWorkerManager:
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=self._config.worker_manager_config.max_task_concurrency,
             worker_provisioner=provisioner,
-            children_address=local_children_address(self._config.worker_manager_config),
+            children_address=children_address,
             io_threads=self._config.worker_config.io_threads,
             security_config=self._config.security,
             parent_address=self._config.parent_address,

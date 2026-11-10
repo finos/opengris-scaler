@@ -11,6 +11,7 @@ from scaler.protocol.capnp import (
     ObjectMetadata,
     Task,
     TaskCancel,
+    WorkerHeartbeat,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
@@ -95,6 +96,16 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         (request,) = command_call.args[1].setDesiredTaskConcurrencyRequests
         self.assertEqual(request.taskConcurrency, 8)
 
+    async def test_a_worker_heartbeat_gets_an_echo(self) -> None:
+        binder = AsyncMock()
+        self.runner._binder_children = binder
+
+        await self.runner._on_receive_child(b"unit-1", WorkerHeartbeat())
+
+        binder.send.assert_awaited_once()
+        self.assertEqual(binder.send.call_args.args[0], b"unit-1")
+        self.assertIsInstance(binder.send.call_args.args[1], WorkerHeartbeatEcho)
+
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -125,6 +136,8 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
             io_threads=1,
             event_loop="asyncio",
             worker_manager_id=b"mgr",
+            worker_manager_address=MagicMock(),
+            unit_id="unit",
             processor_status_provider_factory=MagicMock(),
             execution_backend_factory=MagicMock(),
         )
