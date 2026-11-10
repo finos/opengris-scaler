@@ -1,6 +1,7 @@
 import socket
 import unittest
 
+from scaler import SchedulerClusterCombo
 from scaler.config.common.security import SecurityConfig
 from scaler.config.constants import DEFAULT_MONITOR_PORT_OFFSET
 from scaler.config.types.address import AddressConfig, SocketType
@@ -37,3 +38,15 @@ class TestDefaultMonitorAddress(unittest.IsolatedAsyncioTestCase):
 
         assert publisher.address is not None
         self.assertNotIn(publisher.address.port, {taken_port, OS_PICKED_PORT})
+
+    def test_a_taken_default_monitor_port_fails_an_explicit_scheduler_port(self) -> None:
+        """With an explicit scheduler port, a taken port + 2 fails startup, since monitors connect to port + 2."""
+        holder = socket.socket(socket.AddressFamily.AF_INET, socket.SocketKind.SOCK_STREAM)
+        self.addCleanup(holder.close)
+        holder.bind((HOST, OS_PICKED_PORT))
+        holder.listen()
+        scheduler_port = holder.getsockname()[1] - DEFAULT_MONITOR_PORT_OFFSET
+
+        with self.assertRaises(RuntimeError):
+            combo = SchedulerClusterCombo(address=f"tcp://{HOST}:{scheduler_port}", n_workers=1)
+            combo.shutdown()
