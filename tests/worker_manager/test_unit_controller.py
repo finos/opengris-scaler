@@ -78,7 +78,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
     def __heartbeat_all(self, controller: UnitController, provisioner: _FakeProvisioner) -> None:
         """Every unit that exists sends one heartbeat."""
         for unit_id in provisioner.existing:
-            controller.on_unit_heartbeat(unit_id, TASK_CONCURRENCY_PER_UNIT, occupancy=0)
+            controller.on_unit_heartbeat(unit_id, TASK_CONCURRENCY_PER_UNIT, assigned_tasks=0)
 
     def __states(self, controller: UnitController) -> Dict[UnitState, int]:
         states: Dict[UnitState, int] = {}
@@ -196,8 +196,8 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
 
     async def test_scale_down_destroys_the_least_occupied_units(self) -> None:
         busy, idle, half = await self.__active_units(3)
-        self.controller.on_unit_heartbeat(busy, TASK_CONCURRENCY_PER_UNIT, occupancy=2)
-        self.controller.on_unit_heartbeat(half, TASK_CONCURRENCY_PER_UNIT, occupancy=1)
+        self.controller.on_unit_heartbeat(busy, TASK_CONCURRENCY_PER_UNIT, assigned_tasks=2)
+        self.controller.on_unit_heartbeat(half, TASK_CONCURRENCY_PER_UNIT, assigned_tasks=1)
 
         self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
         await self.__tick(self.controller)

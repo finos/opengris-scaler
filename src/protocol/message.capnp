@@ -100,7 +100,7 @@ struct WorkerManagerHeartbeat {
     capabilities @1 :List(CommonType.TaskCapability);
     workerManagerID @2 :Data;
     activeTaskConcurrency @3 :UInt32;  # task slots of the units that serve
-    occupancy @4 :UInt32;              # queued and running tasks across the fleet
+    assignedTasks @4 :UInt32;          # queued and running tasks across the fleet
     activeUnits @5 :UInt32;
     pendingUnits @6 :UInt32;
 }

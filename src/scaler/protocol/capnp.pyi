@@ -250,7 +250,7 @@ class WorkerManagerHeartbeat(BaseMessage):
     capabilities: Any
     workerManagerID: bytes
     activeTaskConcurrency: int
-    occupancy: int
+    assignedTasks: int
     activeUnits: int
     pendingUnits: int
 

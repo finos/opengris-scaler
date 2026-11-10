@@ -30,14 +30,14 @@ class Unit:
     state_since: float  # time.monotonic()
     desired_task_concurrency: int = 0  # the share of the desired task concurrency this unit is asked for
     active_task_concurrency: int = 0  # task slots the unit reported
-    occupancy: int = 0  # queued and running tasks the unit reported
+    assigned_tasks: int = 0  # queued and running tasks the unit reported
     last_heartbeat: Optional[float] = None  # time.monotonic(); None until the first heartbeat
 
 
 @dataclasses.dataclass(frozen=True)
 class UnitControllerStatus:
     active_task_concurrency: int
-    occupancy: int
+    assigned_tasks: int
     active_units: int
     pending_units: int
 
@@ -80,7 +80,7 @@ class UnitController(Looper, Reporter):
             logger.info(f"desired task concurrency changed: {self._desired_task_concurrency} -> {task_concurrency}")
         self._desired_task_concurrency = task_concurrency
 
-    def on_unit_heartbeat(self, unit_id: str, active_task_concurrency: int, occupancy: int) -> None:
+    def on_unit_heartbeat(self, unit_id: str, active_task_concurrency: int, assigned_tasks: int) -> None:
         unit = self._units.get(unit_id)
         if unit is None:
             return
@@ -88,7 +88,7 @@ class UnitController(Looper, Reporter):
         now = time.monotonic()
         unit.last_heartbeat = now
         unit.active_task_concurrency = active_task_concurrency
-        unit.occupancy = occupancy
+        unit.assigned_tasks = assigned_tasks
 
         if unit.state == UnitState.active and now - unit.state_since > UNIT_STABLE_SECONDS:
             self._consecutive_unit_losses = 0
@@ -116,7 +116,7 @@ class UnitController(Looper, Reporter):
         active = self._units_in(UnitState.active)
         return UnitControllerStatus(
             active_task_concurrency=sum(unit.active_task_concurrency for unit in active),
-            occupancy=sum(unit.occupancy for unit in self._units.values()),
+            assigned_tasks=sum(unit.assigned_tasks for unit in self._units.values()),
             active_units=len(active),
             pending_units=len(self._units_in(UnitState.pending)),
         )
@@ -197,7 +197,7 @@ class UnitController(Looper, Reporter):
 
         self._scale_down_cooldown.reset()
         for unit in self._select_units_to_shed(supply - desired_units):
-            logger.info(f"shedding unit {unit.unit_id!r} (occupancy={unit.occupancy})")
+            logger.info(f"shedding unit {unit.unit_id!r} (assigned_tasks={unit.assigned_tasks})")
             self._set_state(unit, UnitState.stopping)
 
     def _assign_unit_targets(self) -> None:
@@ -260,11 +260,13 @@ class UnitController(Looper, Reporter):
         task.add_done_callback(on_done)
 
     def _select_units_to_shed(self, count: int) -> List[Unit]:
-        """The `count` active units with the lowest occupancy.
+        """The `count` active units with the fewest assigned tasks.
 
         Emptying whole units, rather than one worker from each, is what releases a resource that costs money.
         """
-        return sorted(self._units_in(UnitState.active), key=lambda unit: (unit.occupancy, unit.state_since))[:count]
+        return sorted(self._units_in(UnitState.active), key=lambda unit: (unit.assigned_tasks, unit.state_since))[
+            :count
+        ]
 
     def _set_state(self, unit: Unit, state: UnitState) -> None:
         unit.state = state

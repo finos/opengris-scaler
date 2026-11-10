@@ -119,7 +119,7 @@ class WorkerManagerRunner:
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
                 activeTaskConcurrency=status.active_task_concurrency,
-                occupancy=status.occupancy,
+                assignedTasks=status.assigned_tasks,
                 activeUnits=status.active_units,
                 pendingUnits=status.pending_units,
             ),
@@ -189,7 +189,7 @@ class WorkerManagerRunner:
             return
 
         if isinstance(message, WorkerManagerHeartbeat):
-            self._unit_controller.on_unit_heartbeat(unit_id, message.activeTaskConcurrency, message.occupancy)
+            self._unit_controller.on_unit_heartbeat(unit_id, message.activeTaskConcurrency, message.assignedTasks)
             await self._binder_children.send(source, WorkerManagerHeartbeatEcho(), detached=True)
             await self._binder_children.send(source, self._instruction_for(unit_id), detached=True)
             return
