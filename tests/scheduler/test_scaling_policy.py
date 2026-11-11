@@ -1,4 +1,3 @@
-import time
 import unittest
 from unittest.mock import MagicMock
 
@@ -13,9 +12,9 @@ VANILLA_LOGGER = "scaler.scheduler.policies.scaling.vanilla"
 CAPABILITY_LOGGER = "scaler.scheduler.policies.scaling.capability"
 
 
-def _info(manager_id: WorkerManagerID = MANAGER_ID) -> WorkerManagerInfo:
+def _info(manager_id: WorkerManagerID = MANAGER_ID, worker_count: int = 1) -> WorkerManagerInfo:
     return WorkerManagerInfo(
-        manager_id=manager_id, source=b"test", last_seen_at=time.time(), capabilities={}, max_task_concurrency=-1
+        manager_id=manager_id, max_task_concurrency=None, worker_count=worker_count, capabilities={}
     )
 
 
@@ -42,7 +41,7 @@ class TestVanillaScalingPolicyLogging(unittest.TestCase):
 
     def __decide(self, task_count: int, worker_count: int) -> int:
         return self.policy._compute_desired_worker_count(
-            MANAGER_ID, _snapshot(task_count, worker_count), {MANAGER_ID: _info()}, {MANAGER_ID: 1}
+            MANAGER_ID, _snapshot(task_count, worker_count), {MANAGER_ID: _info(worker_count=1)}
         )
 
     def test_a_standing_request_is_logged_once(self):
@@ -77,8 +76,7 @@ class TestCapabilityScalingPolicyLogging(unittest.TestCase):
         self.policy.get_scaling_commands(
             worker_manager_id=MANAGER_ID,
             information_snapshot=snapshot,
-            worker_manager_infos={MANAGER_ID: _info()},
-            worker_count_by_manager={MANAGER_ID: len(self.workers)},
+            worker_manager_infos={MANAGER_ID: _info(worker_count=len(self.workers))},
         )
 
     def test_a_standing_request_is_logged_once_per_capability_set(self):
@@ -125,7 +123,6 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
             worker_manager_id=MANAGER_ID,
             information_snapshot=_snapshot(100, 1),
             worker_manager_infos=self._infos(MANAGER_ID),
-            worker_count_by_manager={MANAGER_ID: 1},
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID})
 
@@ -133,7 +130,6 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
             worker_manager_id=OTHER_MANAGER_ID,
             information_snapshot=_snapshot(100, 1),
             worker_manager_infos=self._infos(OTHER_MANAGER_ID),
-            worker_count_by_manager={OTHER_MANAGER_ID: 1},
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {OTHER_MANAGER_ID})
 
@@ -143,10 +139,7 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
         snapshot.tasks = {0: MagicMock(capabilities={"gpu": 1})}
 
         policy.get_scaling_commands(
-            worker_manager_id=MANAGER_ID,
-            information_snapshot=snapshot,
-            worker_manager_infos=self._infos(MANAGER_ID),
-            worker_count_by_manager={MANAGER_ID: 0},
+            worker_manager_id=MANAGER_ID, information_snapshot=snapshot, worker_manager_infos=self._infos(MANAGER_ID)
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID})
 
@@ -154,7 +147,6 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
             worker_manager_id=OTHER_MANAGER_ID,
             information_snapshot=snapshot,
             worker_manager_infos=self._infos(OTHER_MANAGER_ID),
-            worker_count_by_manager={OTHER_MANAGER_ID: 0},
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {OTHER_MANAGER_ID})
 
@@ -165,16 +157,10 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
         known = self._infos(MANAGER_ID, OTHER_MANAGER_ID)
 
         policy.get_scaling_commands(
-            worker_manager_id=MANAGER_ID,
-            information_snapshot=snapshot,
-            worker_manager_infos=known,
-            worker_count_by_manager={MANAGER_ID: 0, OTHER_MANAGER_ID: 0},
+            worker_manager_id=MANAGER_ID, information_snapshot=snapshot, worker_manager_infos=known
         )
         policy.get_scaling_commands(
-            worker_manager_id=OTHER_MANAGER_ID,
-            information_snapshot=snapshot,
-            worker_manager_infos=known,
-            worker_count_by_manager={MANAGER_ID: 0, OTHER_MANAGER_ID: 0},
+            worker_manager_id=OTHER_MANAGER_ID, information_snapshot=snapshot, worker_manager_infos=known
         )
 
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID, OTHER_MANAGER_ID})

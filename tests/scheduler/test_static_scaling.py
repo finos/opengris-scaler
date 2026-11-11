@@ -1,4 +1,3 @@
-import time
 import unittest
 from typing import Optional
 from unittest.mock import MagicMock
@@ -15,17 +14,12 @@ def _desired_task_concurrency(
     policy: StaticScalingPolicy, worker_manager_id: WorkerManagerID = WorkerManagerID(b"manager")
 ) -> int:
     info = WorkerManagerInfo(
-        manager_id=worker_manager_id,
-        source=b"test",
-        last_seen_at=time.time(),
-        capabilities={},
-        max_task_concurrency=MAX_TASK_CONCURRENCY,
+        manager_id=worker_manager_id, max_task_concurrency=MAX_TASK_CONCURRENCY, worker_count=0, capabilities={}
     )
     commands = policy.get_scaling_commands(
         worker_manager_id=worker_manager_id,
         information_snapshot=MagicMock(),
         worker_manager_infos={worker_manager_id: info},
-        worker_count_by_manager={worker_manager_id: 0},
     )
     (command,) = commands
     (request,) = command.setDesiredTaskConcurrencyRequests

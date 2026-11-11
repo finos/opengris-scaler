@@ -1,4 +1,3 @@
-import time
 import unittest
 from typing import Dict, Optional
 
@@ -25,12 +24,9 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         self.policy = VanillaScalingPolicy({})
 
     def _single_request(self, snapshot, manager_id, managed, max_task_concurrency=10):
-        info = _create_worker_manager_info(manager_id, max_task_concurrency)
+        info = _create_worker_manager_info(manager_id, max_task_concurrency, worker_count=len(managed))
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos={manager_id: info},
-            worker_count_by_manager={manager_id: len(managed)},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
         )
         self.assertEqual(len(commands), 1)
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
@@ -191,15 +187,16 @@ class TestFloorHeldWorkerCount(unittest.TestCase):
         )
         for worker_count_by_manager, held in cases:
             with self.subTest(worker_count_by_manager=worker_count_by_manager):
-                self.assertEqual(
-                    floor_held_worker_count(WorkerManagerID(b"cloud"), bounds, worker_count_by_manager), held
-                )
+                infos = {
+                    manager_id: _create_worker_manager_info(manager_id, worker_count=count)
+                    for manager_id, count in worker_count_by_manager.items()
+                }
+                self.assertEqual(floor_held_worker_count(WorkerManagerID(b"cloud"), bounds, infos), held)
 
     def test_a_manager_does_not_count_its_own_floor(self):
         bounds = {WorkerManagerID(b"native"): WorkerManagerBounds(8, 8)}
-        self.assertEqual(
-            floor_held_worker_count(WorkerManagerID(b"native"), bounds, {WorkerManagerID(b"native"): 8}), 0
-        )
+        infos = {WorkerManagerID(b"native"): _create_worker_manager_info(WorkerManagerID(b"native"), worker_count=8)}
+        self.assertEqual(floor_held_worker_count(WorkerManagerID(b"native"), bounds, infos), 0)
 
 
 class TestVanillaBounds(unittest.TestCase):
@@ -215,16 +212,16 @@ class TestVanillaBounds(unittest.TestCase):
         native_workers = {WorkerID(f"native-{i}".encode()): _create_mock_worker_heartbeat({}) for i in range(8)}
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         manager_infos = {
-            manager_id: _create_worker_manager_info(manager_id, max_task_concurrency=100)
+            manager_id: _create_worker_manager_info(
+                manager_id, max_task_concurrency=100, worker_count=8 if manager_id == WorkerManagerID(b"native") else 0
+            )
             for manager_id in (WorkerManagerID(b"native"), WorkerManagerID(b"cloud"))
         }
-        worker_count_by_manager = {WorkerManagerID(b"native"): 8, WorkerManagerID(b"cloud"): 0}
 
         commands = policy.get_scaling_commands(
             worker_manager_id=WorkerManagerID(b"cloud"),
             information_snapshot=InformationSnapshot(tasks=tasks, workers=native_workers),
             worker_manager_infos=manager_infos,
-            worker_count_by_manager=worker_count_by_manager,
         )
 
         self.assertEqual(commands[0].setDesiredTaskConcurrencyRequests[0].taskConcurrency, 0)
@@ -274,13 +271,10 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks={}, workers=workers)
         manager_id = WorkerManagerID(b"mgr")
-        info = _create_worker_manager_info(manager_id)
+        info = _create_worker_manager_info(manager_id, worker_count=len(managed))
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos={manager_id: info},
-            worker_count_by_manager={manager_id: len(managed)},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
         )
 
         self.assertEqual(len(commands), 1)
@@ -296,13 +290,10 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         manager_id = WorkerManagerID(b"mgr")
-        info = _create_worker_manager_info(manager_id)
+        info = _create_worker_manager_info(manager_id, worker_count=len(managed))
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos={manager_id: info},
-            worker_count_by_manager={manager_id: len(managed)},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
         )
 
         self.assertEqual(len(commands), 1)
@@ -318,13 +309,10 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         manager_id = WorkerManagerID(b"mgr")
-        info = _create_worker_manager_info(manager_id)
+        info = _create_worker_manager_info(manager_id, worker_count=len(managed))
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos={manager_id: info},
-            worker_count_by_manager={manager_id: len(managed)},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
         )
 
         self.assertEqual(len(commands), 1)
@@ -360,12 +348,14 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, dra
 
 
 def _create_worker_manager_info(
-    worker_manager_id: WorkerManagerID, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: WorkerManagerID,
+    max_task_concurrency: Optional[int] = 10,
+    capabilities: Optional[Dict[str, int]] = None,
+    worker_count: int = 0,
 ) -> WorkerManagerInfo:
     return WorkerManagerInfo(
         manager_id=worker_manager_id,
-        source=b"test",
-        last_seen_at=time.time(),
-        capabilities=capabilities or {},
         max_task_concurrency=max_task_concurrency,
+        worker_count=worker_count,
+        capabilities=capabilities or {},
     )

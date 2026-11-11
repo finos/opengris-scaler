@@ -21,7 +21,6 @@ class ScalingPolicy(metaclass=abc.ABCMeta):
         worker_manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
         worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
-        worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> List[WorkerManagerCommand]:
         """Pure function: state in, declarative scaling command out."""
         raise NotImplementedError()

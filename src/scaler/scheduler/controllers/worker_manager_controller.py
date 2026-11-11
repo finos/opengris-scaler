@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import time
 from typing import Dict, List, Optional
@@ -25,6 +26,16 @@ logger = logging.getLogger(__name__)
 UINT16_MAX = 2**16 - 1
 
 
+@dataclasses.dataclass
+class _WorkerManagerHolder:
+    manager_id: WorkerManagerID
+    source: bytes  # network identity (ZMQ/YMQ socket address)
+    last_seen_at: float  # time.time() of last heartbeat
+    capabilities: Dict[str, int]
+    max_task_concurrency: Optional[int]  # None = unlimited
+    last_desired_total: int = 0
+
+
 class WorkerManagerController(Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController, scaling_policy: ScalingPolicy):
         self._config_controller = config_controller
@@ -34,7 +45,7 @@ class WorkerManagerController(Looper, Reporter):
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
 
-        self._managers: Dict[WorkerManagerID, WorkerManagerInfo] = {}
+        self._managers: Dict[WorkerManagerID, _WorkerManagerHolder] = {}
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
@@ -44,38 +55,38 @@ class WorkerManagerController(Looper, Reporter):
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
         manager_id = heartbeat.workerManagerID
         capabilities = capabilities_to_dict(heartbeat.capabilities)
+        max_task_concurrency = heartbeat.maxTaskConcurrency if heartbeat.maxTaskConcurrency != -1 else None
 
         if manager_id not in self._managers:
-            self._managers[manager_id] = WorkerManagerInfo(
+            self._managers[manager_id] = _WorkerManagerHolder(
                 manager_id=manager_id,
                 source=source,
                 last_seen_at=time.time(),
                 capabilities=capabilities,
-                max_task_concurrency=heartbeat.maxTaskConcurrency,
+                max_task_concurrency=max_task_concurrency,
             )
             logger.info(f"{manager_id!r} connected")
         else:
-            info = self._managers[manager_id]
-            if info.source != source:
+            holder = self._managers[manager_id]
+            if holder.source != source:
                 logger.warning(
                     f"Duplicate {manager_id!r}: source {source!r} rejected, "
-                    f"already registered by source {info.source!r}"
+                    f"already registered by source {holder.source!r}"
                 )
                 return
-            info.last_seen_at = time.time()
-            info.capabilities = capabilities
-            info.max_task_concurrency = heartbeat.maxTaskConcurrency
+            holder.last_seen_at = time.time()
+            holder.capabilities = capabilities
+            holder.max_task_concurrency = max_task_concurrency
 
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
         information_snapshot = self._build_snapshot()
-        worker_count_by_manager = self._build_worker_count_by_manager()
+        worker_manager_infos = self._build_worker_manager_infos()
 
         commands = self._scaling_policy.get_scaling_commands(
             worker_manager_id=manager_id,
             information_snapshot=information_snapshot,
-            worker_manager_infos=self._managers,
-            worker_count_by_manager=worker_count_by_manager,
+            worker_manager_infos=worker_manager_infos,
         )
 
         for command in commands:
@@ -91,16 +102,16 @@ class WorkerManagerController(Looper, Reporter):
 
         now = time.time()
         details = []
-        for manager_id, info in self._managers.items():
-            caps_str = " ".join(sorted(info.capabilities.keys())) if info.capabilities else ""
+        for manager_id, holder in self._managers.items():
+            caps_str = " ".join(sorted(holder.capabilities.keys())) if holder.capabilities else ""
             connected = len(self._worker_controller.get_workers_by_manager_id(manager_id))
-            pending = max(0, info.last_desired_total - connected)
+            pending = max(0, holder.last_desired_total - connected)
             details.append(
                 {
                     "worker_manager_id": manager_id,
-                    "identity": info.source.decode(errors="replace"),
-                    "last_seen_seconds": min(int(now - info.last_seen_at), UINT16_MAX),
-                    "max_task_concurrency": info.max_task_concurrency,
+                    "identity": holder.source.decode(errors="replace"),
+                    "last_seen_seconds": min(int(now - holder.last_seen_at), UINT16_MAX),
+                    "max_task_concurrency": holder.max_task_concurrency or -1,
                     "capabilities": caps_str,
                     "pending_workers": pending,
                 }
@@ -118,10 +129,16 @@ class WorkerManagerController(Looper, Reporter):
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
         await self._binder.send(source, command, detached=True)
 
-    def _build_worker_count_by_manager(self) -> Dict[WorkerManagerID, int]:
+    def _build_worker_manager_infos(self) -> Dict[WorkerManagerID, WorkerManagerInfo]:
+        """Build immutable WorkerManagerInfo snapshots from mutable holders."""
         return {
-            manager_id: len(self._worker_controller.get_workers_by_manager_id(manager_id))
-            for manager_id in self._managers
+            manager_id: WorkerManagerInfo(
+                manager_id=manager_id,
+                max_task_concurrency=holder.max_task_concurrency,
+                worker_count=len(self._worker_controller.get_workers_by_manager_id(manager_id)),
+                capabilities=holder.capabilities,
+            )
+            for manager_id, holder in self._managers.items()
         }
 
     def _build_snapshot(self) -> InformationSnapshot:
@@ -137,7 +154,7 @@ class WorkerManagerController(Looper, Reporter):
         now = time.time()
         timeout_seconds = DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
         dead_managers = [
-            manager_id for manager_id, info in self._managers.items() if now - info.last_seen_at > timeout_seconds
+            manager_id for manager_id, holder in self._managers.items() if now - holder.last_seen_at > timeout_seconds
         ]
         for dead_manager in dead_managers:
             await self._disconnect_manager(dead_manager)
