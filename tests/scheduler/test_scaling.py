@@ -235,15 +235,12 @@ class TestAtCapacityEmission(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         manager_infos = {
             manager_id: WorkerManagerInfo(
-                manager_id=manager_id, source=b"test", last_seen_at=0.0, capabilities={}, max_task_concurrency=10
+                manager_id=manager_id, max_task_concurrency=10, worker_count=10, capabilities={}
             )
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos=manager_infos,
-            worker_count_by_manager={manager_id: 10},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
         )
 
         self.assertEqual(len(commands), 1)
@@ -260,15 +257,12 @@ class TestAtCapacityEmission(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         manager_infos = {
             manager_id: WorkerManagerInfo(
-                manager_id=manager_id, source=b"test", last_seen_at=0.0, capabilities={}, max_task_concurrency=10
+                manager_id=manager_id, max_task_concurrency=10, worker_count=1, capabilities={}
             )
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos=manager_infos,
-            worker_count_by_manager={manager_id: 1},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
         )
 
         self.assertEqual(len(commands), 1)
@@ -287,19 +281,12 @@ class TestAtCapacityEmission(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_infos = {
             manager_id: WorkerManagerInfo(
-                manager_id=manager_id,
-                source=b"test",
-                last_seen_at=0.0,
-                capabilities={"gpu": -1},
-                max_task_concurrency=10,
+                manager_id=manager_id, max_task_concurrency=10, worker_count=10, capabilities={"gpu": -1}
             )
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos=manager_infos,
-            worker_count_by_manager={manager_id: 10},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
         )
 
         self.assertEqual(len(commands), 1)
@@ -316,15 +303,12 @@ class TestAtCapacityEmission(unittest.TestCase):
         snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
         manager_infos = {
             manager_id: WorkerManagerInfo(
-                manager_id=manager_id, source=b"test", last_seen_at=0.0, capabilities={}, max_task_concurrency=10
+                manager_id=manager_id, max_task_concurrency=10, worker_count=0, capabilities={}
             )
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos=manager_infos,
-            worker_count_by_manager={manager_id: 0},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
         )
 
         self.assertEqual(len(commands), 1)
@@ -344,15 +328,12 @@ class TestAtCapacityEmission(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_infos = {
             manager_id: WorkerManagerInfo(
-                manager_id=manager_id, source=b"test", last_seen_at=0.0, capabilities={}, max_task_concurrency=10
+                manager_id=manager_id, max_task_concurrency=10, worker_count=10, capabilities={}
             )
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos=manager_infos,
-            worker_count_by_manager={manager_id: 10},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
         )
 
         self.assertEqual(len(commands), 1)

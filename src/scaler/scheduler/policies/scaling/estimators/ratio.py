@@ -1,7 +1,9 @@
 from math import ceil
 from typing import Dict, List, Optional, Tuple
 
-from scaler.scheduler.policies.scaling.estimator import ClusterState, ScalingEstimator
+from scaler.scheduler.policies.scaling.estimator import ScalingEstimator
+from scaler.scheduler.types import ClusterState
+from scaler.utility.identifiers import WorkerManagerID
 
 
 class RatioEstimator(ScalingEstimator):
@@ -18,7 +20,7 @@ class RatioEstimator(ScalingEstimator):
     def update(self, cluster_state: ClusterState) -> None:
         self._cluster_state = cluster_state
 
-    def estimate(self, manager_id: bytes) -> List[Tuple[Dict[str, int], int]]:
+    def estimate(self, manager_id: WorkerManagerID) -> List[Tuple[Dict[str, int], int]]:
         if self._cluster_state is None:
             return []
 
@@ -39,13 +41,13 @@ class RatioEstimator(ScalingEstimator):
 
             desired = max(1, ceil(task_count / self._upper_task_ratio))
 
-            if manager.max_concurrency is not None:
-                desired = min(desired, manager.max_concurrency)
+            if manager.max_task_concurrency is not None:
+                desired = min(desired, manager.max_task_concurrency)
 
             capabilities = state.capset_representatives.get(capset, {})
             result.append((capabilities, max(0, desired)))
 
         return result
 
-    def forget(self, manager_id: bytes) -> None:
+    def forget(self, manager_id: WorkerManagerID) -> None:
         pass

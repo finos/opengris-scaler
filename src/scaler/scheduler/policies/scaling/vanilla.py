@@ -31,13 +31,10 @@ class VanillaScalingPolicy(ScalingPolicy):
         worker_manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
         worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
-        worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> List[WorkerManagerCommand]:
         forget_departed_managers(self._logged_desired_by_manager, set(worker_manager_infos))
 
-        desired = self._compute_desired_worker_count(
-            worker_manager_id, information_snapshot, worker_manager_infos, worker_count_by_manager
-        )
+        desired = self._compute_desired_worker_count(worker_manager_id, information_snapshot, worker_manager_infos)
         desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
         return [build_set_desired_command(desired_per_capset)]
 
@@ -46,17 +43,18 @@ class VanillaScalingPolicy(ScalingPolicy):
         manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
         worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
-        worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> int:
         """Compute the target worker count for this manager from current task and worker observations."""
-        current = worker_count_by_manager[manager_id]
+        info = worker_manager_infos[manager_id]
+        current = info.worker_count
         task_count = len(information_snapshot.tasks)
         worker_count = len(information_snapshot.workers)
 
-        floor_held = floor_held_worker_count(manager_id, self._bounds, worker_count_by_manager)
+        floor_held = floor_held_worker_count(manager_id, self._bounds, worker_manager_infos)
         desired = ratio_target(current, task_count, worker_count, floor_held)
         bounds = self._bounds.get(manager_id, WorkerManagerBounds(max_task_concurrency=None))
-        desired = clamp_to_bounds(desired, bounds, worker_manager_infos[manager_id].max_task_concurrency)
+        advertised_max = info.max_task_concurrency or -1
+        desired = clamp_to_bounds(desired, bounds, advertised_max)
         self.__log_decision(manager_id, task_count, worker_count, current, desired)
         return desired
 
@@ -110,14 +108,14 @@ def clamp_to_bounds(desired: int, bounds: WorkerManagerBounds, advertised_max_ta
 def floor_held_worker_count(
     manager_id: WorkerManagerID,
     bounds_by_manager: Dict[WorkerManagerID, WorkerManagerBounds],
-    worker_count_by_manager: Dict[WorkerManagerID, int],
+    worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
 ) -> int:
     """The connected workers that managers other than `manager_id` hold at their floors.
 
     A manager never drops below its floor, so these workers are safe to count as supply. Workers above a floor
     are not: two scaling managers sized from one snapshot would each subtract the other and drain together."""
     return sum(
-        min(worker_count, bounds_by_manager[other_id].min_task_concurrency)
-        for other_id, worker_count in worker_count_by_manager.items()
+        min(info.worker_count, bounds_by_manager[other_id].min_task_concurrency)
+        for other_id, info in worker_manager_infos.items()
         if other_id != manager_id and other_id in bounds_by_manager
     )

@@ -1,7 +1,9 @@
 from math import ceil
 from typing import Dict, List, Optional, Tuple
 
-from scaler.scheduler.policies.scaling.estimator import ClusterState, ManagerInfo, ScalingEstimator
+from scaler.scheduler.policies.scaling.estimator import ScalingEstimator
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
+from scaler.utility.identifiers import WorkerManagerID
 
 
 class IncrementalRatioEstimator(ScalingEstimator):
@@ -21,7 +23,7 @@ class IncrementalRatioEstimator(ScalingEstimator):
     def update(self, cluster_state: ClusterState) -> None:
         self._cluster_state = cluster_state
 
-    def estimate(self, manager_id: bytes) -> List[Tuple[Dict[str, int], int]]:
+    def estimate(self, manager_id: WorkerManagerID) -> List[Tuple[Dict[str, int], int]]:
         if self._cluster_state is None:
             return [({}, 0)]
 
@@ -36,7 +38,7 @@ class IncrementalRatioEstimator(ScalingEstimator):
 
         return [({}, self._compute_desired(manager, state))]
 
-    def _compute_desired(self, manager: ManagerInfo, state: ClusterState) -> int:
+    def _compute_desired(self, manager: WorkerManagerInfo, state: ClusterState) -> int:
         """Compute desired worker count using incremental scaling logic."""
         managed_worker_count = manager.worker_count
 
@@ -51,10 +53,10 @@ class IncrementalRatioEstimator(ScalingEstimator):
             else:
                 desired = managed_worker_count
 
-        if manager.max_concurrency is not None:
-            desired = min(desired, manager.max_concurrency)
+        if manager.max_task_concurrency is not None:
+            desired = min(desired, manager.max_task_concurrency)
 
         return max(0, desired)
 
-    def forget(self, manager_id: bytes) -> None:
+    def forget(self, manager_id: WorkerManagerID) -> None:
         pass

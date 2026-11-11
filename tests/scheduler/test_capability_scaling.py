@@ -1,4 +1,3 @@
-import time
 import unittest
 from typing import Dict, Optional
 
@@ -19,12 +18,9 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.policy = CapabilityScalingPolicy()
 
     def _commands(self, snapshot, manager_id, managed, max_task_concurrency=10, capabilities=None):
-        info = _create_worker_manager_info(manager_id, max_task_concurrency, capabilities)
+        info = _create_worker_manager_info(manager_id, max_task_concurrency, capabilities, worker_count=len(managed))
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos={manager_id: info},
-            worker_count_by_manager={manager_id: len(managed)},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
         )
         self.assertEqual(len(commands), 1)
         return commands[0]
@@ -36,10 +32,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         info = _create_worker_manager_info(manager_id)
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos={manager_id: info},
-            worker_count_by_manager={manager_id: 0},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
         )
 
         self.assertEqual(len(commands), 1)
@@ -145,13 +138,10 @@ class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
         managed = [WorkerID(f"w{i}".encode()) for i in range(3)]
         snapshot = InformationSnapshot(tasks={}, workers={})
         manager_id = WorkerManagerID(b"mgr")
-        info = _create_worker_manager_info(manager_id, capabilities={"gpu": -1})
+        info = _create_worker_manager_info(manager_id, capabilities={"gpu": -1}, worker_count=len(managed))
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=snapshot,
-            worker_manager_infos={manager_id: info},
-            worker_count_by_manager={manager_id: len(managed)},
+            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
         )
 
         self.assertEqual(len(commands), 1)
@@ -173,12 +163,14 @@ def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
 
 
 def _create_worker_manager_info(
-    worker_manager_id: WorkerManagerID, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: WorkerManagerID,
+    max_task_concurrency: Optional[int] = 10,
+    capabilities: Optional[Dict[str, int]] = None,
+    worker_count: int = 0,
 ) -> WorkerManagerInfo:
     return WorkerManagerInfo(
         manager_id=worker_manager_id,
-        source=b"test",
-        last_seen_at=time.time(),
-        capabilities=capabilities or {},
         max_task_concurrency=max_task_concurrency,
+        worker_count=worker_count,
+        capabilities=capabilities or {},
     )

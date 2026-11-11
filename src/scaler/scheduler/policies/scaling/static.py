@@ -24,10 +24,9 @@ class StaticScalingPolicy(ScalingPolicy):
         worker_manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
         worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
-        worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> List[WorkerManagerCommand]:
         info = worker_manager_infos[worker_manager_id]
-        desired = info.max_task_concurrency
+        desired = info.max_task_concurrency or -1
         task_concurrency = self._task_concurrency_by_manager.get(worker_manager_id, self._task_concurrency)
         if task_concurrency is not None:
             desired = min(task_concurrency, desired)

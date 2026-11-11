@@ -34,7 +34,6 @@ class CapabilityScalingPolicy(ScalingPolicy):
         worker_manager_id: WorkerManagerID,
         information_snapshot: InformationSnapshot,
         worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
-        worker_count_by_manager: Dict[WorkerManagerID, int],
     ) -> List[WorkerManagerCommand]:
         forget_departed_managers(self._logged_desired_by_manager, set(worker_manager_infos))
 
@@ -87,14 +86,13 @@ class CapabilityScalingPolicy(ScalingPolicy):
         Capsets with zero tasks are omitted (declarative "no opinion" for that capset).
         Each desired count is clamped by the manager's max_task_concurrency.
         """
-        max_concurrency = manager_info.max_task_concurrency
         result: List[Tuple[Dict[str, int], int]] = []
         for _capability_keys, tasks in tasks_by_capability.items():
             if not tasks:
                 continue
             desired = max(1, ceil(len(tasks) / self._upper_task_ratio))
-            if max_concurrency != -1:
-                desired = min(desired, max_concurrency)
+            if manager_info.max_task_concurrency is not None:
+                desired = min(desired, manager_info.max_task_concurrency)
             # Use first task's concrete capability dict as the representative for the capset.
             result.append((tasks[0], desired))
         return result
