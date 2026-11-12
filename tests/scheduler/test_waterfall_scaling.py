@@ -6,6 +6,7 @@ from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
+from scaler.scheduler.policies.scaling.utility import build_cluster_state
 from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy, parse_waterfall_rules
 from scaler.scheduler.policies.scaling.waterfall.policy import (
     allocate,
@@ -58,7 +59,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         manager_infos = {manager_id: _create_worker_manager_info(manager_id, max_task_concurrency=10)}
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 0)
@@ -73,12 +74,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
 
         commands_a = self.policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 1)
 
         commands_b = self.policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         # Manager B's share is 0 (chain consumes the whole 1 worker at manager_a); emits setDesired(0).
         self.assertEqual(len(commands_b), 1)
@@ -96,7 +97,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
 
         commands_b = self.policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         # total_desired = ceil(150/10) = 15. Manager_a's cap is 10 -> consumed 10. Remaining for B = 5.
@@ -109,7 +110,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         manager_infos = {self.manager_id_b: _create_worker_manager_info(self.manager_id_b, max_task_concurrency=20)}
 
         commands_b = self.policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         # Higher-priority is offline (absent) so its capacity contributes 0; lower picks up all of it.
@@ -121,7 +122,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         manager_infos = {self.manager_id_a: _create_worker_manager_info(self.manager_id_a)}
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -138,7 +139,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         # min(rule cap 20, heartbeat cap 3) = 3 clamps the desired worker count.
@@ -161,12 +162,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # Sorting by priority is stable; with equal priority the iteration order is the rules' input order.
         commands_a = policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 10)
 
         commands_b = policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         # First manager consumed all of its capacity; nothing left for the second at same priority.
         # Desired is 0 -> emits setDesired(0).
@@ -189,14 +190,14 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # manager_b (lower priority) is told to drain to 0
         commands_b = policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
         # manager_a (higher priority) holds its count (waiting for lower priority to drain) -> emits setDesired(3).
         commands_a = policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 3)
@@ -215,7 +216,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
 
         commands_a = policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         # No lower-priority manager to wait on -- emit setDesired(0) to drain.
@@ -233,7 +234,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         manager_infos = {manager_id: _create_worker_manager_info(manager_id, max_task_concurrency=10)}
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(commands, [])
@@ -258,13 +259,13 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         # NAT manager gets the allocation since it has capacity and the priority chain
         # consumes it first.
         commands_nat = policy.get_scaling_commands(
-            worker_manager_id=manager_id_nat, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_nat, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         self.assertEqual(_generic_request(commands_nat[0]).taskConcurrency, 5)
 
         # ECS manager gets nothing since NAT has absorbed everything; desired=0 -> emits setDesired(0).
         commands_ecs = policy.get_scaling_commands(
-            worker_manager_id=manager_id_ecs, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_ecs, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         self.assertEqual(len(commands_ecs), 1)
         self.assertEqual(_generic_request(commands_ecs[0]).taskConcurrency, 0)
@@ -291,7 +292,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id_ecs, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_ecs, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         # ECS allocation = 0 (higher-priority chain absorbs all demand); emits setDesired(0).
@@ -310,7 +311,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             self.manager_id_a: _create_worker_manager_info(self.manager_id_a, max_task_concurrency=20, worker_count=10)
         }
         commands = policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -332,7 +333,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
 
         commands_b = policy.get_scaling_commands(
-            worker_manager_id=self.manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=self.manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         # 5 tasks -> total_desired=1, absorbed by manager_a entirely -> manager_b's share=0;
@@ -467,7 +468,7 @@ class TestWaterfallFloor(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id_gpu, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_gpu, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(_generic_request(commands[0]).taskConcurrency, 4)
@@ -490,7 +491,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         manager_infos = {manager_id: _create_worker_manager_info(manager_id, capabilities={"gpu": 4})}
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         cap_requests = _capability_requests(commands[0])
@@ -507,7 +508,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         manager_infos = {manager_id: _create_worker_manager_info(manager_id, capabilities={})}
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(_capability_requests(commands[0]), [])
@@ -529,12 +530,12 @@ class TestWaterfallCapabilities(unittest.TestCase):
         }
 
         commands_a = policy.get_scaling_commands(
-            worker_manager_id=manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         self.assertEqual(_capability_requests(commands_a[0]), [({"gpu": 1}, 1)])
 
         commands_b = policy.get_scaling_commands(
-            worker_manager_id=manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         # Higher-priority A owns the gpu capset; B's share is 0 -> emits setDesired(0) for generic capset.
         self.assertEqual(len(commands_b), 1)
@@ -558,7 +559,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         }
 
         commands_b = policy.get_scaling_commands(
-            worker_manager_id=manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         # total_desired = ceil(50/10) = 5. manager_a cap=2 absorbs 2, manager_b allocates remaining 3.
@@ -574,7 +575,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         manager_infos = {manager_id: _create_worker_manager_info(manager_id, capabilities={"gpu": 8, "nvlink": 4})}
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(_capability_requests(commands[0]), [({"gpu": 2, "nvlink": 1}, 1)])
@@ -596,7 +597,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         manager_infos = {manager_id: _create_worker_manager_info(manager_id, capabilities={"gpu": 4})}
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -614,7 +615,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         manager_infos = {manager_id: _create_worker_manager_info(manager_id)}
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -638,7 +639,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         manager_infos = {manager_id: _create_worker_manager_info(manager_id, capabilities={"a": 5})}
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         # The manager is considered capable despite the value mismatch, so a request for
@@ -758,13 +759,13 @@ class TestWaterfallConfigParsing(unittest.TestCase):
         }
 
         commands_a = scaling_policy.get_scaling_commands(
-            worker_manager_id=manager_id_a, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_a, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 1)
 
         commands_b = scaling_policy.get_scaling_commands(
-            worker_manager_id=manager_id_b, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id_b, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         # Higher-priority A absorbs all 1 desired worker; B's share is 0 -> emits setDesired(0).
         self.assertEqual(len(commands_b), 1)
@@ -911,7 +912,7 @@ def _desired_by_manager(
     desired = {}
     for manager_id, advertised_max in advertised_max_by_manager.items():
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
         desired[manager_id] = _generic_request(commands[0]).taskConcurrency
     return desired

@@ -7,9 +7,8 @@ from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
-from scaler.scheduler.types import WorkerManagerInfo
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
 from scaler.utility.identifiers import WorkerManagerID
-from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -27,30 +26,22 @@ class VanillaScalingPolicy(ScalingPolicy):
         self._logged_desired_by_manager: Dict[WorkerManagerID, int] = {}
 
     def get_scaling_commands(
-        self,
-        worker_manager_id: WorkerManagerID,
-        information_snapshot: InformationSnapshot,
-        worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
+        self, worker_manager_id: WorkerManagerID, cluster_state: ClusterState
     ) -> List[WorkerManagerCommand]:
-        forget_departed_managers(self._logged_desired_by_manager, set(worker_manager_infos))
+        forget_departed_managers(self._logged_desired_by_manager, set(cluster_state.managers))
 
-        desired = self._compute_desired_worker_count(worker_manager_id, information_snapshot, worker_manager_infos)
+        desired = self._compute_desired_worker_count(worker_manager_id, cluster_state)
         desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
         return [build_set_desired_command(desired_per_capset)]
 
-    def _compute_desired_worker_count(
-        self,
-        manager_id: WorkerManagerID,
-        information_snapshot: InformationSnapshot,
-        worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
-    ) -> int:
-        """Compute the target worker count for this manager from current task and worker observations."""
-        info = worker_manager_infos[manager_id]
+    def _compute_desired_worker_count(self, manager_id: WorkerManagerID, cluster_state: ClusterState) -> int:
+        """Compute the target worker count for this manager from the cluster state."""
+        info = cluster_state.managers[manager_id]
         current = info.worker_count
-        task_count = len(information_snapshot.tasks)
-        worker_count = len(information_snapshot.workers)
+        task_count = cluster_state.n_tasks
+        worker_count = cluster_state.n_workers
 
-        floor_held = floor_held_worker_count(manager_id, self._bounds, worker_manager_infos)
+        floor_held = floor_held_worker_count(manager_id, self._bounds, cluster_state.managers)
         desired = ratio_target(current, task_count, worker_count, floor_held)
         bounds = self._bounds.get(manager_id, WorkerManagerBounds(max_task_concurrency=None))
         advertised_max = info.max_task_concurrency or -1

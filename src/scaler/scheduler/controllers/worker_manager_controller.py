@@ -16,6 +16,7 @@ from scaler.scheduler.controllers.config_controller import VanillaConfigControll
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.controllers.worker_manager_utilities import build_scaling_manager_status
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
+from scaler.scheduler.policies.scaling.utility import build_cluster_state
 from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.mixins import Looper, Reporter
@@ -82,12 +83,9 @@ class WorkerManagerController(Looper, Reporter):
 
         information_snapshot = self._build_snapshot()
         worker_manager_infos = self._build_worker_manager_infos()
+        cluster_state = build_cluster_state(information_snapshot, worker_manager_infos)
 
-        commands = self._scaling_policy.get_scaling_commands(
-            worker_manager_id=manager_id,
-            information_snapshot=information_snapshot,
-            worker_manager_infos=worker_manager_infos,
-        )
+        commands = self._scaling_policy.get_scaling_commands(worker_manager_id=manager_id, cluster_state=cluster_state)
 
         for command in commands:
             await self._send_command(source, command)
