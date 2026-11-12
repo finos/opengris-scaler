@@ -215,7 +215,7 @@ class OCIInfrastructureProvisioner:
         """
         dg_name = f"{self._prefix}-dg"
         matching_rule = (
-            f"ALL {{resource.type='computecontainerinstance', " f"resource.compartment.id='{self._compartment_id}'}}"
+            f"ALL {{resource.type='computecontainerinstance', resource.compartment.id='{self._compartment_id}'}}"
         )
 
         try:

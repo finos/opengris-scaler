@@ -350,12 +350,7 @@ FILENAME = f"{MIC}-{DATE.replace('-', '')}.parquet"
 
 def convert_trades() -> None:
     print(f"Converting trades: {TRADES_CSV}")
-    df = pl.read_csv(
-        TRADES_CSV,
-        try_parse_dates=True,
-        null_values=["", "nan"],
-        infer_schema_length=10000,
-    )
+    df = pl.read_csv(TRADES_CSV, try_parse_dates=True, null_values=["", "nan"], infer_schema_length=10000)
 
     if "" in df.columns:
         df = df.drop("")
@@ -386,12 +381,7 @@ def convert_trades() -> None:
 
 def convert_l2q() -> None:
     print(f"Converting L2Q: {L2Q_CSV}")
-    df = pl.read_csv(
-        L2Q_CSV,
-        try_parse_dates=True,
-        null_values=["", "nan"],
-        infer_schema_length=10000,
-    )
+    df = pl.read_csv(L2Q_CSV, try_parse_dates=True, null_values=["", "nan"], infer_schema_length=10000)
 
     if "" in df.columns:
         df = df.drop("")
@@ -478,17 +468,11 @@ import scaler.compat.ray  # patches ray module in-place
 from scaler.compat.ray import scaler_init, remote as _scaler_remote
 
 import ray
+
 assert ray.remote is _scaler_remote, "ray.remote was not patched by Scaler compat layer"
 
 from feature_engineering.order_flow import OrderFlowFeatureEngineering
-from pipeline.config import (
-    DataConfig,
-    LocalLocation,
-    PipelineConfig,
-    ProcessingConfig,
-    RayConfig,
-    StorageConfig,
-)
+from pipeline.config import DataConfig, LocalLocation, PipelineConfig, ProcessingConfig, RayConfig, StorageConfig
 from pipeline.pipeline import Pipeline
 
 # Root directory that contains your local data. Override with LOCAL_DATA_BASE env var.
@@ -510,11 +494,7 @@ def main() -> None:
             data_types=["trades", "level2q"],
         ),
         processing=ProcessingConfig(
-            feature_engineering=OrderFlowFeatureEngineering(
-                bar_duration_ms=250,
-                max_section=7,
-                group_filter=None,
-            )
+            feature_engineering=OrderFlowFeatureEngineering(bar_duration_ms=250, max_section=7, group_filter=None)
         ),
         storage=StorageConfig(
             raw_data=LocalLocation(f"{BASE}/raw"),
