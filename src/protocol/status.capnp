@@ -4,7 +4,7 @@ using Cxx = import "/capnp/c++.capnp";
 $Cxx.namespace("scaler::protocol");
 
 struct Resource {
-    cpu @0 :UInt16;   # 99.2% will be represented as 992 as integer
+    cpu @0 :UInt32;   # 99.2% will be represented as 992 as integer
     rss @1 :UInt64;  # 32bit is capped to 4GB, so use 64bit to represent
 }
 
