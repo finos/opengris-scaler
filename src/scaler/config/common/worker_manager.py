@@ -35,13 +35,7 @@ class WorkerManagerConfig(ConfigClass):
 
     max_task_concurrency: int = dataclasses.field(
         default=defaults.DEFAULT_MAX_TASK_CONCURRENCY,
-        metadata=dict(
-            short="-mtc",
-            help=(
-                "maximum number of workers that can be started, -1 means no limit."
-                "for fixed native worker manager, this is exactly the number of workers that will be spawned"
-            ),
-        ),
+        metadata=dict(short="-mtc", help="maximum number of workers that can be started, -1 means no limit"),
     )
 
     scale_down_cooldown_seconds: float = dataclasses.field(
@@ -51,6 +45,18 @@ class WorkerManagerConfig(ConfigClass):
             help=(
                 "minimum number of seconds a scale-down must be requested for before it is honored, "
                 "to avoid flapping under intermittent load. 0 disables the cooldown."
+            ),
+        ),
+    )
+
+    children_address: Optional[AddressConfig] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-ca",
+            help=(
+                "address this worker manager binds for its units to dial. "
+                "Defaults to a free loopback port. A worker manager whose units are remote resources "
+                "(EC2 instances, ECS tasks, OCI container instances) needs an address those resources can reach."
             ),
         ),
     )

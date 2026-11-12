@@ -2,6 +2,7 @@ import dataclasses
 from typing import ClassVar, Dict, List, Optional
 
 from scaler.config import defaults
+from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
@@ -33,6 +34,7 @@ class ORBAWSEC2WorkerManagerConfig(ConfigClass):
     python_worker_environment: PythonWorkerEnvironmentConfig = dataclasses.field(
         default_factory=PythonWorkerEnvironmentConfig
     )
+    cloud_children_config: CloudChildrenConfig = dataclasses.field(default_factory=CloudChildrenConfig)
 
     def __post_init__(self) -> None:
         if self.image_id is not None:
@@ -49,6 +51,8 @@ class ORBAWSEC2WorkerManagerConfig(ConfigClass):
                 raise ValueError(
                     "Both --python-version and --requirements-txt must be provided when --image-id is not specified"
                 )
+        if self.worker_manager_config.children_address is None:
+            raise ValueError("children_address must be an address the provisioned resources can reach.")
 
     aws_profile: Optional[str] = dataclasses.field(
         default=None,

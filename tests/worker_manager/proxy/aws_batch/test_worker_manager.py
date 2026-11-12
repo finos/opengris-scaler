@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from scaler.config.section.aws_hpc_worker_manager import AWSHPCBackend
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.proxy.aws_batch.worker_manager import AWSBatchWorkerManager, AWSBatchWorkerProvisioner
 
 
@@ -10,7 +11,9 @@ def _make_provisioner(max_concurrent_jobs: int = 100) -> AWSBatchWorkerProvision
     config.worker_config.per_worker_capabilities.capabilities = {}
     config.max_concurrent_jobs = max_concurrent_jobs
     config.worker_manager_config.scale_down_cooldown_seconds = 0
-    return AWSBatchWorkerProvisioner(config, max_units=-1)
+    return AWSBatchWorkerProvisioner(
+        config, max_units=-1, children_address=AddressConfig.from_string("tcp://127.0.0.1:2")
+    )
 
 
 def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:

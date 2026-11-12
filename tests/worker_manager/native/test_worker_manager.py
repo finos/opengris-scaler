@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.native.worker_manager import NativeWorkerProvisioner
 
 
@@ -12,7 +13,7 @@ def _make_provisioner(max_task_concurrency: int = -1) -> NativeWorkerProvisioner
     config.worker_manager_config.worker_manager_id = "test-wm"
     config.worker_manager_config.scale_down_cooldown_seconds = 0
     config.worker_type = "NAT"
-    return NativeWorkerProvisioner(config)
+    return NativeWorkerProvisioner(config, AddressConfig.from_string("tcp://127.0.0.1:2"))
 
 
 def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:
