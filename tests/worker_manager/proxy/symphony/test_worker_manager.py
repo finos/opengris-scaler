@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from scaler.config.types.address import AddressConfig
+
 try:
     from scaler.worker_manager.proxy.symphony.worker_manager import SymphonyWorkerProvisioner
 
@@ -17,7 +19,7 @@ def _make_provisioner(max_task_concurrency: int = -1) -> SymphonyWorkerProvision
     config.worker_manager_config.max_task_concurrency = max_task_concurrency
     config.worker_manager_config.worker_manager_id = "test-wm"
     config.service_name = "test-service"
-    return SymphonyWorkerProvisioner(config)
+    return SymphonyWorkerProvisioner(config, AddressConfig.from_string("tcp://127.0.0.1:2"))
 
 
 def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:

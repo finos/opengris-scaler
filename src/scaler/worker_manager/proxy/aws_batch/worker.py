@@ -22,6 +22,8 @@ def create_aws_batch_worker(
     aws_region: str,
     s3_bucket: str,
     worker_manager_id: bytes,
+    worker_manager_address: AddressConfig,
+    unit_id: str,
     name: Optional[str] = None,
     s3_prefix: str = "scaler-tasks",
     capabilities: Optional[Dict[str, int]] = None,
@@ -45,6 +47,8 @@ def create_aws_batch_worker(
         io_threads=io_threads,
         event_loop=event_loop,
         worker_manager_id=worker_manager_id,
+        worker_manager_address=worker_manager_address,
+        unit_id=unit_id,
         processor_status_provider_factory=AWSBatchProcessorStatusProvider,
         execution_backend_factory=partial(
             AWSBatchExecutionBackend,
