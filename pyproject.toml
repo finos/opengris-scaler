@@ -64,14 +64,10 @@ all = [
 
 [dependency-groups]
 dev = [
-    "black>=24.8.0; python_version >= '3.10'",
-    "flake8-pyproject>=1.2.3",
-    "flake8>=5.0.4",
-    "isort>=7.0.0; python_version >= '3.10'",
+    { include-group = "lint" },
     # patches only, see docs/requirements_docs.txt
     "jupyterlite-pyodide-kernel>=0.8.2,<0.9",
     "jupyterlite-sphinx>=0.23.0,<0.24",
-    "mypy>=1.14.1",
     "nbsphinx",
     "pyodide-build==0.39.0; python_version >= '3.12'",
     "pytest>=9.1.1",
@@ -84,6 +80,11 @@ dev = [
     "sphinx-tabs",
     "sphinx>=7.1.2",
     "websockets>=12.0",
+]
+# the CI linter step installs this group alone
+lint = [
+    "mypy>=1.14.1",
+    "ruff==0.17.5",
 ]
 
 [tool.scikit-build.metadata.version]
@@ -166,47 +167,19 @@ exclude = [
 module = ["ray", "ray.*"]
 follow_imports = "skip"
 
-[tool.flake8]
-count = true
-statistics = true
-max-line-length = 120
-extend-ignore = ["E203"]
-exclude = [
-    "migrations",
-    "__pycache__",
-    "./build_*_*",
-    "./thirdparties",
-    "./capnproto*",
-    "./boost*",
-    "./scripts",
-    "venv*"
-]
-
-[tool.black]
+[tool.ruff]
 line-length = 120
-skip-magic-trailing-comma = true
-extend-exclude = '''
-(
-    ^/thirdparties
-    | ^/build_.*
-    | ^/capnproto.*
-    | ^/boost.*
-    | ^/scripts
-    | ^/venv.*
-)
-'''
+# the notebooks hold 279 lint findings, 202 without an automatic fix
+extend-exclude = ["*.ipynb"]
 
-[tool.isort]
-profile = "black"
-line_length = 120
-extend_skip_glob = [
-    "thirdparties/*",
-    "build_*",
-    "capnproto*",
-    "boost*",
-    "scripts/*",
-    "venv*",
-]
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
 
 [tool.pytest.ini_options]
 # The slowest test takes 83s on the CI macOS runner.
