@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import logging
 import math
+import uuid
 from typing import TYPE_CHECKING, List
 
 from scaler.config.section.oci_hpc_worker_manager import OCIHPCWorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.desired_concurrency import extract_desired_count
+from scaler.worker_manager.local_process import local_children_address
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.proxy.oci.worker import create_oci_worker
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
@@ -19,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 class OCIJobsWorkerProvisioner(DeclarativeWorkerProvisioner):
-    def __init__(self, config: OCIHPCWorkerManagerConfig, max_units: int) -> None:
+    def __init__(self, config: OCIHPCWorkerManagerConfig, max_units: int, children_address: AddressConfig) -> None:
+        self._children_address = children_address
         self._config = config
         self._base_concurrency = config.base_concurrency
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -44,7 +48,7 @@ class OCIJobsWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     async def start_units(self, count: int) -> None:
         for _ in range(count):
-            self._start_unit()
+            self._start_unit(uuid.uuid4().hex)
 
     async def stop_units(self, count: int) -> None:
         to_stop = self._units[:count]
@@ -61,7 +65,7 @@ class OCIJobsWorkerProvisioner(DeclarativeWorkerProvisioner):
             worker.terminate()
         self._units.clear()
 
-    def _start_unit(self) -> None:
+    def _start_unit(self, unit_id: str) -> None:
         config = self._config
         container_instance_config = config.container_instance_config
         worker = create_oci_worker(
@@ -69,6 +73,8 @@ class OCIJobsWorkerProvisioner(DeclarativeWorkerProvisioner):
             address=config.worker_manager_config.effective_worker_scheduler_address,
             object_storage_address=config.worker_manager_config.object_storage_address,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
+            worker_manager_address=self._children_address,
+            unit_id=unit_id,
             compartment_id=container_instance_config.compartment_id,
             availability_domain=container_instance_config.availability_domain,
             subnet_id=container_instance_config.subnet_id,
@@ -114,15 +120,16 @@ class OCIJobsWorkerManager:
         )
         mtc = config.worker_manager_config.max_task_concurrency
         max_units = math.ceil(mtc / config.base_concurrency) if mtc != -1 else -1
-        provisioner = OCIJobsWorkerProvisioner(config, max_units)
+        children_address = local_children_address(config.worker_manager_config)
+        provisioner = OCIJobsWorkerProvisioner(config, max_units, children_address)
         runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_oci_hpc",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_units,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_address=children_address,
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=config.base_concurrency,
         )
