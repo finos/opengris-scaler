@@ -13,17 +13,9 @@ runs:
       shell: bash
       run: uv pip install --system scapy==2.*
 
-    - name: Install websockets for the YMQ WebSocket interop tests
+    - name: Install the test dependency group
       shell: bash
-      run: uv pip install --system "websockets>=12.0"
-
-    - name: Install pytest, pytest-xdist to run the unit tests in parallel, and pytest-timeout to fail hung tests
-      shell: bash
-      run: uv pip install --system "pytest>=9.1.1" "pytest-timeout>=2.4.0" "pytest-xdist>=3.8.0"
-
-    - name: Install ray for the ray compatibility tests
-      shell: bash
-      run: uv pip install --system "ray>=2.59.0"
+      run: uv pip install --system --group test
 
     - name: Install pydivert and pywin32 for MITM tests (Windows)
       if: inputs.os == 'Windows'

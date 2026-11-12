@@ -62,29 +62,37 @@ all = [
     "opengris-scaler[uvloop]",
 ]
 
+# CI steps each install one of docs, lint, and test, and dev includes all three
 [dependency-groups]
 dev = [
+    { include-group = "docs" },
     { include-group = "lint" },
-    # patches only, see docs/requirements_docs.txt
+    { include-group = "test" },
+    "pyodide-build==0.39.0; python_version >= '3.12'",
+]
+docs = [
+    # Patches only: a kernel minor moves the bundled Pyodide series, which is the ABI the wasm client
+    # wheel is built for (PYODIDE_XBUILDENV_VERSION in scripts/build_wasm.sh), and a jupyterlite-sphinx
+    # minor changes the JupyterLite site layout the docs' ``?path=`` links depend on.
     "jupyterlite-pyodide-kernel>=0.8.2,<0.9",
     "jupyterlite-sphinx>=0.23.0,<0.24",
     "nbsphinx",
-    "pyodide-build==0.39.0; python_version >= '3.12'",
-    "pytest>=9.1.1",
-    "pytest-timeout>=2.4.0",
-    "pytest-xdist>=3.8.0",
-    "ray>=2.59.0",
     "shibuya",
     "sphinx-copybutton",
     "sphinx-substitution-extensions",
     "sphinx-tabs",
     "sphinx>=7.1.2",
-    "websockets>=12.0",
 ]
-# the CI linter step installs this group alone
 lint = [
     "mypy>=1.14.1",
     "ruff==0.17.5",
+]
+test = [
+    "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "ray>=2.59.0",
+    "websockets>=12.0",
 ]
 
 [tool.scikit-build.metadata.version]

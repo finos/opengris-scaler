@@ -151,7 +151,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pandoc
-          uv pip install --system -r docs/requirements_docs.txt playwright
+          uv pip install --system --group docs playwright
           playwright install --with-deps chromium
 
       - name: Build docs (incl. JupyterLite)
