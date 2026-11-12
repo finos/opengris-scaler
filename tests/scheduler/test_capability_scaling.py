@@ -4,6 +4,7 @@ from typing import Dict, Optional
 from scaler.protocol.capnp import Task
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
+from scaler.scheduler.policies.scaling.utility import build_cluster_state
 from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
@@ -20,7 +21,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
     def _commands(self, snapshot, manager_id, managed, max_task_concurrency=10, capabilities=None):
         info = _create_worker_manager_info(manager_id, max_task_concurrency, capabilities, worker_count=len(managed))
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, {manager_id: info})
         )
         self.assertEqual(len(commands), 1)
         return commands[0]
@@ -32,7 +33,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         info = _create_worker_manager_info(manager_id)
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, {manager_id: info})
         )
 
         self.assertEqual(len(commands), 1)
@@ -141,7 +142,7 @@ class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
         info = _create_worker_manager_info(manager_id, capabilities={"gpu": -1}, worker_count=len(managed))
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos={manager_id: info}
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, {manager_id: info})
         )
 
         self.assertEqual(len(commands), 1)

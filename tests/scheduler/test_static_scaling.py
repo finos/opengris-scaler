@@ -1,10 +1,9 @@
 import unittest
 from typing import Optional
-from unittest.mock import MagicMock
 
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
 from scaler.scheduler.policies.utility import create_policies
-from scaler.scheduler.types import WorkerManagerInfo
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
 from scaler.utility.identifiers import WorkerManagerID
 
 MAX_TASK_CONCURRENCY = 8
@@ -18,8 +17,7 @@ def _desired_task_concurrency(
     )
     commands = policy.get_scaling_commands(
         worker_manager_id=worker_manager_id,
-        information_snapshot=MagicMock(),
-        worker_manager_infos={worker_manager_id: info},
+        cluster_state=ClusterState(n_tasks=0, n_workers=0, managers={worker_manager_id: info}),
     )
     (command,) = commands
     (request,) = command.setDesiredTaskConcurrencyRequests

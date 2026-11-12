@@ -3,9 +3,8 @@ from typing import Dict, List, Optional
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
-from scaler.scheduler.types import WorkerManagerInfo
+from scaler.scheduler.types import ClusterState
 from scaler.utility.identifiers import WorkerManagerID
-from scaler.utility.snapshot import InformationSnapshot
 
 
 class StaticScalingPolicy(ScalingPolicy):
@@ -20,12 +19,9 @@ class StaticScalingPolicy(ScalingPolicy):
         self._task_concurrency_by_manager = task_concurrency_by_manager
 
     def get_scaling_commands(
-        self,
-        worker_manager_id: WorkerManagerID,
-        information_snapshot: InformationSnapshot,
-        worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
+        self, worker_manager_id: WorkerManagerID, cluster_state: ClusterState
     ) -> List[WorkerManagerCommand]:
-        info = worker_manager_infos[worker_manager_id]
+        info = cluster_state.managers[worker_manager_id]
         desired = info.max_task_concurrency or -1
         task_concurrency = self._task_concurrency_by_manager.get(worker_manager_id, self._task_concurrency)
         if task_concurrency is not None:

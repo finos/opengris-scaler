@@ -35,6 +35,7 @@ from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManager
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
+from scaler.scheduler.policies.scaling.utility import build_cluster_state
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.scheduler.policies.utility import create_scaling_policy
 from scaler.scheduler.types import WorkerManagerInfo
@@ -240,7 +241,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -262,7 +263,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -286,7 +287,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -308,7 +309,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -333,7 +334,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, information_snapshot=snapshot, worker_manager_infos=manager_infos
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)

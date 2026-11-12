@@ -1,26 +1,17 @@
 import abc
-from typing import Dict, List
+from typing import List
 
 from scaler.protocol.capnp import WorkerManagerCommand
-from scaler.scheduler.types import WorkerManagerInfo
+from scaler.scheduler.types import ClusterState
 from scaler.utility.identifiers import WorkerManagerID
-from scaler.utility.snapshot import InformationSnapshot
 
 
 class ScalingPolicy(metaclass=abc.ABCMeta):
-    """
-    Scaling policy interface.
-
-    WorkerManagerController owns the managed workers and passes them in as parameters.
-    Policies return a single declarative setDesiredTaskConcurrency command.
-    """
+    """Scaling policy interface."""
 
     @abc.abstractmethod
     def get_scaling_commands(
-        self,
-        worker_manager_id: WorkerManagerID,
-        information_snapshot: InformationSnapshot,
-        worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
+        self, worker_manager_id: WorkerManagerID, cluster_state: ClusterState
     ) -> List[WorkerManagerCommand]:
         """Pure function: state in, declarative scaling command out."""
         raise NotImplementedError()

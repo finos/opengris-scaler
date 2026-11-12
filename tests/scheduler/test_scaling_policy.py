@@ -1,9 +1,9 @@
 import unittest
-from unittest.mock import MagicMock
+from typing import Dict, Optional
 
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
-from scaler.scheduler.types import WorkerManagerInfo
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 
 MANAGER_ID = WorkerManagerID(b"manager")
@@ -18,13 +18,20 @@ def _info(manager_id: WorkerManagerID = MANAGER_ID, worker_count: int = 1) -> Wo
     )
 
 
-def _snapshot(task_count: int, worker_count: int) -> MagicMock:
-    """Serving workers keyed by id, as the scheduler builds them; the first is the managed `worker`."""
-    snapshot = MagicMock()
-    snapshot.tasks = list(range(task_count))
-    worker_ids = [WorkerID(b"worker")] + [WorkerID(f"worker-{i}".encode()) for i in range(1, worker_count)]
-    snapshot.workers = {worker_id: MagicMock(draining=False) for worker_id in worker_ids[:worker_count]}
-    return snapshot
+def _cluster_state(
+    task_count: int,
+    worker_count: int,
+    managers: Dict[WorkerManagerID, WorkerManagerInfo],
+    capabilities: Optional[dict] = None,
+) -> ClusterState:
+    capset = frozenset(capabilities or {})
+    return ClusterState(
+        n_tasks=task_count,
+        n_workers=worker_count,
+        n_tasks_by_capset={capset: task_count} if task_count else {},
+        capset_representatives={capset: capabilities or {}} if task_count else {},
+        managers=managers,
+    )
 
 
 class TestVanillaScalingPolicyLogging(unittest.TestCase):
@@ -40,9 +47,8 @@ class TestVanillaScalingPolicyLogging(unittest.TestCase):
         self.workers = [WorkerID(b"worker")]
 
     def __decide(self, task_count: int, worker_count: int) -> int:
-        return self.policy._compute_desired_worker_count(
-            MANAGER_ID, _snapshot(task_count, worker_count), {MANAGER_ID: _info(worker_count=1)}
-        )
+        cluster_state = _cluster_state(task_count, worker_count, {MANAGER_ID: _info(worker_count=1)})
+        return self.policy._compute_desired_worker_count(MANAGER_ID, cluster_state)
 
     def test_a_standing_request_is_logged_once(self):
         # far more tasks than workers: the policy asks for one more worker every time it is consulted
@@ -71,13 +77,8 @@ class TestCapabilityScalingPolicyLogging(unittest.TestCase):
         self.workers = [WorkerID(b"worker")]
 
     def __decide(self, capabilities: dict, task_count: int) -> None:
-        snapshot = MagicMock()
-        snapshot.tasks = {index: MagicMock(capabilities=capabilities) for index in range(task_count)}
-        self.policy.get_scaling_commands(
-            worker_manager_id=MANAGER_ID,
-            information_snapshot=snapshot,
-            worker_manager_infos={MANAGER_ID: _info(worker_count=len(self.workers))},
-        )
+        cluster_state = _cluster_state(task_count, 0, {MANAGER_ID: _info(worker_count=len(self.workers))}, capabilities)
+        self.policy.get_scaling_commands(worker_manager_id=MANAGER_ID, cluster_state=cluster_state)
 
     def test_a_standing_request_is_logged_once_per_capability_set(self):
         with self.assertLogs(CAPABILITY_LOGGER) as logs:
@@ -120,47 +121,36 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
 
         # asks each manager for one more worker, which is what gets remembered
         policy.get_scaling_commands(
-            worker_manager_id=MANAGER_ID,
-            information_snapshot=_snapshot(100, 1),
-            worker_manager_infos=self._infos(MANAGER_ID),
+            worker_manager_id=MANAGER_ID, cluster_state=_cluster_state(100, 1, self._infos(MANAGER_ID))
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID})
 
         policy.get_scaling_commands(
-            worker_manager_id=OTHER_MANAGER_ID,
-            information_snapshot=_snapshot(100, 1),
-            worker_manager_infos=self._infos(OTHER_MANAGER_ID),
+            worker_manager_id=OTHER_MANAGER_ID, cluster_state=_cluster_state(100, 1, self._infos(OTHER_MANAGER_ID))
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {OTHER_MANAGER_ID})
 
     def test_capability_forgets_a_manager_the_scheduler_no_longer_knows(self):
         policy = CapabilityScalingPolicy()
-        snapshot = MagicMock()
-        snapshot.tasks = {0: MagicMock(capabilities={"gpu": 1})}
 
         policy.get_scaling_commands(
-            worker_manager_id=MANAGER_ID, information_snapshot=snapshot, worker_manager_infos=self._infos(MANAGER_ID)
+            worker_manager_id=MANAGER_ID, cluster_state=_cluster_state(1, 0, self._infos(MANAGER_ID), {"gpu": 1})
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID})
 
         policy.get_scaling_commands(
             worker_manager_id=OTHER_MANAGER_ID,
-            information_snapshot=snapshot,
-            worker_manager_infos=self._infos(OTHER_MANAGER_ID),
+            cluster_state=_cluster_state(1, 0, self._infos(OTHER_MANAGER_ID), {"gpu": 1}),
         )
         self.assertEqual(set(policy._logged_desired_by_manager), {OTHER_MANAGER_ID})
 
     def test_a_manager_still_heartbeating_is_kept(self):
         policy = CapabilityScalingPolicy()
-        snapshot = MagicMock()
-        snapshot.tasks = {0: MagicMock(capabilities={"gpu": 1})}
         known = self._infos(MANAGER_ID, OTHER_MANAGER_ID)
 
+        policy.get_scaling_commands(worker_manager_id=MANAGER_ID, cluster_state=_cluster_state(1, 0, known, {"gpu": 1}))
         policy.get_scaling_commands(
-            worker_manager_id=MANAGER_ID, information_snapshot=snapshot, worker_manager_infos=known
-        )
-        policy.get_scaling_commands(
-            worker_manager_id=OTHER_MANAGER_ID, information_snapshot=snapshot, worker_manager_infos=known
+            worker_manager_id=OTHER_MANAGER_ID, cluster_state=_cluster_state(1, 0, known, {"gpu": 1})
         )
 
         self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID, OTHER_MANAGER_ID})
