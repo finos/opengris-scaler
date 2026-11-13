@@ -1015,6 +1015,9 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             )
 
 
+ORB_CHILDREN_ADDRESS = "tcp://203.0.113.10:6390"
+
+
 def _make_orb_config(
     *,
     image_id: Optional[str] = None,
@@ -1025,7 +1028,7 @@ def _make_orb_config(
     wmc = WorkerManagerConfig(
         scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"),
         worker_manager_id="wm-test",
-        children_address=AddressConfig.from_string("tcp://203.0.113.10:6390"),
+        children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS),
     )
     return ORBAWSEC2WorkerManagerConfig(
         worker_manager_config=wmc,
@@ -1049,21 +1052,27 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
 
     def test_image_id_mode_skips_install(self) -> None:
         worker_manager = self._make_worker_manager(image_id="ami-abc123")
-        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
+        script = worker_manager._create_user_data(
+            "unit-1", workers_per_instance=4, children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS)
+        )
         self.assertNotIn("dnf", script)
         self.assertNotIn("pip install", script)
         self.assertNotIn("venv", script)
 
     def test_auto_install_mode_installs_python(self) -> None:
         worker_manager = self._make_worker_manager(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
-        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
+        script = worker_manager._create_user_data(
+            "unit-1", workers_per_instance=4, children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS)
+        )
         self.assertIn("--python 3.13", script)
 
     def test_auto_install_mode_embeds_literal_requirements(self) -> None:
         worker_manager = self._make_worker_manager(
             python_version="3.13", requirements_txt="opengris-scaler>=1.26.6\nboto3"
         )
-        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
+        script = worker_manager._create_user_data(
+            "unit-1", workers_per_instance=4, children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS)
+        )
         self.assertIn("opengris-scaler>=1.26.6", script)
         self.assertIn("boto3", script)
         self.assertIn("pip install -r /tmp/requirements.txt", script)
@@ -1079,7 +1088,9 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
             worker_manager = self._make_worker_manager(
                 python_version="3.13", requirements_txt="/path/to/requirements.txt"
             )
-            script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
+            script = worker_manager._create_user_data(
+                "unit-1", workers_per_instance=4, children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS)
+            )
 
         self.assertIn("opengris-scaler>=1.26.6", script)
         self.assertIn("numpy", script)
@@ -1087,12 +1098,16 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
 
     def test_image_id_mode_launches_worker_manager(self) -> None:
         worker_manager = self._make_worker_manager(image_id="ami-abc123")
-        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
+        script = worker_manager._create_user_data(
+            "unit-1", workers_per_instance=4, children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS)
+        )
         self.assertIn("scaler_worker_manager baremetal_native", script)
 
     def test_child_manager_dials_this_manager_as_its_unit(self) -> None:
         worker_manager = self._make_worker_manager(image_id="ami-abc123")
-        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
+        script = worker_manager._create_user_data(
+            "unit-1", workers_per_instance=4, children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS)
+        )
         self.assertIn("--parent-address tcp://203.0.113.10:6390", script)
         self.assertIn("--unit-id unit-1", script)
         self.assertIn("--max-task-concurrency 4", script)
@@ -1100,7 +1115,9 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
 
     def test_auto_install_mode_launches_worker_manager(self) -> None:
         worker_manager = self._make_worker_manager(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
-        script = worker_manager._create_user_data("unit-1", workers_per_instance=4)
+        script = worker_manager._create_user_data(
+            "unit-1", workers_per_instance=4, children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS)
+        )
         self.assertIn("scaler_worker_manager baremetal_native", script)
 
 

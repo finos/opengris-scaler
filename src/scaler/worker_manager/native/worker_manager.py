@@ -139,17 +139,14 @@ class NativeWorkerManager:
         return self._config
 
     def run(self) -> None:
-        children_address = local_children_address(self._config.worker_manager_config)
-        provisioner = NativeWorkerProvisioner(self._config, children_address)
-
         runner = WorkerManagerRunner(
             name="worker_manager_native",
             worker_manager_config=self._config.worker_manager_config,
             heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=self._config.worker_manager_config.max_task_concurrency,
-            worker_provisioner=provisioner,
-            children_address=children_address,
+            create_worker_provisioner=lambda children_address: NativeWorkerProvisioner(self._config, children_address),
+            children_address=local_children_address(self._config.worker_manager_config),
             io_threads=self._config.worker_config.io_threads,
             security_config=self._config.security,
             parent_address=self._config.parent_address,

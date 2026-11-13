@@ -11,7 +11,6 @@ from scaler import Client, SchedulerClusterCombo
 from scaler.config.defaults import DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 RESULT_TIMEOUT_SECONDS = 60
@@ -42,8 +41,8 @@ class TestDyingSuspendedProcessor(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
 
-        self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=1, event_loop="builtin")
+        self.cluster = SchedulerClusterCombo(n_workers=1, event_loop="builtin")
+        self.address = self.cluster.get_address()
         self.directory = tempfile.mkdtemp(prefix="scaler_suspended_processor_")
 
     def tearDown(self) -> None:

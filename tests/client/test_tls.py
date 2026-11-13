@@ -4,7 +4,6 @@ import unittest
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.security import SecurityConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 # Reuse the self-signed certificate/key pair shipped for the C++ OpenSSL tests.
@@ -22,13 +21,10 @@ class TestClientTLS(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
 
-        scheduler_address = f"tls://127.0.0.1:{get_available_tcp_port()}"
-        object_storage_address = f"tls://127.0.0.1:{get_available_tcp_port()}"
-
         self.combo = SchedulerClusterCombo(
             n_workers=1,
-            address=scheduler_address,
-            object_storage_address=object_storage_address,
+            address="tls://127.0.0.1:0",
+            object_storage_address="tls://127.0.0.1:0",
             event_loop="builtin",
             security_config=SecurityConfig(tls_cert=_CERT_CHAIN, tls_key=_PRIVATE_KEY),
         )

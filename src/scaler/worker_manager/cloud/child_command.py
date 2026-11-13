@@ -2,7 +2,8 @@ import os
 from typing import Dict
 
 from scaler.config.common.cloud_children import CloudChildrenConfig
-from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.types.address import AddressConfig
+from scaler.utility.network_util import resolve_port_zero
 
 
 def load_requirements_content(requirements_txt: str) -> str:
@@ -29,11 +30,14 @@ def format_capabilities(capabilities: Dict[str, int]) -> str:
 
 
 def child_link_arguments(
-    worker_manager_config: WorkerManagerConfig,
-    cloud_children_config: CloudChildrenConfig,
-    unit_id: str,
-    task_concurrency: int,
+    children_address: AddressConfig, cloud_children_config: CloudChildrenConfig, unit_id: str, task_concurrency: int
 ) -> str:
-    """The command line arguments that make a child native manager serve this manager as unit `unit_id`."""
-    parent_address = cloud_children_config.advertised_children_address or worker_manager_config.children_address
+    """The command line arguments that make a child native manager serve this manager as unit `unit_id`.
+
+    `children_address` is the address this manager bound; an advertised address naming port 0 takes its port.
+    """
+    advertised_address = cloud_children_config.advertised_children_address
+    parent_address = (
+        children_address if advertised_address is None else resolve_port_zero(advertised_address, children_address)
+    )
     return f"--parent-address {parent_address} --unit-id {unit_id} --max-task-concurrency {task_concurrency}"

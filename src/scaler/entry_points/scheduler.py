@@ -1,11 +1,15 @@
 # PYTHON_ARGCOMPLETE_OK
-from typing import Optional
+from typing import Callable, Optional
 
 from scaler.cluster.scheduler import run_scheduler
 from scaler.config.section.scheduler import SchedulerConfig
+from scaler.scheduler.scheduler import BoundSchedulerAddresses
 
 
-def main(scheduler_config: Optional[SchedulerConfig] = None) -> None:
+def main(
+    scheduler_config: Optional[SchedulerConfig] = None,
+    on_ready: Optional[Callable[[BoundSchedulerAddresses], None]] = None,
+) -> None:
     if scheduler_config is None:
         scheduler_config = SchedulerConfig.parse("Scaler Scheduler", "scheduler")
 
@@ -17,4 +21,5 @@ def main(scheduler_config: Optional[SchedulerConfig] = None) -> None:
         scheduler_config.logging_config.paths,
         scheduler_config.logging_config.config_file,
         scheduler_config.logging_config.level,
+        on_ready=on_ready,
     )

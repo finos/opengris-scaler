@@ -1,12 +1,10 @@
 #pragma once
 
 #include <chrono>
-#include <condition_variable>
 #include <expected>
 #include <future>
 #include <iostream>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <set>
 #include <span>
@@ -15,9 +13,9 @@
 #include "scaler/logging/logging.h"
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
-#include "scaler/object_storage/io_helper.h"
 #include "scaler/object_storage/message.h"
 #include "scaler/object_storage/object_manager.h"
+#include "scaler/ymq/address.h"
 #include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/future/binder_socket.h"
 #include "scaler/ymq/io_context.h"
@@ -34,8 +32,6 @@ public:
 
     ObjectStorageServer();
 
-    ~ObjectStorageServer();
-
     void run(
         std::string address,
         Identity identity                               = "ObjectStorageServer",
@@ -43,9 +39,9 @@ public:
         std::string log_format                          = "%(levelname)s: %(message)s",
         std::vector<std::string> log_paths              = {"/dev/stdout"},
         std::function<bool()> running                   = []() { return true; },
-        std::optional<scaler::ymq::TLSConfig> tlsConfig = std::nullopt);
-
-    void waitUntilReady();
+        std::optional<scaler::ymq::TLSConfig> tlsConfig = std::nullopt,
+        // called on this thread with the bound address, which differs from `address` where that names port 0
+        std::function<void(const scaler::ymq::Address&)> onReady = [](const scaler::ymq::Address&) {});
 
     void shutdown();
 
@@ -67,10 +63,6 @@ private:
     scaler::ymq::IOContext _ioContext;
     std::unique_ptr<scaler::ymq::future::BinderSocket> _socket;
 
-    std::mutex _serverReadyMutex;
-    std::condition_variable _serverReadyConditionVariable;
-    bool _isServerReady {false};
-
     ObjectManager objectManager;
 
     // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
@@ -83,12 +75,6 @@ private:
     scaler::ymq::Logger _logger;
 
     std::vector<SendMessageFuture> _pendingSendMessageFuts;
-
-    void initServerReadyFds();
-
-    void setServerReadyFd();
-
-    void closeServerReadyFds();
 
     void processRequests(std::function<bool()> stopCondition);
 

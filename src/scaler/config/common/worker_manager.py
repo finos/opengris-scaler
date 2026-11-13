@@ -55,7 +55,8 @@ class WorkerManagerConfig(ConfigClass):
             short="-ca",
             help=(
                 "address this worker manager binds for its units to dial. "
-                "Defaults to a free loopback port. A worker manager whose units are remote resources "
+                "Defaults to 127.0.0.1 on port 0. On port 0, the units dial the port the OS picked. "
+                "A worker manager whose units are remote resources "
                 "(EC2 instances, ECS tasks, OCI container instances) needs an address those resources can reach."
             ),
         ),

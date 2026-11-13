@@ -1,7 +1,13 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from scaler.worker_manager.proxy.oci.worker_manager import OCIJobsWorkerManager
+from scaler.config.types.address import AddressConfig
+from scaler.worker_manager.proxy.oci.worker_manager import OCIJobsWorkerManager, OCIJobsWorkerProvisioner
+
+
+def _provisioner(runner: MagicMock) -> OCIJobsWorkerProvisioner:
+    """The provisioner the manager's runner creates once it binds its children address."""
+    return runner.call_args.kwargs["create_worker_provisioner"](AddressConfig.from_string("tcp://127.0.0.1:2"))
 
 
 class TestOCIJobsWorkerManagerMaxTaskConcurrency(unittest.TestCase):
@@ -19,9 +25,9 @@ class TestOCIJobsWorkerManagerMaxTaskConcurrency(unittest.TestCase):
         """max_task_concurrency=250 with 100 jobs per unit caps the manager at ceil(250 / 100) = 3 units."""
         runner = self._run(max_task_concurrency=250)
         self.assertEqual(runner.call_args.kwargs["max_provisioner_units"], 3)
-        self.assertEqual(runner.call_args.kwargs["worker_provisioner"]._capacity_coordinator._max_unit_count, 3)
+        self.assertEqual(_provisioner(runner)._capacity_coordinator._max_unit_count, 3)
 
     def test_unlimited_max_task_concurrency_leaves_units_uncapped(self) -> None:
         runner = self._run(max_task_concurrency=-1)
         self.assertEqual(runner.call_args.kwargs["max_provisioner_units"], -1)
-        self.assertEqual(runner.call_args.kwargs["worker_provisioner"]._capacity_coordinator._max_unit_count, -1)
+        self.assertEqual(_provisioner(runner)._capacity_coordinator._max_unit_count, -1)

@@ -157,6 +157,32 @@ Scaler arguments
 
 If no recognized sections are present, ``scaler`` exits with an error.
 
+Port 0
+~~~~~~
+
+A section can bind port 0, and the OS picks a free port at bind time.
+
+- A connecting address that names port 0 connects to the section in the same file that binds it.
+- The connecting fields are ``object_storage_address`` in ``[scheduler]``, ``scheduler_address`` and ``object_storage_address`` in ``[[worker_manager]]``, and ``monitor_address`` in ``[gui]``.
+- Before starting a section, ``scaler`` replaces port 0 in its connecting addresses with the port the other section bound, and leaves the host as written.
+- Such an address cannot name ``0.0.0.0``, which means "every interface" only when binding: name ``127.0.0.1`` or another host.
+- ``scaler`` exits with an error, before starting any section, when such an address names ``0.0.0.0`` or no section in the file binds it.
+
+.. code-block:: toml
+
+    [object_storage_server]
+    bind_address = "tcp://127.0.0.1:0"
+
+    [scheduler]
+    bind_address = "tcp://127.0.0.1:0"
+    object_storage_address = "tcp://127.0.0.1:0"
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    scheduler_address = "tcp://127.0.0.1:0"
+    worker_manager_id = "wm-native"
+    max_task_concurrency = 8
+
 
 .. _cmd-scaler-scheduler:
 
@@ -234,7 +260,7 @@ Scheduler arguments
    * - ``-ma``, ``--monitor-address``
      - No
      - Auto from bind address
-     - Monitor endpoint, defaults to ``bind_address.port + 2``.
+     - Monitor endpoint, defaults to ``bind_address.port + 2``, or port 0 when the scheduler binds port 0.
    * - ``-p``, ``--protected``
      - No
      - ``False``
@@ -434,13 +460,14 @@ Arguments (shared by all subcommands)
      - Max workers/jobs (``-1`` means no limit where supported).
    * - ``-ca``, ``--children-address``
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``
-     - A free loopback port
+     - ``127.0.0.1`` on port 0
      - Address the worker manager binds for its units to dial. Must be reachable from provisioned resources.
+       On port 0, the units dial the port the OS picked.
    * - ``-aca``, ``--advertised-children-address``
      - No
      - ``--children-address``
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: address the units dial, when they reach the worker
-       manager through NAT (e.g. an EC2 public IP).
+       manager through NAT (e.g. an EC2 public IP). On port 0, the units dial the port ``--children-address`` bound.
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
@@ -31,6 +31,7 @@ class WorkerManagerRunner:
 
     Every unit dials the children address with its unit id as identity: a worker, or a child worker manager in a
     resource. Each unit heartbeat gets an echo, and a child manager is asked for the task concurrency of one whole unit.
+    The provisioner is created once the children address is bound, so its units dial the port the binder got.
     """
 
     def __init__(
@@ -40,7 +41,7 @@ class WorkerManagerRunner:
         heartbeat_interval_seconds: int,
         capabilities: Dict[str, int],
         max_provisioner_units: int,
-        worker_provisioner: DeclarativeWorkerProvisioner,
+        create_worker_provisioner: Callable[[AddressConfig], DeclarativeWorkerProvisioner],
         children_address: AddressConfig,
         io_threads: int = 1,
         workers_per_provisioner_unit: int = 1,
@@ -55,7 +56,8 @@ class WorkerManagerRunner:
         self._capabilities = capabilities
         self._max_provisioner_units = max_provisioner_units
         self._worker_manager_id = worker_manager_config.worker_manager_id.encode()
-        self._worker_provisioner = worker_provisioner
+        self._create_worker_provisioner = create_worker_provisioner
+        self._worker_provisioner: Optional[DeclarativeWorkerProvisioner] = None
         self._children_address = children_address
         self._io_threads = io_threads
         self._workers_per_provisioner_unit = workers_per_provisioner_unit
@@ -118,6 +120,8 @@ class WorkerManagerRunner:
             self._parent_address, ConnectorRemoteType.Binder, security_config=self._security_config
         )
         await self._binder_children.bind(self._children_address, security_config=self._security_config)
+        assert self._binder_children.address is not None
+        self._worker_provisioner = self._create_worker_provisioner(self._binder_children.address)
         self._register_signal()
 
         # swallow_routine_errors=True: a manager serves many units, and a defect in handling one must not take the
@@ -158,6 +162,7 @@ class WorkerManagerRunner:
         if requests is None:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
+        assert self._worker_provisioner is not None
         await self._worker_provisioner.set_desired_task_concurrency(list(requests))
 
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:

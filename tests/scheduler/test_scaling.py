@@ -43,7 +43,6 @@ from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, Waterfall
 from scaler.scheduler.policies.utility import create_scaling_policy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.snapshot import InformationSnapshot
 from tests.utility.utility import logging_test_name
 
@@ -53,8 +52,9 @@ class TestScaling(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
 
-        self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.object_storage_address = AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
+        # port 0: each process binds a port the OS picks and reports it from wait_until_ready
+        self.scheduler_address = "tcp://127.0.0.1:0"
+        self.object_storage_address = AddressConfig.from_string("tcp://127.0.0.1:0")
 
     @unittest.skipIf(
         sys.platform == "win32",
@@ -74,11 +74,11 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         object_storage.start()
-        object_storage.wait_until_ready()
+        object_storage_address = object_storage.wait_until_ready()
 
         scheduler = SchedulerProcess(
             bind_address=AddressConfig.from_string(self.scheduler_address),
-            object_storage_address=self.object_storage_address,
+            object_storage_address=object_storage_address,
             advertised_object_storage_address=None,
             monitor_address=None,
             policy=PolicyConfig(policy_content="allocate=even_load; scaling=vanilla"),
@@ -96,13 +96,14 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         scheduler.start()
+        scheduler_address = repr(scheduler.wait_until_ready().bind_address)
 
         manager_process = multiprocessing.get_context("spawn").Process(
-            target=_run_native_worker_manager, args=(self.scheduler_address,)
+            target=_run_native_worker_manager, args=(scheduler_address,)
         )
         manager_process.start()
 
-        with Client(self.scheduler_address) as client:
+        with Client(scheduler_address) as client:
             client.map(time.sleep, [0.1] * 100)
 
         os.kill(scheduler.pid, signal.SIGINT)
@@ -129,11 +130,11 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         object_storage.start()
-        object_storage.wait_until_ready()
+        object_storage_address = object_storage.wait_until_ready()
 
         scheduler = SchedulerProcess(
             bind_address=AddressConfig.from_string(self.scheduler_address),
-            object_storage_address=self.object_storage_address,
+            object_storage_address=object_storage_address,
             advertised_object_storage_address=None,
             monitor_address=None,
             io_threads=DEFAULT_IO_THREADS,
@@ -151,13 +152,14 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         scheduler.start()
+        scheduler_address = repr(scheduler.wait_until_ready().bind_address)
 
         manager_process = multiprocessing.get_context("spawn").Process(
-            target=_run_native_worker_manager, args=(self.scheduler_address,)
+            target=_run_native_worker_manager, args=(scheduler_address,)
         )
         manager_process.start()
 
-        with Client(self.scheduler_address) as client:
+        with Client(scheduler_address) as client:
             # Submit tasks without capabilities (should work like vanilla)
             client.map(time.sleep, [0.1] * 50)
 
