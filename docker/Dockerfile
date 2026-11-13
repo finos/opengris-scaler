@@ -1,5 +1,14 @@
+ARG BASE_IMAGE=alpine:3.23
 FROM ghcr.io/astral-sh/uv:latest AS uv
-FROM alpine:3.23
+FROM ${BASE_IMAGE}
+
+RUN apk add --no-cache \
+    ca-certificates \
+    capnproto \
+    libuv \
+    libstdc++ \
+    libgcc \
+    openssl
 
 COPY --from=uv /uv /usr/local/bin/uv
 
