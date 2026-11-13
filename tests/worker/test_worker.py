@@ -17,7 +17,12 @@ from unittest import mock
 import scaler.worker.worker as worker_module
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
-from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, SysCallError
+from scaler.io.ymq import (
+    ConnectionLostError,
+    ConnectorSocketClosedByRemoteEndError,
+    SocketStopRequestedError,
+    SysCallError,
+)
 from scaler.protocol.capnp import WorkerDisconnectNotification
 from scaler.worker.worker import Worker
 
@@ -236,6 +241,24 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
         sent_to_manager = worker._connector_manager.sent_messages
         self.assertEqual(len(sent_to_manager), 1, "the manager was not notified during teardown")
         self.assertIsInstance(sent_to_manager[0], WorkerDisconnectNotification)
+
+    async def test_teardown_completes_when_the_notification_send_loses_its_connection(self) -> None:
+        # A connection lost under the notification is the expected case of a scheduler that went away.
+        error = SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "binder socket shut down mid-send")
+        worker = self._build_worker(error)
+        worker._loop = asyncio.get_running_loop()
+
+        async def lose_connection(*_args: Any, **_kwargs: Any) -> None:
+            raise ConnectionLostError(ymq.ErrorCode.ConnectionLost, "connection aborted mid-write")
+
+        worker._connector_external.send = lose_connection
+
+        with mock.patch.object(worker_module, "logger") as mock_logger:
+            await worker._Worker__teardown()
+
+        self.assertTrue(worker._binder_internal.destroyed, "teardown stopped at the failed notification")
+        notified = [c for c in mock_logger.info.call_args_list if "could not notify the scheduler" in str(c)]
+        self.assertTrue(notified, "the lost connection was not logged as an expected condition")
 
     async def test_teardown_completes_when_the_notification_send_hangs(self) -> None:
         # The notification only saves the scheduler from waiting out the heartbeat timeout, so a
