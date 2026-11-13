@@ -49,6 +49,17 @@ class WorkerManagerConfig(ConfigClass):
         ),
     )
 
+    unit_timeout_seconds: int = dataclasses.field(
+        default=defaults.DEFAULT_WORKER_MANAGER_UNIT_TIMEOUT_SECONDS,
+        metadata=dict(
+            short="-uts",
+            help=(
+                "seconds a unit may go without a heartbeat before the worker manager counts it as lost, "
+                "destroys it by force, and replaces it"
+            ),
+        ),
+    )
+
     children_address: Optional[AddressConfig] = dataclasses.field(
         default=None,
         metadata=dict(
@@ -72,3 +83,5 @@ class WorkerManagerConfig(ConfigClass):
             raise ValueError("max_task_concurrency must be -1 (no limit) or a non-negative integer.")
         if self.scale_down_cooldown_seconds < 0:
             raise ValueError("scale_down_cooldown_seconds must be a non-negative number.")
+        if self.unit_timeout_seconds <= 0:
+            raise ValueError("unit_timeout_seconds must be a positive number.")

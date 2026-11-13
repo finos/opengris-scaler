@@ -248,6 +248,10 @@ class WorkerManagerHeartbeat(BaseMessage):
     maxTaskConcurrency: int
     capabilities: Any
     workerManagerID: bytes
+    activeTaskConcurrency: int
+    assignedTasks: int
+    activeUnits: int
+    pendingUnits: int
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 

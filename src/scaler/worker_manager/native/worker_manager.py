@@ -1,31 +1,22 @@
 from __future__ import annotations
 
 import logging
-import os
-import signal
-import sys
-import uuid
-from typing import TYPE_CHECKING, List
-
-import psutil
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig
-from scaler.utility.exitcode import describe_exitcode
 from scaler.worker.worker import Worker
-from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.desired_concurrency import extract_desired_count
-from scaler.worker_manager.local_process import local_children_address
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.local_process import (
+    LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS,
+    local_children_address,
+    stop_local_process,
+)
+from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
-
-if TYPE_CHECKING:
-    from scaler.protocol.capnp import WorkerManagerCommand
 
 logger = logging.getLogger(__name__)
 
 
-class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
+class NativeWorkerProvisioner(UnitProvisioner):
     def __init__(self, config: NativeWorkerManagerConfig, children_address: AddressConfig) -> None:
         self._children_address = children_address
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
@@ -48,15 +39,6 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._security_config = config.security
 
         self._worker_prefix = config.worker_type
-
-        self._workers: List[Worker] = []
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=self._max_task_concurrency,
-            scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
-        )
 
     def _create_worker(self, unit_id: str) -> Worker:
         return Worker(
@@ -82,52 +64,25 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             security_config=self._security_config,
         )
 
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        self._reap_exited_workers()
-        task_concurrency = extract_desired_count(requests, self._capabilities)
-        await self._capacity_coordinator.set_desired_unit_count(task_concurrency)
+    async def create_unit(self, unit_id: str) -> UnitHandle:
+        worker = self._create_worker(unit_id)
+        worker.start()
+        logger.info(f"started native worker {worker.identity!r}")
+        return worker
 
-    def active_unit_count(self) -> int:
-        return len(self._workers)
+    async def destroy_unit(self, handle: UnitHandle) -> None:
+        assert isinstance(handle, Worker)
+        await stop_local_process(handle)
+        logger.info(f"stopped native worker {handle.identity!r}")
 
-    def _reap_exited_workers(self) -> None:
-        for worker in list(self._workers):
-            if worker.is_alive():
-                continue
-            worker.join()
-            self._workers.remove(worker)
-            logger.warning(
-                f"native worker {worker.identity!r} exited on its own (exitcode={describe_exitcode(worker.exitcode)})"
-            )
+    def max_units(self) -> int:
+        return self._max_task_concurrency
 
-    async def start_units(self, count: int) -> None:
-        for _ in range(count):
-            worker = self._create_worker(uuid.uuid4().hex)
-            worker.start()
-            self._workers.append(worker)
-            logger.info(f"Started native worker {worker.identity!r}")
+    def task_concurrency_per_unit(self) -> int:
+        return 1
 
-    async def stop_units(self, count: int) -> None:
-        to_stop = self._workers[:count]
-        if len(to_stop) < count:
-            logger.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
-        for worker in to_stop:
-            if sys.platform == "win32":
-                # Windows os.kill with SIGINT only works for processes attached to the same console.
-                # TerminateProcess is forceful: the worker's teardown (which sends
-                # WorkerDisconnectNotification before exiting) does not run, so the scheduler will
-                # time out the worker on its own.
-                psutil.Process(worker.pid).terminate()
-            else:
-                os.kill(worker.pid, signal.SIGINT)
-            self._workers.pop(0)
-            logger.info(f"Stopped native worker {worker.identity!r}")
-
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        await self.stop_units(len(self._workers))
+    def startup_timeout_seconds(self) -> int:
+        return LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS
 
 
 class NativeWorkerManager:
@@ -147,8 +102,7 @@ class NativeWorkerManager:
             worker_manager_config=self._config.worker_manager_config,
             heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=self._config.worker_manager_config.max_task_concurrency,
-            worker_provisioner=provisioner,
+            provisioner=provisioner,
             children_address=children_address,
             io_threads=self._config.worker_config.io_threads,
             security_config=self._config.security,

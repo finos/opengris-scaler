@@ -4,6 +4,7 @@ from typing import Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.defaults import DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.mixins import AsyncBinder, AsyncConnector, ConnectorRemoteType, NetworkBackend
@@ -21,16 +22,21 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.signal_handler import install_async_shutdown_handler
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.desired_concurrency import extract_desired_count
+from scaler.worker_manager.mixins import UnitProvisioner
+from scaler.worker_manager.unit_controller import UnitController
 
 logger = logging.getLogger(__name__)
 
+# The unit routine reads only state that messages wrote, and runs provisioner calls in the background.
+UNIT_CONTROLLER_INTERVAL_SECONDS = 1
+
 
 class WorkerManagerRunner:
-    """Connects a worker provisioner to its parent (the scheduler, or a parent worker manager) and to its units.
+    """Connects a unit controller to its parent (the scheduler, or a parent worker manager) and to its units.
 
-    Every unit dials the children address with its unit id as identity: a worker, or a child worker manager in a
-    resource. Each unit heartbeat gets an echo, and a child manager is asked for the task concurrency of one whole unit.
+    Every link is a heartbeat and an echo. The runner answers each child manager heartbeat with the share of the
+    desired task concurrency the controller assigned to that unit, so a lost message costs one heartbeat.
     """
 
     def __init__(
@@ -39,11 +45,9 @@ class WorkerManagerRunner:
         worker_manager_config: WorkerManagerConfig,
         heartbeat_interval_seconds: int,
         capabilities: Dict[str, int],
-        max_provisioner_units: int,
-        worker_provisioner: DeclarativeWorkerProvisioner,
+        provisioner: UnitProvisioner,
         children_address: AddressConfig,
         io_threads: int = 1,
-        workers_per_provisioner_unit: int = 1,
         security_config: Optional[SecurityConfig] = None,
         parent_address: Optional[AddressConfig] = None,
         unit_id: Optional[str] = None,
@@ -53,13 +57,18 @@ class WorkerManagerRunner:
         self._unit_id = unit_id
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._capabilities = capabilities
-        self._max_provisioner_units = max_provisioner_units
         self._worker_manager_id = worker_manager_config.worker_manager_id.encode()
-        self._worker_provisioner = worker_provisioner
+        self._provisioner = provisioner
         self._children_address = children_address
         self._io_threads = io_threads
-        self._workers_per_provisioner_unit = workers_per_provisioner_unit
         self._security_config = security_config
+
+        self._unit_controller = UnitController(
+            provisioner,
+            scale_down_cooldown_seconds=worker_manager_config.scale_down_cooldown_seconds,
+            unit_timeout_seconds=worker_manager_config.unit_timeout_seconds,
+            restart_backoff_seconds=DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
+        )
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_parent: Optional[AsyncConnector] = None
@@ -103,11 +112,16 @@ class WorkerManagerRunner:
         await self._task
 
     async def _send_heartbeat(self) -> None:
+        status = self._unit_controller.get_status()
         await self._connector_parent.send(
             WorkerManagerHeartbeat(
-                maxTaskConcurrency=self._max_provisioner_units * self._workers_per_provisioner_unit,
+                maxTaskConcurrency=self._provisioner.max_units() * self._provisioner.task_concurrency_per_unit(),
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
+                activeTaskConcurrency=status.active_task_concurrency,
+                assignedTasks=status.assigned_tasks,
+                activeUnits=status.active_units,
+                pendingUnits=status.pending_units,
             ),
             detached=True,
         )
@@ -120,12 +134,15 @@ class WorkerManagerRunner:
         await self._binder_children.bind(self._children_address, security_config=self._security_config)
         self._register_signal()
 
-        # swallow_routine_errors=True: a manager serves many units, and a defect in handling one must not take the
+        # swallow_routine_errors=True: a manager serves many units, and a defect in one routine must not take the
         # whole fleet down with it.
         loops = [
             create_async_loop_routine(self._connector_parent.routine, 0),
             create_async_loop_routine(self._binder_children.routine, 0, swallow_routine_errors=True),
             create_async_loop_routine(self._send_heartbeat, self._heartbeat_interval_seconds),
+            create_async_loop_routine(
+                self._unit_controller.routine, UNIT_CONTROLLER_INTERVAL_SECONDS, swallow_routine_errors=True
+            ),
         ]
 
         try:
@@ -140,7 +157,7 @@ class WorkerManagerRunner:
         except Exception:
             logger.exception(f"{self._ident!r}: failed with unhandled exception")
 
-        await self._worker_provisioner.terminate()
+        await self._unit_controller.terminate()
 
     async def _on_receive_parent(self, message: BaseMessage) -> None:
         try:
@@ -158,31 +175,36 @@ class WorkerManagerRunner:
         if requests is None:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
-        await self._worker_provisioner.set_desired_task_concurrency(list(requests))
+        self._unit_controller.set_desired_task_concurrency(extract_desired_count(list(requests), self._capabilities))
 
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:
         unit_id = source.decode()  # each unit dials with the unit id it was created with as its identity
 
         if isinstance(message, WorkerHeartbeat):
+            busy_processors = sum(processor.hasTask for processor in message.processors)
+            self._unit_controller.on_unit_heartbeat(
+                unit_id, self._provisioner.task_concurrency_per_unit(), message.queuedTasks + busy_processors
+            )
             await self._binder_children.send(source, WorkerHeartbeatEcho(), detached=True)
             return
 
         if isinstance(message, WorkerManagerHeartbeat):
+            self._unit_controller.on_unit_heartbeat(unit_id, message.activeTaskConcurrency, message.assignedTasks)
             await self._binder_children.send(source, WorkerManagerHeartbeatEcho(), detached=True)
-            await self._binder_children.send(source, self._unit_command(), detached=True)
+            await self._binder_children.send(source, self._instruction_for(unit_id), detached=True)
             return
 
         if isinstance(message, WorkerDisconnectNotification):
-            logger.info(f"unit {unit_id!r} is exiting")
+            self._unit_controller.on_unit_disconnect(unit_id)
+            await self._unit_controller.routine()  # reap the unit now, not on the next routine
             return
 
         logger.error(f"unknown message from unit {unit_id!r}: {message}")
 
-    def _unit_command(self) -> WorkerManagerCommand:
+    def _instruction_for(self, unit_id: str) -> WorkerManagerCommand:
+        desired = self._unit_controller.get_unit_desired_task_concurrency(unit_id)
         return WorkerManagerCommand(
             setDesiredTaskConcurrencyRequests=[
-                WorkerManagerCommand.DesiredTaskConcurrencyRequest(
-                    taskConcurrency=self._workers_per_provisioner_unit, capabilities=[]
-                )
+                WorkerManagerCommand.DesiredTaskConcurrencyRequest(taskConcurrency=desired, capabilities=[])
             ]
         )
