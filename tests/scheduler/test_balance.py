@@ -149,7 +149,8 @@ class TestBalance(unittest.TestCase):
             time.sleep(2)  # let worker_a register both tasks before it's frozen
 
             _signal_process_tree(
-                combo._worker_manager_process, signal.SIGSTOP  # type: ignore[attr-defined, unused-ignore]
+                combo._worker_manager_process,
+                signal.SIGSTOP,  # type: ignore[attr-defined, unused-ignore]
             )
 
             base_config = combo._worker_manager.config
@@ -190,7 +191,8 @@ class TestBalance(unittest.TestCase):
             # SIGKILL, not terminate()/SIGTERM: worker_a may still be frozen and SIGTERM would
             # never be delivered to a stopped process.
             _signal_process_tree(
-                combo._worker_manager_process, signal.SIGKILL  # type: ignore[attr-defined, unused-ignore]
+                combo._worker_manager_process,
+                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
             )
             combo._worker_manager_process.join()
 
@@ -261,7 +263,8 @@ class TestBalance(unittest.TestCase):
             # Kill worker_a's whole tree: its socket closes, but with no graceful WorkerDisconnectNotification and
             # the timeout far off the scheduler still lists it, so the balancer will send a cancel to it.
             _signal_process_tree(
-                combo._worker_manager_process, signal.SIGKILL  # type: ignore[attr-defined, unused-ignore]
+                combo._worker_manager_process,
+                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
             )
 
             base_config = combo._worker_manager.config
@@ -305,7 +308,8 @@ class TestBalance(unittest.TestCase):
                 second_manager_process.join()
 
             _signal_process_tree(
-                combo._worker_manager_process, signal.SIGKILL  # type: ignore[attr-defined, unused-ignore]
+                combo._worker_manager_process,
+                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
             )
             combo._worker_manager_process.join()
 

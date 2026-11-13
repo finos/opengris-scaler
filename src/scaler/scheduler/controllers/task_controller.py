@@ -713,8 +713,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         client = self._client_controller.on_task_finish(task_cancel_confirm.taskId)
         if client is None:
             logger.warning(
-                f"{task_cancel_confirm.taskId!r}: dropping task cancel confirm, owning client is no "
-                f"longer registered"
+                f"{task_cancel_confirm.taskId!r}: dropping task cancel confirm, owning client is no longer registered"
             )
         else:
             await self._binder.send(client, task_cancel_confirm, detached=True)

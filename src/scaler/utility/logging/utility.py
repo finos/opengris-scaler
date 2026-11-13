@@ -68,7 +68,7 @@ def detect_log_type(file_name: str) -> LogType:
 def __generate_log_config(process_name: str) -> typing.Dict:
     standard_format = f"%(asctime)s %(levelname)s {process_name}[%(process)d]: %(message)s"
     verbose_format = (
-        f"%(asctime)s %(levelname)s {process_name}[%(process)d] " f"%(name)s:%(funcName)s:%(lineno)s: %(message)s"
+        f"%(asctime)s %(levelname)s {process_name}[%(process)d] %(name)s:%(funcName)s:%(lineno)s: %(message)s"
     )
     return {
         "version": 1,

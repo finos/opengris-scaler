@@ -21,7 +21,7 @@ def format_integer(number):
 
 
 def format_percentage(number: int):
-    return f"{(number/1000):.1%}"
+    return f"{(number / 1000):.1%}"
 
 
 def format_microseconds(number: int):
@@ -31,7 +31,7 @@ def format_microseconds(number: int):
             continue
 
         if unit == "us":
-            return f"{number/TIME_MODULUS:.1f}ms"
+            return f"{number / TIME_MODULUS:.1f}ms"
 
         too_big_sign = "+" if unit == "s" and number > TIME_MODULUS else ""
         return f"{int(number)}{too_big_sign}{unit}"

@@ -62,27 +62,36 @@ all = [
     "opengris-scaler[uvloop]",
 ]
 
+# CI steps each install one of docs, lint, and test, and dev includes all three
 [dependency-groups]
 dev = [
-    "black>=24.8.0; python_version >= '3.10'",
-    "flake8-pyproject>=1.2.3",
-    "flake8>=5.0.4",
-    "isort>=7.0.0; python_version >= '3.10'",
-    # patches only, see docs/requirements_docs.txt
+    { include-group = "docs" },
+    { include-group = "lint" },
+    { include-group = "test" },
+    "pyodide-build==0.39.0; python_version >= '3.12'",
+]
+docs = [
+    # Patches only: a kernel minor moves the bundled Pyodide series, which is the ABI the wasm client
+    # wheel is built for (PYODIDE_XBUILDENV_VERSION in scripts/build_wasm.sh), and a jupyterlite-sphinx
+    # minor changes the JupyterLite site layout the docs' ``?path=`` links depend on.
     "jupyterlite-pyodide-kernel>=0.8.2,<0.9",
     "jupyterlite-sphinx>=0.23.0,<0.24",
-    "mypy>=1.14.1",
     "nbsphinx",
-    "pyodide-build==0.39.0; python_version >= '3.12'",
-    "pytest>=9.1.1",
-    "pytest-timeout>=2.4.0",
-    "pytest-xdist>=3.8.0",
-    "ray>=2.59.0",
     "shibuya",
     "sphinx-copybutton",
     "sphinx-substitution-extensions",
     "sphinx-tabs",
     "sphinx>=7.1.2",
+]
+lint = [
+    "mypy>=1.14.1",
+    "ruff==0.17.5",
+]
+test = [
+    "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "ray>=2.59.0",
     "websockets>=12.0",
 ]
 
@@ -166,47 +175,19 @@ exclude = [
 module = ["ray", "ray.*"]
 follow_imports = "skip"
 
-[tool.flake8]
-count = true
-statistics = true
-max-line-length = 120
-extend-ignore = ["E203"]
-exclude = [
-    "migrations",
-    "__pycache__",
-    "./build_*_*",
-    "./thirdparties",
-    "./capnproto*",
-    "./boost*",
-    "./scripts",
-    "venv*"
-]
-
-[tool.black]
+[tool.ruff]
 line-length = 120
-skip-magic-trailing-comma = true
-extend-exclude = '''
-(
-    ^/thirdparties
-    | ^/build_.*
-    | ^/capnproto.*
-    | ^/boost.*
-    | ^/scripts
-    | ^/venv.*
-)
-'''
+# the notebooks hold 279 lint findings, 202 without an automatic fix
+extend-exclude = ["*.ipynb"]
 
-[tool.isort]
-profile = "black"
-line_length = 120
-extend_skip_glob = [
-    "thirdparties/*",
-    "build_*",
-    "capnproto*",
-    "boost*",
-    "scripts/*",
-    "venv*",
-]
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
 
 [tool.pytest.ini_options]
 # The slowest test takes 83s on the CI macOS runner.
