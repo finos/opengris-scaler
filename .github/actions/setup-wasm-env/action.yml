@@ -1,8 +1,8 @@
 name: "Setup WASM Build Environment"
 description: "Install host capnp, pyodide-build and a pinned Emscripten SDK"
 
-# The xbuildenv must match the Pyodide that jupyterlite-pyodide-kernel ships (see
-# docs/requirements_docs.txt); pyodide-build only drives the build. emsdk is pinned in
+# The xbuildenv must match the Pyodide that jupyterlite-pyodide-kernel ships (see the docs
+# dependency group in pyproject.toml); pyodide-build only drives the build. emsdk is pinned in
 # scripts/library_tool.sh (EMSDK_VERSION).
 #   pyodide-build 0.39.0 + xbuildenv 314.0.0 -> Pyodide 314 -> Emscripten 5.0.3 -> CPython 3.14
 # See https://pyodide.org/en/stable/development/building-and-testing-packages.html

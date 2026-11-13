@@ -1,4 +1,4 @@
-from typing import Generic, Iterator, TypeVar
+from typing import Generic, TypeVar
 
 ItemType = TypeVar("ItemType")
 

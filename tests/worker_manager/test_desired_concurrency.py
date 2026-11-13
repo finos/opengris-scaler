@@ -55,5 +55,6 @@ class TestExtractDesiredCount(unittest.TestCase):
         matching = _make_request(task_concurrency=3, capabilities={"cpu": 4})
         non_matching = _make_request(task_concurrency=10, capabilities={"gpu": 1})
         self.assertEqual(
-            extract_desired_count([wildcard, matching, non_matching], {"cpu": 4}), 7  # 4 + 3; non_matching excluded
+            extract_desired_count([wildcard, matching, non_matching], {"cpu": 4}),
+            7,  # 4 + 3; non_matching excluded
         )
