@@ -1,8 +1,10 @@
 import multiprocessing
 import socket
 import unittest
+from unittest import mock
 
 from scaler import Client, SchedulerClusterCombo
+from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.types.address import AddressConfig
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
@@ -62,4 +64,17 @@ class TestCluster(unittest.TestCase):
         for process in leaked:
             process.terminate()
             process.join()
+        self.assertEqual(leaked, [])
+
+    def test_failed_scheduler_start_stops_started_processes(self):
+        """A scheduler that fails to start makes the combo raise that error and stop the object storage server."""
+        try:
+            with mock.patch.object(SchedulerProcess, "start", side_effect=RuntimeError("scheduler failed to start")):
+                with self.assertRaisesRegex(RuntimeError, "scheduler failed to start"):
+                    SchedulerClusterCombo(n_workers=1)
+        finally:
+            leaked = multiprocessing.active_children()
+            for process in leaked:
+                process.terminate()
+                process.join()
         self.assertEqual(leaked, [])
