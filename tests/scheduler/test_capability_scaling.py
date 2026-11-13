@@ -120,6 +120,23 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertEqual(set(capabilities_to_dict(requests[0].capabilities).keys()), {"gpu"})
         self.assertEqual(requests[0].taskConcurrency, 1)
 
+    def test_heterogeneous_capability_values_use_max_representative(self):
+        """Tasks with {"gpu": 1} and {"gpu": 2} in the same capset produce a representative with {"gpu": 2}."""
+        task_id_1 = TaskID.generate_task_id()
+        task_id_2 = TaskID.generate_task_id()
+        tasks = {
+            task_id_1: _create_mock_task(task_id_1, {"gpu": 1}),
+            task_id_2: _create_mock_task(task_id_2, {"gpu": 2}),
+        }
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1})
+
+        command = self._commands(snapshot, heartbeat, [])
+
+        requests = list(command.setDesiredTaskConcurrencyRequests)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(capabilities_to_dict(requests[0].capabilities), {"gpu": 2})
+
 
 class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
     """Declarative equivalents of the master-branch capability shutdown tests."""
