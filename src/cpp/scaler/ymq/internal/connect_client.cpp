@@ -73,6 +73,8 @@ ConnectClient::~ConnectClient() noexcept
 
 void ConnectClient::disconnect() noexcept
 {
+    _state->_disconnected = true;
+
     if (_state->_retryTimer.has_value()) {
         UV_EXIT_ON_ERROR(_state->_retryTimer->stop());
         _state->_retryTimer.reset();
@@ -131,14 +133,16 @@ void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
 void ConnectClient::onConnect(
     std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
+    // A WebSocket upgrade's read outlives disconnect(), so it can end here in any way.
+    if (state->_disconnected || (!result.has_value() && result.error() == scaler::wrapper::uv::Error {UV_ECANCELED})) {
+        state->_onConnectCallback(
+            std::unexpected(scaler::ymq::Error(scaler::ymq::Error::ErrorCode::SocketStopRequested)));
+        state->_onConnectCallback = {};  // immediately release the callback resources
+        return;
+    }
+
     if (!result.has_value()) {
-        if (result.error() == scaler::wrapper::uv::Error {UV_ECANCELED}) {
-            state->_onConnectCallback(
-                std::unexpected(scaler::ymq::Error(scaler::ymq::Error::ErrorCode::SocketStopRequested)));
-            state->_onConnectCallback = {};  // immediately release the callback resources
-        } else {
-            retry(std::move(state));
-        }
+        retry(std::move(state));
         return;
     }
 

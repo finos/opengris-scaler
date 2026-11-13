@@ -68,6 +68,8 @@ private:
         std::chrono::milliseconds _initRetryDelay;
         std::optional<scaler::wrapper::uv::Timer> _retryTimer {};
 
+        bool _disconnected {false};
+
         State(
             scaler::wrapper::uv::Loop& loop,
             Address address,

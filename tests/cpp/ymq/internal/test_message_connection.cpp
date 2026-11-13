@@ -2,6 +2,7 @@
 
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -265,6 +266,48 @@ TEST_F(YMQMessageConnectionTest, UnexpectedDisconnect)
     while (!server.established() || !client.established()) {
         loop.run(UV_RUN_ONCE);
     }
+}
+
+TEST_F(YMQMessageConnectionTest, ResetSeenByAWriteIsStillAnAbort)
+{
+    // A write that sees a reset consumes the socket's error, so the next read returns a plain EOF. The remote did not
+    // ask to disconnect, so this must read as an abort: a connector never reconnects after a graceful disconnect.
+
+    std::optional<scaler::ymq::internal::MessageConnection::DisconnectReason> serverDisconnectReason;
+
+    ConnectionPair connections(
+        // Server callbacks
+        []([[maybe_unused]] auto identity) {},                  // onRemoteIdentity
+        [&](auto reason) { serverDisconnectReason = reason; },  // onRemoteDisconnect
+        []([[maybe_unused]] auto message) {},                   // onMessage
+
+        // Client callbacks
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
+        [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
+        [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
+    );
+
+    scaler::ymq::internal::MessageConnection& server = connections.server();
+    scaler::ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                  = connections.loop();
+
+    // Wait for identity exchange
+    while (!server.established() || !client.established()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    client.abort();
+
+    // Both ends share this thread: the reset has reached the server's socket, and its loop has not run since.
+    server.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>("seen by the reset"),
+        []([[maybe_unused]] auto result, [[maybe_unused]] auto payload) {});
+
+    while (!serverDisconnectReason.has_value()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_EQ(*serverDisconnectReason, scaler::ymq::internal::MessageConnection::DisconnectReason::Aborted);
 }
 
 TEST_F(YMQMessageConnectionTest, EmptyMessage)
