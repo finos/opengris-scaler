@@ -460,13 +460,14 @@ Arguments (shared by all subcommands)
      - Max workers/jobs (``-1`` means no limit where supported).
    * - ``-ca``, ``--children-address``
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``
-     - A free loopback port
+     - ``127.0.0.1`` on port 0
      - Address the worker manager binds for its units to dial. Must be reachable from provisioned resources.
+       On port 0, the units dial the port the OS picked.
    * - ``-aca``, ``--advertised-children-address``
      - No
      - ``--children-address``
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: address the units dial, when they reach the worker
-       manager through NAT (e.g. an EC2 public IP).
+       manager through NAT (e.g. an EC2 public IP). On port 0, the units dial the port ``--children-address`` bound.
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty

@@ -27,7 +27,7 @@ from scaler.config.section.worker_manager_union import WorkerManagerUnion
 from scaler.config.types.address import AddressConfig
 from scaler.scheduler.scheduler import BoundSchedulerAddresses
 from scaler.utility.event_loop import register_event_loop
-from scaler.utility.network_util import OS_PICKED_PORT
+from scaler.utility.network_util import OS_PICKED_PORT, resolve_port_zero
 from scaler.utility.process_bootstrap import bootstrap_process
 
 
@@ -145,14 +145,6 @@ def _port_zero_errors(config: ScalerAllConfig) -> List[str]:
     return errors
 
 
-def _resolve(address: AddressConfig, bound: AddressConfig) -> AddressConfig:
-    """`address` with the port `bound` got when `address` names port 0."""
-    if address.port != OS_PICKED_PORT:
-        return address
-
-    return dataclasses.replace(address, port=bound.port)
-
-
 def _resolve_worker_manager(
     wm_config: WorkerManagerUnion,
     bound_scheduler_addresses: Optional[BoundSchedulerAddresses],
@@ -162,11 +154,12 @@ def _resolve_worker_manager(
     if bound_scheduler_addresses is not None:
         wm_addresses = dataclasses.replace(
             wm_addresses,
-            scheduler_address=_resolve(wm_addresses.scheduler_address, bound_scheduler_addresses.bind_address),
+            scheduler_address=resolve_port_zero(wm_addresses.scheduler_address, bound_scheduler_addresses.bind_address),
         )
     if object_storage_address is not None and wm_addresses.object_storage_address is not None:
         wm_addresses = dataclasses.replace(
-            wm_addresses, object_storage_address=_resolve(wm_addresses.object_storage_address, object_storage_address)
+            wm_addresses,
+            object_storage_address=resolve_port_zero(wm_addresses.object_storage_address, object_storage_address),
         )
     return dataclasses.replace(wm_config, worker_manager_config=wm_addresses)
 
@@ -277,7 +270,9 @@ def main() -> None:
             if object_storage_address is not None:
                 scheduler_config = dataclasses.replace(
                     scheduler_config,
-                    object_storage_address=_resolve(scheduler_config.object_storage_address, object_storage_address),
+                    object_storage_address=resolve_port_zero(
+                        scheduler_config.object_storage_address, object_storage_address
+                    ),
                 )
             ready_receiver, ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
             sched_process = _spawn_process(
@@ -300,7 +295,9 @@ def main() -> None:
             if bound_scheduler_addresses is not None:
                 gui_config = dataclasses.replace(
                     gui_config,
-                    monitor_address=_resolve(gui_config.monitor_address, bound_scheduler_addresses.monitor_address),
+                    monitor_address=resolve_port_zero(
+                        gui_config.monitor_address, bound_scheduler_addresses.monitor_address
+                    ),
                 )
             gui_process = _spawn_process(target=_run_gui, args=(gui_config,), name="gui")
             processes.append(gui_process)  # type: ignore[arg-type]

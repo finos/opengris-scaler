@@ -4,7 +4,6 @@ import unittest
 from typing import Optional
 
 from scaler.config.common.cloud_children import CloudChildrenConfig
-from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.cloud.child_command import child_link_arguments, load_requirements_content
 
@@ -33,19 +32,13 @@ class TestChildLinkArguments(unittest.TestCase):
     BOUND_ADDRESS = "tcp://172.31.8.78:8518"
     ADVERTISED_ADDRESS = "tcp://34.228.81.179:8518"
 
-    WORKER_MANAGER_CONFIG = WorkerManagerConfig(
-        scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-        worker_manager_id="wm-test",
-        children_address=AddressConfig.from_string(BOUND_ADDRESS),
-    )
-
     def _arguments(self, advertised_children_address: Optional[str]) -> str:
         cloud_children_config = CloudChildrenConfig(
             advertised_children_address=(
                 AddressConfig.from_string(advertised_children_address) if advertised_children_address else None
             )
         )
-        return child_link_arguments(self.WORKER_MANAGER_CONFIG, cloud_children_config, "unit-1", 4)
+        return child_link_arguments(AddressConfig.from_string(self.BOUND_ADDRESS), cloud_children_config, "unit-1", 4)
 
     def test_units_dial_advertised_children_address(self):
         """Units behind NAT dial the advertised address, not the address the manager binds."""
@@ -56,3 +49,8 @@ class TestChildLinkArguments(unittest.TestCase):
         """Without an advertised address, units dial the address the manager binds."""
         arguments = self._arguments(None)
         self.assertIn(f"--parent-address {self.BOUND_ADDRESS} ", arguments)
+
+    def test_an_advertised_address_naming_port_0_takes_the_bound_port(self):
+        """Behind 1:1 NAT, an advertised address naming port 0 takes the port the manager bound."""
+        arguments = self._arguments("tcp://34.228.81.179:0")
+        self.assertIn("--parent-address tcp://34.228.81.179:8518 ", arguments)

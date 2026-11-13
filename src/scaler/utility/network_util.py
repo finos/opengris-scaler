@@ -1,5 +1,8 @@
+import dataclasses
 import functools
 import socket
+
+from scaler.config.types.address import AddressConfig
 
 # binding port 0 makes the OS pick a free port at bind time, with no window for another process to take it
 OS_PICKED_PORT = 0
@@ -9,6 +12,14 @@ UNSET_HOSTNAMES = frozenset({"", "localhost", "localhost.localdomain"})
 
 # TEST-NET-1 (RFC 5737): connecting a UDP socket to it sends nothing, it only picks the default route's interface
 ROUTE_PROBE_ADDRESS = ("192.0.2.1", 9)
+
+
+def resolve_port_zero(address: AddressConfig, bound: AddressConfig) -> AddressConfig:
+    """`address` with the port `bound` got when `address` names port 0."""
+    if address.port != OS_PICKED_PORT:
+        return address
+
+    return dataclasses.replace(address, port=bound.port)
 
 
 @functools.lru_cache(maxsize=1)

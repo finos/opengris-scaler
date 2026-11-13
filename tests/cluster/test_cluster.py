@@ -7,6 +7,9 @@ from scaler.config.types.address import AddressConfig
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+# a worker that cannot reach its worker manager never runs the task
+TASK_TIMEOUT_SECONDS = 30
+
 
 class TestCluster(unittest.TestCase):
     def setUp(self) -> None:
@@ -26,6 +29,15 @@ class TestCluster(unittest.TestCase):
             self.assertEqual(future.result(), round(3.14))
 
         combo.shutdown()
+
+    def test_workers_dial_the_port_their_worker_manager_bound(self):
+        """The worker manager binds its children address on port 0, and its workers reach it and run a task."""
+        combo = SchedulerClusterCombo(n_workers=1)
+        try:
+            with Client(address=combo.get_address()) as client:
+                self.assertEqual(client.submit(abs, -3).result(timeout=TASK_TIMEOUT_SECONDS), 3)
+        finally:
+            combo.shutdown()
 
     def test_scheduler_listens_once_constructed(self):
         """The combo returns only after its scheduler accepts connections, so a client with a short timeout fits."""
