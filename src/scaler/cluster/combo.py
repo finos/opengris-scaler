@@ -112,7 +112,7 @@ class SchedulerClusterCombo:
         )
         self._object_storage.start()
 
-        # shutdown() skips what is still None, so a failed startup stops only the processes it started
+        # shutdown() skips what is still None, so each process is assigned only once start() returns
         self._scheduler: Optional[SchedulerProcess] = None
         self._worker_manager_process: Optional[multiprocessing.process.BaseProcess] = None
         try:
@@ -126,7 +126,7 @@ class SchedulerClusterCombo:
             # waiter trigger the same graceful-shutdown path that SIGTERM triggers on POSIX.
             self._scheduler_shutdown_event = multiprocessing.get_context("spawn").Event()
 
-            self._scheduler = SchedulerProcess(
+            scheduler = SchedulerProcess(
                 bind_address=self._address,
                 object_storage_address=self._object_storage_address,
                 advertised_object_storage_address=None,
@@ -148,7 +148,8 @@ class SchedulerClusterCombo:
                 security_config=self._security_config,
             )
 
-            self._scheduler.start()
+            scheduler.start()
+            self._scheduler = scheduler
             # the workers and a client connecting next need the address the scheduler bound
             self._address = self._scheduler.wait_until_ready().bind_address
 
@@ -179,10 +180,11 @@ class SchedulerClusterCombo:
                 )
             )
 
-            self._worker_manager_process = multiprocessing.get_context("spawn").Process(
+            worker_manager_process = multiprocessing.get_context("spawn").Process(
                 target=_run_native_worker_manager, args=(self._worker_manager,)
             )
-            self._worker_manager_process.start()
+            worker_manager_process.start()
+            self._worker_manager_process = worker_manager_process
         except BaseException:
             self.shutdown()
             raise
