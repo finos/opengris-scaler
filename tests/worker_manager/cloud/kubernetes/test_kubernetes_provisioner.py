@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 import unittest
+from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # ---------------------------------------------------------------------------
@@ -148,6 +149,15 @@ def _pod_list(pods: list, resource_version: str = "1") -> MagicMock:
 def _created_pod(core_v1: MagicMock, call_index: int = 0) -> dict:
     """Return the *call_index*-th created pod as the camelCase dict sent to the API server."""
     return ApiClient().sanitize_for_serialization(core_v1.create_namespaced_pod.call_args_list[call_index].args[1])
+
+
+async def _wait_for(condition: Callable[[], bool], timeout_seconds: float = 5.0) -> None:
+    """Yield to the event loop until *condition* holds, failing after *timeout_seconds*."""
+    deadline = time.monotonic() + timeout_seconds
+    while not condition():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"condition not met within {timeout_seconds}s")
+        await asyncio.sleep(0.01)
 
 
 def _get_command(core_v1: MagicMock, call_index: int = 0) -> str:
@@ -350,12 +360,11 @@ class TestPodWatch(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(provisioner, "_start_pod_watch"):
             await provisioner.set_desired_task_concurrency([request])
-            await asyncio.sleep(0.05)
+            await _wait_for(lambda: provisioner.active_unit_count() == 2)
             provisioner._handle_external_pod_deletion(provisioner._pods[0])
             await provisioner.set_desired_task_concurrency([request])
-            await asyncio.sleep(0.05)
+            await _wait_for(lambda: provisioner.active_unit_count() == 2)
 
-        self.assertEqual(provisioner.active_unit_count(), 2)
         self.assertEqual(core_v1.create_namespaced_pod.call_count, 3)
 
 
@@ -391,17 +400,17 @@ class TestPodExitBackoff(unittest.IsolatedAsyncioTestCase):
             patch.object(worker_manager_module, "POD_EXIT_BACKOFF_INITIAL_SECONDS", 0.05),
         ):
             await provisioner.set_desired_task_concurrency([request])
-            await asyncio.sleep(0.01)
+            await _wait_for(lambda: provisioner.active_unit_count() == 2)
             provisioner._handle_exited_pod(provisioner._pods[0])
-            await provisioner.set_desired_task_concurrency([request])
-            await asyncio.sleep(0.01)
+            with self.assertLogs(worker_manager_module.logger, "INFO") as logs:
+                await provisioner.set_desired_task_concurrency([request])
+                await _wait_for(lambda: any("Holding 1 pod start" in line for line in logs.output))
             self.assertEqual(core_v1.create_namespaced_pod.call_count, 2)
 
             await provisioner._backoff_task
             await provisioner.set_desired_task_concurrency([request])
-            await asyncio.sleep(0.01)
+            await _wait_for(lambda: provisioner.active_unit_count() == 2)
 
-        self.assertEqual(provisioner.active_unit_count(), 2)
         self.assertEqual(core_v1.create_namespaced_pod.call_count, 3)
 
     async def test_backoff_doubles_to_max_and_resets_after_quiet_period(self) -> None:
@@ -573,11 +582,9 @@ class TestDesiredTaskConcurrency(unittest.IsolatedAsyncioTestCase):
         coordinator = provisioner._capacity_coordinator
 
         await coordinator.set_desired_unit_count(2)
-        await asyncio.sleep(0.05)
+        await _wait_for(lambda: provisioner.active_unit_count() == 2)
         await coordinator.set_desired_unit_count(0)
-        await asyncio.sleep(0.05)
-
-        self.assertEqual(provisioner.active_unit_count(), 0)
+        await _wait_for(lambda: provisioner.active_unit_count() == 0)
 
 
 class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
