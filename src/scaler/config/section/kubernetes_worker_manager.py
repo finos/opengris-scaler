@@ -1,6 +1,7 @@
 import dataclasses
 from typing import ClassVar, Dict
 
+from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
@@ -13,6 +14,7 @@ class KubernetesWorkerManagerConfig(ConfigClass):
     _tag: ClassVar[str] = "k8s_raw"
 
     worker_manager_config: WorkerManagerConfig
+    cloud_children_config: CloudChildrenConfig = dataclasses.field(default_factory=CloudChildrenConfig)
 
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
@@ -99,3 +101,5 @@ class KubernetesWorkerManagerConfig(ConfigClass):
             raise ValueError("--requirements-txt must be provided")
         if not self.python_worker_environment.python_version:
             raise ValueError("--python-version must be provided")
+        if self.worker_manager_config.children_address is None:
+            raise ValueError("children_address must be an address the worker pods can reach.")

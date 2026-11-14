@@ -60,6 +60,7 @@ import scaler.worker_manager.cloud.kubernetes.worker_manager as worker_manager_m
 # The module under test - imported *after* stubs are in place so that every
 # transitive import resolves cleanly.
 # ---------------------------------------------------------------------------
+from scaler.config.common.cloud_children import CloudChildrenConfig  # noqa: E402
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig  # noqa: E402
 from scaler.config.common.worker_manager import WorkerManagerConfig  # noqa: E402
 from scaler.config.section.kubernetes_worker_manager import KubernetesWorkerManagerConfig  # noqa: E402
@@ -70,15 +71,22 @@ from scaler.config.types.address import AddressConfig  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def _make_config(**overrides) -> KubernetesWorkerManagerConfig:
-    """Return a minimal KubernetesWorkerManagerConfig suitable for unit tests."""
-    wm_cfg = WorkerManagerConfig(
+def _make_worker_manager_config(**overrides) -> WorkerManagerConfig:
+    """Return a WorkerManagerConfig for unit tests, with *overrides* applied."""
+    fields: dict = dict(
         scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
         worker_manager_id="test-wm",
         max_task_concurrency=8,
+        children_address=AddressConfig.from_string("tcp://10.0.0.9:8519"),
     )
+    fields.update(overrides)
+    return WorkerManagerConfig(**fields)
+
+
+def _make_config(**overrides) -> KubernetesWorkerManagerConfig:
+    """Return a minimal KubernetesWorkerManagerConfig suitable for unit tests."""
     defaults: dict = dict(
-        worker_manager_config=wm_cfg,
+        worker_manager_config=_make_worker_manager_config(),
         pod_image="test-image:latest",
         workers_per_pod=2,
         namespace="test-ns",
@@ -537,11 +545,7 @@ class TestDesiredTaskConcurrency(unittest.IsolatedAsyncioTestCase):
 
     async def test_set_desired_task_concurrency_divides_by_workers_per_pod(self) -> None:
         """taskConcurrency=8 with workers_per_pod=4 should yield desired_unit_count=2."""
-        wm_cfg = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-            worker_manager_id="test-wm",
-            max_task_concurrency=16,
-        )
+        wm_cfg = _make_worker_manager_config(max_task_concurrency=16)
         cfg = _make_config(worker_manager_config=wm_cfg, workers_per_pod=4)
         provisioner, _ = _make_provisioner(config=cfg)
         self.addCleanup(provisioner._stop_pod_watch)
@@ -554,11 +558,7 @@ class TestDesiredTaskConcurrency(unittest.IsolatedAsyncioTestCase):
 
     async def test_set_desired_task_concurrency_rounds_up(self) -> None:
         """taskConcurrency=5 with workers_per_pod=4 should yield desired_unit_count=2 (ceil)."""
-        wm_cfg = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-            worker_manager_id="test-wm",
-            max_task_concurrency=16,
-        )
+        wm_cfg = _make_worker_manager_config(max_task_concurrency=16)
         cfg = _make_config(worker_manager_config=wm_cfg, workers_per_pod=4)
         provisioner, _ = _make_provisioner(config=cfg)
         self.addCleanup(provisioner._stop_pod_watch)
@@ -571,12 +571,7 @@ class TestDesiredTaskConcurrency(unittest.IsolatedAsyncioTestCase):
 
     async def test_scale_down_cooldown_comes_from_config(self) -> None:
         """scale_down_cooldown_seconds=0 stops surplus pods on the first lower desired count."""
-        wm_cfg = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-            worker_manager_id="test-wm",
-            max_task_concurrency=8,
-            scale_down_cooldown_seconds=0,
-        )
+        wm_cfg = _make_worker_manager_config(max_task_concurrency=8, scale_down_cooldown_seconds=0)
         provisioner, _ = _make_provisioner(config=_make_config(worker_manager_config=wm_cfg))
         self.addCleanup(provisioner._capacity_coordinator.cancel)
         coordinator = provisioner._capacity_coordinator
@@ -615,11 +610,27 @@ class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
         await provisioner.start_units(1)
         self.assertIn("--worker-manager-id test-wm", _get_command(core_v1))
 
-    async def test_command_contains_mode_fixed(self) -> None:
-        """COMMAND must include '--mode fixed'."""
+    async def test_command_links_pod_to_worker_manager_as_its_unit(self) -> None:
+        """Each pod's native manager dials children_address, with the pod name as its unit id."""
         provisioner, core_v1 = _make_provisioner()
+        await provisioner.start_units(2)
+
+        for call_index in range(2):
+            pod_name = _created_pod(core_v1, call_index)["metadata"]["name"]
+            self.assertIn(
+                f"--parent-address tcp://10.0.0.9:8519 --unit-id {pod_name} ", _get_command(core_v1, call_index)
+            )
+
+    async def test_command_dials_advertised_children_address_when_set(self) -> None:
+        """advertised_children_address replaces children_address in the pod command."""
+        config = _make_config(
+            cloud_children_config=CloudChildrenConfig(
+                advertised_children_address=AddressConfig.from_string("tcp://192.168.1.20:8519")
+            )
+        )
+        provisioner, core_v1 = _make_provisioner(config=config)
         await provisioner.start_units(1)
-        self.assertIn("--mode fixed", _get_command(core_v1))
+        self.assertIn("--parent-address tcp://192.168.1.20:8519 ", _get_command(core_v1))
 
     async def test_command_contains_worker_type_kubernetes(self) -> None:
         """COMMAND must include '--worker-type KUBERNETES'."""
@@ -725,6 +736,10 @@ class TestPodTemplate(unittest.IsolatedAsyncioTestCase):
 class TestConfigValidation(unittest.TestCase):
     """Tests for KubernetesWorkerManagerConfig.__post_init__ validation."""
 
+    def test_missing_children_address_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "children_address"):
+            _make_config(worker_manager_config=_make_worker_manager_config(children_address=None))
+
     def test_empty_image_raises(self) -> None:
         with self.assertRaises(ValueError, msg="pod_image cannot be empty"):
             _make_config(pod_image="")
@@ -800,11 +815,8 @@ class TestCommandBuilderEdgeCases(unittest.IsolatedAsyncioTestCase):
 
     async def test_command_includes_object_storage_address(self) -> None:
         """COMMAND must include --object-storage-address when configured."""
-        wm_cfg = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-            worker_manager_id="test-wm",
-            max_task_concurrency=8,
-            object_storage_address=AddressConfig.from_string("tcp://10.0.0.5:8517"),
+        wm_cfg = _make_worker_manager_config(
+            max_task_concurrency=8, object_storage_address=AddressConfig.from_string("tcp://10.0.0.5:8517")
         )
         provisioner, core_v1 = _make_provisioner(config=_make_config(worker_manager_config=wm_cfg))
         await provisioner.start_units(1)
@@ -821,11 +833,8 @@ class TestCommandBuilderEdgeCases(unittest.IsolatedAsyncioTestCase):
 
     async def test_command_uses_effective_worker_scheduler_address(self) -> None:
         """COMMAND must use worker_scheduler_address when set, not scheduler_address."""
-        wm_cfg = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-            worker_manager_id="test-wm",
-            max_task_concurrency=8,
-            worker_scheduler_address=AddressConfig.from_string("tcp://10.0.0.1:8516"),
+        wm_cfg = _make_worker_manager_config(
+            max_task_concurrency=8, worker_scheduler_address=AddressConfig.from_string("tcp://10.0.0.1:8516")
         )
         provisioner, core_v1 = _make_provisioner(config=_make_config(worker_manager_config=wm_cfg))
         await provisioner.start_units(1)
@@ -907,11 +916,7 @@ class TestKubernetesWorkerManager(unittest.TestCase):
 
     def test_max_pods_calculated_from_concurrency(self) -> None:
         """max_pods must be ceil(max_task_concurrency / workers_per_pod)."""
-        wm_cfg = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-            worker_manager_id="test-wm",
-            max_task_concurrency=10,
-        )
+        wm_cfg = _make_worker_manager_config(max_task_concurrency=10)
         cfg = _make_config(worker_manager_config=wm_cfg, workers_per_pod=4)
         with (
             patch("kubernetes.config.load_incluster_config"),
@@ -927,11 +932,7 @@ class TestKubernetesWorkerManager(unittest.TestCase):
 
     def test_unlimited_concurrency_passes_negative_one(self) -> None:
         """max_task_concurrency=-1 must pass max_provisioner_units=-1."""
-        wm_cfg = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-            worker_manager_id="test-wm",
-            max_task_concurrency=-1,
-        )
+        wm_cfg = _make_worker_manager_config(max_task_concurrency=-1)
         cfg = _make_config(worker_manager_config=wm_cfg, workers_per_pod=2)
         with (
             patch("kubernetes.config.load_incluster_config"),

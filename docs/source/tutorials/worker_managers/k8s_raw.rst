@@ -6,10 +6,8 @@ Kubernetes Pods** --- no Deployment, Job, or StatefulSet controller sits between
 and the pods. This gives Scaler complete, deterministic control over exactly which pods
 are alive at any point in time, making scale-up and scale-down as predictable as possible.
 
-Each pod runs the existing ``scaler_worker_manager baremetal_native --mode fixed``
-entrypoint --- the same pattern used by other raw worker managers --- so the Kubernetes
-layer is purely responsible for pod lifecycle, while the in-pod native manager handles
-the actual Scaler workers.
+Each pod runs a ``scaler_worker_manager baremetal_native`` child that dials this worker manager's ``children_address``, the same pattern as the other raw worker managers.
+The Kubernetes layer handles pod lifecycle, and the in-pod native manager runs the Scaler workers.
 
 Prerequisites
 -------------
@@ -60,7 +58,8 @@ Verify your cluster access:
    kubectl get namespace scaler   # or whichever namespace you plan to use
 
 Scaler addresses must be IP addresses: the default network backend (YMQ) does not resolve hostnames such as a Service name.
-Inside the cluster, use the ClusterIP of the Service in front of the scheduler:
+Inside the cluster, use the ClusterIP of the Service in front of the scheduler.
+The Service must also expose the worker manager's ``children_address`` port (8519 below), which every worker pod dials:
 
 .. code-block:: bash
 
@@ -87,6 +86,8 @@ Copy the ``config.toml`` below, replace the placeholder image URI and ``<SCHEDUL
          scheduler_address = "tcp://<SCHEDULER_IP>:8516"
          worker_manager_id = "wm-k8s-01"
          max_task_concurrency = 80
+         children_address = "tcp://0.0.0.0:8519"
+         advertised_children_address = "tcp://<SCHEDULER_IP>:8519"
 
          namespace = "scaler"
          pod_image = "myregistry.example.com/scaler:latest"
@@ -112,6 +113,8 @@ Copy the ``config.toml`` below, replace the placeholder image URI and ``<SCHEDUL
          scaler_worker_manager k8s_raw tcp://<SCHEDULER_IP>:8516 \
              --worker-manager-id wm-k8s-01 \
              --max-task-concurrency 80 \
+             --children-address tcp://0.0.0.0:8519 \
+             --advertised-children-address tcp://<SCHEDULER_IP>:8519 \
              --namespace scaler \
              --pod-image myregistry.example.com/scaler:latest \
              --workers-per-pod 4 \
@@ -165,6 +168,16 @@ level of the ``[[worker_manager]]`` TOML section.
      - Maximum total number of Scaler worker processes across all pods.
        The number of pods launched is ``ceil(max_task_concurrency / workers_per_pod)``.
        Set to ``-1`` for no limit.
+   * - ``children_address``
+     - ``str``
+     - *(required)*
+     - Address this worker manager binds for its pods to dial (e.g. ``tcp://0.0.0.0:8519``).
+       See :doc:`common_parameters`.
+   * - ``advertised_children_address``
+     - ``str``
+     - ``children_address``
+     - Address written into each pod's command for it to dial.
+       Set it when ``children_address`` binds ``0.0.0.0``, to an IP the pods reach, such as the Service ClusterIP.
 
 Authentication
 ~~~~~~~~~~~~~~
@@ -474,9 +487,8 @@ command.  The worker manager converts this to a pod count
 (``ceil(desired_tasks / workers_per_pod)``) and reconciles by creating or deleting
 bare Pods via the Kubernetes API.
 
-Each Pod runs ``scaler_worker_manager baremetal_native --mode fixed``, which spawns
-``workers_per_pod`` worker processes that connect back to the scheduler and process
-tasks like local workers.  When workers are no longer needed, the worker manager
+Each Pod runs ``scaler_worker_manager baremetal_native`` with ``--parent-address`` set to this worker manager and the pod name as ``--unit-id``.
+That child runs the ``workers_per_pod`` workers its parent asks for, and they connect to the scheduler like local workers.  When workers are no longer needed, the worker manager
 deletes the corresponding Pods, honouring ``delete_grace_period_seconds``.
 
 Every Pod is created with ``restartPolicy: Never``, so Kubernetes never restarts a pod whose workers exit.

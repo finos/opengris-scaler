@@ -100,12 +100,15 @@ class KindIntegrationBase(unittest.TestCase):
 
         self.scheduler_port = _free_port()
         self.obj_storage_port = _free_port()
+        self.children_port = _free_port()
         self.scheduler_bind = f"tcp://0.0.0.0:{self.scheduler_port}"
         self.obj_storage_bind = f"tcp://0.0.0.0:{self.obj_storage_port}"
         self.scheduler_addr = f"tcp://127.0.0.1:{self.scheduler_port}"
         self.obj_storage_addr = f"tcp://127.0.0.1:{self.obj_storage_port}"
         self.worker_sched_addr = f"tcp://{_HOST}:{self.scheduler_port}"
         self.worker_obj_addr = f"tcp://{_HOST}:{self.obj_storage_port}"
+        self.children_bind = f"tcp://0.0.0.0:{self.children_port}"
+        self.worker_children_addr = f"tcp://{_HOST}:{self.children_port}"
 
         self.obj_storage_proc = subprocess.Popen(
             [_OBJ_STORE_BIN, self.obj_storage_bind], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
@@ -185,6 +188,8 @@ class KindIntegrationBase(unittest.TestCase):
             object_storage_address = "{self.worker_obj_addr}"
             worker_manager_id = "{wm_id}"
             max_task_concurrency = {max_task_concurrency}
+            children_address = "{self.children_bind}"
+            advertised_children_address = "{self.worker_children_addr}"
 
             kubeconfig_path = "{_KUBECONFIG}"
             namespace = "{_NAMESPACE}"

@@ -21,7 +21,7 @@ from kubernetes.client import V1Pod
 
 from scaler.config.section.kubernetes_worker_manager import KubernetesWorkerManagerConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import format_capabilities, load_file_or_inline
+from scaler.worker_manager.cloud.child_command import child_link_arguments, format_capabilities, load_file_or_inline
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -183,16 +183,18 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_worker_command(self) -> str:
+    def _build_worker_command(self, unit_id: str) -> str:
         config = self._config
         worker_config = config.worker_config
         scheduler_address = str(config.worker_manager_config.effective_worker_scheduler_address)
+        link_arguments = child_link_arguments(
+            config.worker_manager_config, config.cloud_children_config, unit_id, config.workers_per_pod
+        )
 
         command = (
             f"scaler_worker_manager baremetal_native {scheduler_address!r} "
-            f"--mode fixed "
+            f"{link_arguments} "
             f"--worker-type KUBERNETES "
-            f"--max-task-concurrency {config.workers_per_pod} "
             f"--worker-manager-id {config.worker_manager_config.worker_manager_id} "
             f"--per-worker-task-queue-size {worker_config.per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} "
@@ -242,15 +244,15 @@ class KubernetesWorkerProvisioner(DeclarativeWorkerProvisioner):
             return
 
         config = self._config
-        command = self._build_worker_command()
         loop = asyncio.get_running_loop()
 
         for _ in range(count):
+            # The pod name doubles as the unit id the pod's native manager reports to this worker manager.
             pod_name = f"scaler-worker-{uuid.uuid4().hex[:12]}"
 
             python_environment = config.python_worker_environment
             scaler_env: List[Dict[str, str]] = [
-                {"name": "COMMAND", "value": command},
+                {"name": "COMMAND", "value": self._build_worker_command(pod_name)},
                 {"name": "PYTHON_REQUIREMENTS", "value": load_file_or_inline(python_environment.requirements_txt)},
                 {"name": "PYTHON_VERSION", "value": python_environment.python_version},
             ]
@@ -374,13 +376,13 @@ class KubernetesWorkerManager:
         max_pods = math.ceil(mtc / workers_per_pod) if mtc != -1 else -1
         provisioner = KubernetesWorkerProvisioner(config, max_pods)
         self._runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_k8s",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_pods,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_address=config.worker_manager_config.children_address,
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=workers_per_pod,
         )
