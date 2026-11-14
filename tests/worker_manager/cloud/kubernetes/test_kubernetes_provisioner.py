@@ -630,12 +630,7 @@ class TestCommandEnvVar(unittest.IsolatedAsyncioTestCase):
     async def test_template_env_vars_are_preserved(self) -> None:
         """User env vars from pod_template are kept alongside Scaler's injected vars."""
         template = (
-            "spec:\n"
-            "  containers:\n"
-            "  - name: scaler-worker\n"
-            "    env:\n"
-            "    - name: MY_CUSTOM_VAR\n"
-            "      value: hello\n"
+            "spec:\n  containers:\n  - name: scaler-worker\n    env:\n    - name: MY_CUSTOM_VAR\n      value: hello\n"
         )
         cfg = _make_config(pod_template=template)
         provisioner, core_v1 = _make_provisioner(config=cfg)

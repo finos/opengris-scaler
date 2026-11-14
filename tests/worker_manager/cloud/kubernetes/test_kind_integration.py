@@ -89,7 +89,6 @@ def _delete_all_pods() -> None:
 
 
 class KindIntegrationBase(unittest.TestCase):
-
     scheduler_proc: Optional[subprocess.Popen] = None
     obj_storage_proc: Optional[subprocess.Popen] = None
     worker_manager_proc: Optional[subprocess.Popen] = None
@@ -277,7 +276,7 @@ class KindIntegrationBase(unittest.TestCase):
                     wm_err = self.worker_manager_proc.stderr.read(4096).decode(errors="replace")
             except Exception:
                 pass
-        return f"\n--- pods ---\n{pods.stdout or '(none)'}" f"\n--- events ---\n{events.stdout or '(none)'}" + (
+        return f"\n--- pods ---\n{pods.stdout or '(none)'}\n--- events ---\n{events.stdout or '(none)'}" + (
             f"\n--- worker manager stderr ---\n{wm_err}" if wm_err else ""
         )
 
@@ -349,7 +348,6 @@ class KindIntegrationBase(unittest.TestCase):
 
 
 class TestKindTaskExecution(KindIntegrationBase):
-
     def test_single_task_returns_correct_result(self) -> None:
         """A task submitted to the scheduler should execute in a KinD pod and return the correct result."""
         cfg = self._write_config(workers_per_pod=1, max_task_concurrency=1)
@@ -377,7 +375,6 @@ class TestKindTaskExecution(KindIntegrationBase):
 
 
 class TestKindScaling(KindIntegrationBase):
-
     def test_multiple_pods_created(self) -> None:
         """Submitting many concurrent tasks should scale up multiple pods.
 
@@ -428,7 +425,6 @@ class TestKindScaling(KindIntegrationBase):
 
 
 class TestKindLifecycle(KindIntegrationBase):
-
     def test_pod_restart_policy_is_never(self) -> None:
         """Every pod must be created with restartPolicy: Never."""
         cfg = self._write_config(workers_per_pod=1, max_task_concurrency=1)
@@ -502,7 +498,6 @@ class TestKindLifecycle(KindIntegrationBase):
 
 
 class TestKindPodKilledMidTask(KindIntegrationBase):
-
     def test_killed_pod_is_replaced(self) -> None:
         """When a pod is killed mid-task, the WM should create a replacement."""
         cfg = self._write_config(workers_per_pod=1, max_task_concurrency=1)
