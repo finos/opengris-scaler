@@ -164,7 +164,7 @@ jobs:
 
   kubernetes-integration-test:
     name: Kubernetes Integration Tests (KinD)
-    needs: build
+    needs: tests
     runs-on: ubuntu-latest
     env:
       KIND_VERSION: v0.27.0
@@ -183,28 +183,11 @@ jobs:
           os: ${{ runner.os }}
           python-version: '3.10'
 
-      - uses: ./.github/actions/3rd-party-libraries-download
+      - uses: ./.github/actions/3rd-party-libraries
         with:
           os: ${{ runner.os }}
 
-      - uses: ./.github/actions/3rd-party-libraries-compile
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/3rd-party-libraries-install
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/compile-libraries
-        with:
-          os: ${{ runner.os }}
-
-      - name: Build and install scaler wheel
-        run: |
-          uv pip install --system build
-          python -m build --wheel
-          wheel_file=$(ls dist/*.whl | head -n 1)
-          uv pip install --system "${wheel_file}[kubernetes]"
+      - uses: ./.github/actions/install-wheel
 
       - name: Install KinD
         run: |
