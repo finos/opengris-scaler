@@ -78,3 +78,13 @@ class TestCluster(unittest.TestCase):
                 process.terminate()
                 process.join()
         self.assertEqual(leaked, [])
+
+    def test_wait_until_ready_returns_the_bound_address_again(self):
+        """A second wait_until_ready on a running process returns the address the first one got."""
+        combo = SchedulerClusterCombo(n_workers=1)
+        try:
+            self.assertEqual(combo._object_storage.wait_until_ready(), combo._object_storage_address)
+            assert combo._scheduler is not None
+            self.assertEqual(combo._scheduler.wait_until_ready().bind_address, combo._address)
+        finally:
+            combo.shutdown()
