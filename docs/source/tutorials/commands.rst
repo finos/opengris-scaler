@@ -167,6 +167,7 @@ A section can bind port 0, and the OS picks a free port at bind time.
 - Before starting a section, ``scaler`` replaces port 0 in its connecting addresses with the port the other section bound, and leaves the host as written.
 - Such an address cannot name ``0.0.0.0``, which means "every interface" only when binding: name ``127.0.0.1`` or another host.
 - ``scaler`` exits with an error, before starting any section, when such an address names ``0.0.0.0`` or no section in the file binds it.
+- An advertised address that names port 0 keeps its host and takes the port of the address it stands in for: ``advertised_object_storage_address`` takes the port of ``object_storage_address``, and ``worker_scheduler_address`` that of ``scheduler_address``.
 
 .. code-block:: toml
 
@@ -256,7 +257,7 @@ Scheduler arguments
    * - ``-aosa``, ``--advertised-object-storage-address``
      - No
      - Same as ``object_storage_address``
-     - Public object storage address advertised to clients/workers.
+     - Public object storage address advertised to clients/workers. On port 0, they dial the port of ``object_storage_address``.
    * - ``-ma``, ``--monitor-address``
      - No
      - Auto from bind address
@@ -445,7 +446,7 @@ Arguments (shared by all subcommands)
    * - ``-wsa``, ``--worker-scheduler-address``
      - No
      - Same as ``scheduler_address``
-     - Scheduler address advertised to spawned workers; use this when workers need a different/public endpoint.
+     - Scheduler address advertised to spawned workers; use this when workers need a different/public endpoint. On port 0, workers dial the port of ``scheduler_address``.
    * - ``-wmi``, ``--worker-manager-id``
      - Yes
      - -

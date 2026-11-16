@@ -40,7 +40,7 @@ from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
-from scaler.utility.network_util import OS_PICKED_PORT
+from scaler.utility.network_util import OS_PICKED_PORT, resolve_port_zero
 
 logger = logging.getLogger(__name__)
 
@@ -154,8 +154,9 @@ class Scheduler:
 
         logger.info(f"{self.__class__.__name__}: connected to object storage server {object_storage_address!r}")
 
-        advertised_object_storage_address = (
-            self._config_controller.get_config("advertised_object_storage_address") or object_storage_address
+        advertised_object_storage_address = resolve_port_zero(
+            self._config_controller.get_config("advertised_object_storage_address") or object_storage_address,
+            object_storage_address,
         )
 
         logger.info(
