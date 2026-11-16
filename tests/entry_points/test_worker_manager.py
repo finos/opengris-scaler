@@ -82,11 +82,13 @@ class TestWorkerManagerSubcommands(unittest.TestCase):
     @patch("sys.argv", ["prog", "foo", "--value", "5"])
     @patch(
         "builtins.open",
-        mock_open(read_data=b"""
+        mock_open(
+            read_data=b"""
             [foo_section]
             value = 99
             name = "from_toml"
-            """),
+            """
+        ),
     )
     def test_cli_overrides_toml(self) -> None:
         with patch("sys.argv", ["prog", "--config", "cfg.toml", "foo", "--value", "5"]):
@@ -99,10 +101,12 @@ class TestWorkerManagerSubcommands(unittest.TestCase):
 
     @patch(
         "builtins.open",
-        mock_open(read_data=b"""
+        mock_open(
+            read_data=b"""
             [foo_section]
             value = 77
-            """),
+            """
+        ),
     )
     def test_config_after_subcommand(self) -> None:
         """--config appearing after the sub-command name must still be loaded."""
@@ -113,10 +117,12 @@ class TestWorkerManagerSubcommands(unittest.TestCase):
 
     @patch(
         "builtins.open",
-        mock_open(read_data=b"""
+        mock_open(
+            read_data=b"""
             [foo_section]
             value = 55
-            """),
+            """
+        ),
     )
     def test_config_before_subcommand(self) -> None:
         """--config appearing before the sub-command name must still be loaded."""

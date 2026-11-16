@@ -198,8 +198,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
 
         parent_job_id = response["jobId"]
         logger.info(
-            f"Submitted array job {parent_job_id} with {array_size} tasks "
-            f"(s3://{self._s3_bucket}/{s3_prefix_array}/)"
+            f"Submitted array job {parent_job_id} with {array_size} tasks (s3://{self._s3_bucket}/{s3_prefix_array}/)"
         )
 
         for index, task_id in index_to_task_id.items():

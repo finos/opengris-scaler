@@ -37,7 +37,7 @@ class WireProtocolParityTest(unittest.TestCase):
     def test_configuration_header_exists(self) -> None:
         self.assertTrue(
             _CPP_CONFIG.is_file(),
-            f"Cannot find C++ wire-protocol config at {_CPP_CONFIG}; " "the shim cannot be verified against it.",
+            f"Cannot find C++ wire-protocol config at {_CPP_CONFIG}; the shim cannot be verified against it.",
         )
 
     def test_magic_string_matches_native(self) -> None:
@@ -130,7 +130,7 @@ class ErrorCodeParityTest(unittest.TestCase):
                 self.assertEqual(
                     int(shim_code),
                     int(native_code),
-                    f"ErrorCode.{native_code.name} value drifted: " f"native={int(native_code)} shim={int(shim_code)}",
+                    f"ErrorCode.{native_code.name} value drifted: native={int(native_code)} shim={int(shim_code)}",
                 )
 
     def test_all_shim_codes_present_in_native(self) -> None:
