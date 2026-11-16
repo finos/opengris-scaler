@@ -101,7 +101,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         """Blocks until the scheduler listens, so a client connecting next does not race its startup."""
         if self._bound_addresses is None:
             self._bound_addresses = wait_for_ready_report(
-                self._ready_receiver, self, "Scheduler", self._scheduler_config.bind_address
+                self._ready_receiver, self, "Scheduler", self._scheduler_config.bind_address, BoundSchedulerAddresses
             )
         return self._bound_addresses
 

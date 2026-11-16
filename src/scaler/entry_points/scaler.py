@@ -281,7 +281,7 @@ def main() -> None:
             processes.append(sched_process)  # type: ignore[arg-type]
             sched_process.start()
             bound_scheduler_addresses = wait_for_ready_report(
-                ready_receiver, sched_process, "Scheduler", scheduler_config.bind_address
+                ready_receiver, sched_process, "Scheduler", scheduler_config.bind_address, BoundSchedulerAddresses
             )
 
         for wm_config in config.worker_managers:

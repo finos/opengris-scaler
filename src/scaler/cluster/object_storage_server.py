@@ -44,7 +44,7 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         """
         if self._bound_address is None:
             self._bound_address = wait_for_ready_report(
-                self._ready_receiver, self, "ObjectStorageServer", self._bind_address
+                self._ready_receiver, self, "ObjectStorageServer", self._bind_address, AddressConfig
             )
         return self._bound_address
 
