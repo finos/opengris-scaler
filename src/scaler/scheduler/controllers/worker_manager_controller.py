@@ -144,10 +144,7 @@ class WorkerManagerController(Looper, Reporter):
         tasks = self._task_controller._task_id_to_task  # type: ignore # noqa
         workers = {
             worker_id: worker_heartbeat
-            for worker_id, (
-                _,
-                worker_heartbeat,
-            ) in self._worker_controller._worker_alive_since.items()  # type: ignore # noqa
+            for worker_id, (_, worker_heartbeat) in self._worker_controller._worker_alive_since.items()  # type: ignore # noqa
         }
         return InformationSnapshot(tasks=tasks, workers=workers)
 

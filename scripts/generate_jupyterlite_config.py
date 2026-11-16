@@ -81,7 +81,7 @@ def main() -> None:
     # ABI ``scripts/build_wasm.sh`` produced without hard-coding the tag.
     scaler_wheels = sorted(WHEEL_DIR.glob("opengris_scaler-*_wasm32.whl"))
     if not scaler_wheels:
-        raise SystemExit(f"No opengris_scaler *_wasm32 wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
+        raise SystemExit(f"No opengris_scaler *_wasm32 wheel in {WHEEL_DIR}. Run scripts/build_wasm.sh.")
 
     urls = [f"_static/wasm/{scaler_wheels[-1].name}"]
 
@@ -93,9 +93,7 @@ def main() -> None:
     for prefix in ("cloudpickle-", "tblib-", "opengris_parfun-", "pargraph-", "bidict-", "pydot-", "psutil-", "loky-"):
         matches = sorted(WHEEL_DIR.glob(f"{prefix}*.whl"))
         if not matches:
-            raise SystemExit(
-                f"No wheel matching {prefix}*.whl in {WHEEL_DIR}. " "Run scripts/build_wasm.sh to vendor it."
-            )
+            raise SystemExit(f"No wheel matching {prefix}*.whl in {WHEEL_DIR}. Run scripts/build_wasm.sh to vendor it.")
         urls.append(f"_static/wasm/{matches[-1].name}")
 
     config = {"PipliteAddon": {"piplite_urls": urls}}
