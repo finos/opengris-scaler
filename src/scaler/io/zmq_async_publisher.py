@@ -27,12 +27,7 @@ class ZMQAsyncPublisher(AsyncPublisher):
         assert self._socket is not None
 
         self._socket.setsockopt(zmq.SNDHWM, 0)
-        try:
-            self._socket.bind(repr(address))
-        except zmq.ZMQError:
-            self._socket.close()
-            self._socket = None  # unbound again, so the caller can bind another address
-            raise
+        self._socket.bind(repr(address))
 
         endpoint = self._socket.getsockopt(zmq.LAST_ENDPOINT)
         assert isinstance(endpoint, bytes)
