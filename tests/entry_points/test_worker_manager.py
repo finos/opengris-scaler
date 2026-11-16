@@ -1229,6 +1229,19 @@ class TestWorkerSchedulerAddress(unittest.TestCase):
             repr(config.worker_manager_config.effective_worker_scheduler_address), "tcp://203.0.113.5:6378"
         )
 
+    def test_worker_scheduler_address_port_zero_takes_the_scheduler_port(self) -> None:
+        """A worker scheduler address naming port 0 keeps its host and takes the scheduler address's port."""
+        from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+
+        config = NativeWorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager",
+            {},
+            argv=["--worker-manager-id", "wm-test", "tcp://127.0.0.1:6378", "-wsa", "tcp://203.0.113.5:0"],
+        )
+        self.assertEqual(
+            repr(config.worker_manager_config.effective_worker_scheduler_address), "tcp://203.0.113.5:6378"
+        )
+
     def test_worker_scheduler_address_from_toml(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 
