@@ -34,13 +34,19 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         self._security_config = security_config
 
         self._ready_receiver, self._ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
+        # the process reports once, so later waits return this first report
+        self._bound_address: Optional[AddressConfig] = None
 
     def wait_until_ready(self) -> AddressConfig:
         """Blocks until the object storage server listens, returning its bound address.
 
         The bound address differs from the configured one when that names port 0.
         """
-        return wait_for_ready_report(self._ready_receiver, self, "ObjectStorageServer", self._bind_address)
+        if self._bound_address is None:
+            self._bound_address = wait_for_ready_report(
+                self._ready_receiver, self, "ObjectStorageServer", self._bind_address
+            )
+        return self._bound_address
 
     def run(self) -> None:
         bootstrap_process(

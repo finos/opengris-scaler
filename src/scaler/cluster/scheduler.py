@@ -94,10 +94,16 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
 
         self._shutdown_event = shutdown_event
         self._ready_receiver, self._ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
+        # the process reports once, so later waits return this first report
+        self._bound_addresses: Optional[BoundSchedulerAddresses] = None
 
     def wait_until_ready(self) -> BoundSchedulerAddresses:
         """Blocks until the scheduler listens, so a client connecting next does not race its startup."""
-        return wait_for_ready_report(self._ready_receiver, self, "Scheduler", self._scheduler_config.bind_address)
+        if self._bound_addresses is None:
+            self._bound_addresses = wait_for_ready_report(
+                self._ready_receiver, self, "Scheduler", self._scheduler_config.bind_address
+            )
+        return self._bound_addresses
 
     def run(self) -> None:
         run_scheduler(
