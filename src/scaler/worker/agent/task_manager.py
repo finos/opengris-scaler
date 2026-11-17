@@ -14,10 +14,9 @@ from scaler.utility.mixins import Looper
 from scaler.utility.queues.stable_priority_queue import StablePriorityQueue
 from scaler.utility.semantic_conventions import (
     TASK_ID_ATTRIBUTE,
+    WORKER_QUEUED_SPAN,
     WORKER_TASK_CANCELED_EVENT,
-    WORKER_TASK_RESUMED_EVENT,
     WORKER_TASK_SPAN,
-    WORKER_TASK_STARTED_EVENT,
     WORKER_TASK_SUSPENDED_EVENT,
 )
 from scaler.utility.telemetry import extract_trace_context, inject_trace_context, is_tracing
@@ -135,6 +134,8 @@ class VanillaTaskManager(Looper, TaskManager):
 
         # one span per task this worker holds, from receipt to the result or cancel it sends back
         self._task_id_to_span: Dict[TaskID, Span] = dict()
+        # the open queued span of each task waiting in the queue for a processor
+        self._task_id_to_queued_span: Dict[TaskID, Span] = dict()
 
         self._connector_external: Optional[AsyncConnector] = None
         self._processor_manager: Optional[ProcessorManager] = None
@@ -162,6 +163,7 @@ class VanillaTaskManager(Looper, TaskManager):
         task.traceContext = inject_trace_context(trace.set_span_in_context(span, parent_context))
 
         entry = self._tasks.add(task, self.__get_task_priority(task))
+        self.__start_queued_span(task)
 
         await self.__suspend_if_priority_is_higher(entry)
 
@@ -182,6 +184,7 @@ class VanillaTaskManager(Looper, TaskManager):
         if entry.state != _TaskState.WAITING:
             await self._processor_manager.on_cancel_task(task_id)
 
+        self.__end_queued_span(task_id)
         self.__end_span(task_id, StatusCode.UNSET, WORKER_TASK_CANCELED_EVENT)
         await self.__send_cancel_confirm(task_id, TaskCancelConfirmType.canceled)
 
@@ -190,6 +193,7 @@ class VanillaTaskManager(Looper, TaskManager):
         entry = self._tasks.get(result.taskId)
         assert entry is not None, f"result for a task this worker does not hold: {result.taskId!r}"
         self._tasks.remove(entry)
+        self.__end_queued_span(result.taskId)
 
         self.__end_span(
             result.taskId,
@@ -210,15 +214,11 @@ class VanillaTaskManager(Looper, TaskManager):
         entry = await self._tasks.wait_for_next()
         resume = entry.state == _TaskState.SUSPENDED
         self._tasks.set_state(entry, _TaskState.RUNNING)
+        self.__end_queued_span(entry.task.taskId)
 
-        span = self._task_id_to_span.get(entry.task.taskId)
         if resume:
-            if span is not None:
-                span.add_event(WORKER_TASK_RESUMED_EVENT)
             await self._processor_manager.on_resume_task(entry.task.taskId)
         else:
-            if span is not None:
-                span.add_event(WORKER_TASK_STARTED_EVENT)
             await self._processor_manager.on_task(entry.task)
 
     async def __suspend_if_priority_is_higher(self, new_entry: _TaskEntry):
@@ -234,6 +234,7 @@ class VanillaTaskManager(Looper, TaskManager):
             return
 
         self._tasks.set_state(running, _TaskState.SUSPENDED)
+        self.__start_queued_span(current_task)
 
         span = self._task_id_to_span.get(current_task.taskId)
         if span is not None:
@@ -244,6 +245,18 @@ class VanillaTaskManager(Looper, TaskManager):
         await self._connector_external.send(
             TaskCancelConfirm(taskId=task_id, cancelConfirmType=cancel_confirm_type), detached=True
         )
+
+    def __start_queued_span(self, task: Task) -> None:
+        if not is_tracing():
+            return
+        # the task carries the worker task span's context since on_task_new, baggage included
+        task_context = extract_trace_context(task.traceContext)
+        self._task_id_to_queued_span[task.taskId] = tracer.start_span(WORKER_QUEUED_SPAN, context=task_context)
+
+    def __end_queued_span(self, task_id: TaskID) -> None:
+        queued_span = self._task_id_to_queued_span.pop(task_id, None)
+        if queued_span is not None:
+            queued_span.end()
 
     def __end_span(self, task_id: TaskID, status: StatusCode, outcome: str) -> None:
         span = self._task_id_to_span.pop(task_id, None)

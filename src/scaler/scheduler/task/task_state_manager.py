@@ -3,7 +3,7 @@ from typing import Callable, Dict, Optional, Tuple, Type
 
 from opentelemetry import trace
 from opentelemetry.context import Context
-from opentelemetry.trace import SpanKind, Status, StatusCode
+from opentelemetry.trace import Span, SpanKind, Status, StatusCode
 
 from scaler.protocol.capnp import TaskState
 from scaler.scheduler.task.task_event import TaskEvent
@@ -11,6 +11,7 @@ from scaler.scheduler.task.task_state_machine import TaskStateMachine
 from scaler.utility.identifiers import TaskID
 from scaler.utility.semantic_conventions import (
     FUNCTION_NAME_ATTRIBUTE,
+    SCHEDULER_QUEUED_SPAN,
     SCHEDULER_TASK_SPAN,
     TASK_ID_ATTRIBUTE,
     TASK_STATE_ATTRIBUTE,
@@ -43,6 +44,8 @@ class TaskStateManager:
         # the context holding each task's span, and the client's baggage the worker must receive with it; while this
         # process does not trace, only a client's non-empty context, which the worker receives unchanged
         self._task_id_to_context: Dict[TaskID, Context] = dict()
+        # the open queued span of each task waiting in inactive for a worker
+        self._task_id_to_queued_span: Dict[TaskID, Span] = dict()
         self._statistics: Dict[TaskState, int] = {state: 0 for state in self.TASK_STATES}
 
     def add_state_machine(
@@ -71,6 +74,7 @@ class TaskStateManager:
             attributes={TASK_ID_ATTRIBUTE: task_id.hex(), FUNCTION_NAME_ATTRIBUTE: function_name()},
         )
         self._task_id_to_context[task_id] = trace.set_span_in_context(span, parent_context)
+        self.__start_queued_span(task_id)
         return state_machine
 
     def remove_state_machine(self, task_id: TaskID) -> None:
@@ -82,6 +86,7 @@ class TaskStateManager:
         if state_machine is not None and not state_machine.lock.locked():
             logger.error(f"{task_id!r}: state machine removed without its lock held")
 
+        self.__end_queued_span(task_id)
         span_context = self._task_id_to_context.pop(task_id, None)
         if span_context is not None and state_machine is not None:
             span = trace.get_current_span(span_context)
@@ -128,6 +133,22 @@ class TaskStateManager:
         span_context = self._task_id_to_context.get(task_id)
         if span_context is not None:
             trace.get_current_span(span_context).add_event(event_type.__name__, {TASK_STATE_ATTRIBUTE: target.name})
+
+        if source == TaskState.inactive and target != TaskState.inactive:
+            self.__end_queued_span(task_id)
+        elif source != TaskState.inactive and target == TaskState.inactive:
+            self.__start_queued_span(task_id)  # requeued, after its worker died or a balance cancel
+
+    def __start_queued_span(self, task_id: TaskID) -> None:
+        span_context = self._task_id_to_context.get(task_id)
+        if span_context is None or not is_tracing():
+            return
+        self._task_id_to_queued_span[task_id] = tracer.start_span(SCHEDULER_QUEUED_SPAN, context=span_context)
+
+    def __end_queued_span(self, task_id: TaskID) -> None:
+        queued_span = self._task_id_to_queued_span.pop(task_id, None)
+        if queued_span is not None:
+            queued_span.end()
 
     def get_statistics(self) -> Dict[TaskState, int]:
         return self._statistics

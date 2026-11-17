@@ -113,6 +113,28 @@ class TestTelemetry(unittest.TestCase):
         self.assertEqual(spans[0].attributes["scaler.task.function"], "traced_work")
         self.assertEqual(spans[0].attributes["scaler.task.state"], "success")
 
+    def test_queue_waits_are_spans_under_the_scheduler_and_worker_spans(self) -> None:
+        """Each wait for a worker or a processor is a queued span that ends before the next stage starts."""
+        with Client(address=self.cluster.get_address()) as client:
+            self.assertEqual(client.submit(traced_work, 1).result(), 2)
+
+        span_names = [
+            "scaler.scheduler.task",
+            "scaler.scheduler.queued",
+            "scaler.worker.task",
+            "scaler.worker.queued",
+            "scaler.processor.execute",
+        ]
+        wait_for(lambda: all(self.receiver.spans_named(name) for name in span_names), f"spans {span_names}")
+        scheduler_task, scheduler_queued, worker_task, worker_queued, execute = [
+            self.receiver.spans_named(name)[0].span for name in span_names
+        ]
+
+        self.assertEqual(scheduler_queued.parent_span_id, scheduler_task.span_id)
+        self.assertEqual(worker_queued.parent_span_id, worker_task.span_id)
+        self.assertLessEqual(scheduler_queued.end_time_unix_nano, worker_task.start_time_unix_nano)
+        self.assertLessEqual(worker_queued.end_time_unix_nano, execute.start_time_unix_nano)
+
     def test_failed_task_spans_record_the_error(self) -> None:
         """A task that raises ends its processor and scheduler spans with an error status."""
         with Client(address=self.cluster.get_address()) as client:

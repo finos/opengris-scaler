@@ -17,7 +17,9 @@ PREVIOUS_TASK_CONCURRENCY_ATTRIBUTE = "scaler.worker_manager.previous_task_concu
 # spans
 CLIENT_SUBMIT_SPAN = "scaler.client.submit"
 SCHEDULER_TASK_SPAN = "scaler.scheduler.task"
+SCHEDULER_QUEUED_SPAN = "scaler.scheduler.queued"
 WORKER_TASK_SPAN = "scaler.worker.task"
+WORKER_QUEUED_SPAN = "scaler.worker.queued"
 PROCESSOR_EXECUTE_SPAN = "scaler.processor.execute"
 PROCESSOR_FETCH_OBJECTS_SPAN = "scaler.processor.fetch_objects"
 PROCESSOR_STORE_RESULT_SPAN = "scaler.processor.store_result"
@@ -26,9 +28,7 @@ WORKER_MANAGER_CREATE_UNIT_SPAN = "scaler.worker_manager.create_unit"
 WORKER_START_SPAN = "scaler.worker.start"
 
 # events on the worker task span; the scheduler task span names its events after the task event classes
-WORKER_TASK_STARTED_EVENT = "started"
 WORKER_TASK_SUSPENDED_EVENT = "suspended"
-WORKER_TASK_RESUMED_EVENT = "resumed"
 WORKER_TASK_CANCELED_EVENT = "canceled"
 
 # log records carry the event name in this attribute
