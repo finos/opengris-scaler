@@ -516,6 +516,13 @@ void SecureSocket::onTransportConnected(std::shared_ptr<State> state, std::expec
 void SecureSocket::onTransportRead(
     std::shared_ptr<State> state, std::expected<std::span<const uint8_t>, uv::Error> result) noexcept
 {
+    // A graceful close sends close_notify, so an EOF without it is an abort, such as a reset that a write consumed.
+    const bool closeNotifyReceived = (SSL_get_shutdown(state->_ssl.get()) & SSL_RECEIVED_SHUTDOWN) != 0;
+    if (!result.has_value() && result.error().code() == UV_EOF && !closeNotifyReceived) {
+        failWithError(state, uv::Error {UV_ECONNABORTED});
+        return;
+    }
+
     if (!result.has_value()) {
         failWithError(state, result.error());
         return;
