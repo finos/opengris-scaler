@@ -210,6 +210,7 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
             worker_manager_id=WorkerManagerID(b"mgr"),
             worker_manager_address=MagicMock(),
             unit_id="unit",
+            telemetry_relay=False,
             processor_status_provider_factory=MagicMock(),
             execution_backend_factory=MagicMock(),
         )

@@ -23,6 +23,7 @@ from scaler.protocol.capnp import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
+    TelemetryBatch,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerManagerHeartbeat,
@@ -38,6 +39,7 @@ from scaler.scheduler.controllers.worker_controller import VanillaWorkerControll
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.scheduler.metrics import EventLoopLagMonitor
 from scaler.scheduler.policies.utility import create_policies
+from scaler.scheduler.telemetry_forwarder import TelemetryForwarder
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
@@ -88,6 +90,7 @@ class Scheduler:
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
         self._event_loop_lag_monitor = EventLoopLagMonitor()
+        self._telemetry_forwarder = TelemetryForwarder()
         self._worker_manager_controller = WorkerManagerController(
             config_controller=self._config_controller, scaling_policy=self._scaling_policy
         )
@@ -230,6 +233,10 @@ class Scheduler:
             await self._task_controller.on_task_result(WorkerID(source), message)
             return
 
+        if isinstance(message, TelemetryBatch):
+            self._telemetry_forwarder.forward(message)
+            return
+
         if isinstance(message, TaskLog):
             client = self._client_manager.get_client_id(message.taskId)
             if client is not None:
@@ -326,6 +333,7 @@ class Scheduler:
             loop_task.cancel()
         await asyncio.gather(*loop_tasks, return_exceptions=True)
 
+        self._telemetry_forwarder.stop()
         self._binder.destroy()
         self._binder_monitor.destroy()
         self._connector_storage.destroy()

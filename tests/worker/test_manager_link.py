@@ -76,6 +76,7 @@ def _worker(combo: SchedulerClusterCombo, manager: _FakeManager) -> Worker:
         task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
         death_timeout_seconds=TIMEOUT_SECONDS,
         hard_processor_suspend=False,
+        telemetry_relay=False,
         logging_paths=DEFAULT_LOGGING_PATHS,
         logging_level=DEFAULT_LOGGING_LEVEL,
         worker_manager_id=WorkerManagerID(b"fake-manager"),

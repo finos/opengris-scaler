@@ -31,6 +31,7 @@ class NativeWorkerProvisioner(UnitProvisioner):
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._telemetry_relay = config.worker_config.telemetry_relay
         self._event_loop = config.worker_config.event_loop
         self._preload = config.worker_config.preload
         self._logging_paths = config.logging_config.paths
@@ -54,6 +55,7 @@ class NativeWorkerProvisioner(UnitProvisioner):
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
             hard_processor_suspend=self._hard_processor_suspend,
+            telemetry_relay=self._telemetry_relay,
             event_loop=self._event_loop,
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,

@@ -48,6 +48,7 @@ These parameters control individual worker processes started by the worker manag
 * ``--garbage-collect-interval-seconds`` (``-gc``): Interval at which the worker runs garbage collection in seconds (default: ``30``).
 * ``--trim-memory-threshold-bytes`` (``-tm``): Threshold for trimming libc's memory in bytes (default: ``1073741824``, i.e., 1 GB).
 * ``--hard-processor-suspend`` (``-hps``): When set, suspends worker processors using SIGTSTP instead of a synchronization event.
+* ``--telemetry-relay`` (``-tr``): When set, workers and processors send their telemetry through the scheduler instead of to ``OTEL_EXPORTER_OTLP_ENDPOINT`` (see :doc:`../telemetry`).
 * ``--io-threads`` (``-it``): Number of IO threads per worker (default: ``1``).
 * ``--per-worker-capabilities`` (``-pwc``): Comma-separated list of capabilities (e.g., ``"linux,cpu=4"``).
   Each entry is either a bare capability name (e.g., ``linux``, meaning unlimited) or ``name=integer`` (e.g., ``cpu=4``).

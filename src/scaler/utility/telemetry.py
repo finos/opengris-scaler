@@ -7,14 +7,17 @@ import dataclasses
 import enum
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Dict, List, Optional
 
 from opentelemetry import propagate, trace
 from opentelemetry.context import Context
 
+from scaler.io.mixins import AsyncConnector
+from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import LoggingLevel
 from scaler.utility.semantic_conventions import UNIT_ID_ATTRIBUTE, WORKER_MANAGER_ID_ATTRIBUTE
+from scaler.utility.telemetry_relay import RELAY_SEND_INTERVAL_SECONDS, TelemetryRelayBuffer, TelemetryRelaySender
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +32,11 @@ BAGGAGE_HEADER = "baggage"
 TRACE_CONTEXT_HEADERS = (TRACEPARENT_HEADER, TRACESTATE_HEADER, BAGGAGE_HEADER)
 TRACE_CONTEXT_SEPARATOR = "\n"
 
-# the SDK logger provider, set once per process; `None` while telemetry is off
-_logger_provider: Optional[Any] = None
+# the installed SDK (telemetry_sdk.InstalledSDK), set once per process; `None` while telemetry is off
+_installed_sdk: Optional[Any] = None
+
+# where a relaying process's exporters put their requests, for the process to send to the scheduler
+_relay_buffer: Optional[TelemetryRelayBuffer] = None
 
 
 class ServiceName(enum.Enum):
@@ -46,6 +52,7 @@ class TelemetryService:
 
     name: ServiceName
     attributes: Dict[str, str] = dataclasses.field(default_factory=dict)
+    relay: bool = False  # send telemetry through the scheduler instead of to OTEL_EXPORTER_OTLP_ENDPOINT
 
 
 def worker_manager_service(worker_manager_id: WorkerManagerID, unit_id: Optional[str]) -> TelemetryService:
@@ -95,25 +102,56 @@ def is_export_configured() -> bool:
 
 
 def configure_telemetry(service: TelemetryService, logging_level: str) -> None:
-    """Install the SDK with OTLP/HTTP exporters for traces, metrics, and the `scaler` logger, when an endpoint is set.
+    """Install the SDK for traces, metrics, and the `scaler` logger, when the process exports or relays.
 
-    Safe to call again after logging is reconfigured: the SDK is installed once, the log handler is re-attached.
-    The SDK reads every other setting (sampler, headers, intervals, extra resource attributes) from `OTEL_*` variables.
+    A relaying process exports into a buffer it sends to the scheduler; any other process exports over OTLP/HTTP
+    when an endpoint is set. Safe to call again after logging is reconfigured: the SDK is installed once, the log
+    handler is re-attached. The SDK reads every other setting (sampler, headers, intervals) from `OTEL_*` variables.
     """
-    global _logger_provider
+    global _installed_sdk, _relay_buffer
 
-    if not is_export_configured():
+    if not service.relay and not is_export_configured():
         return
 
     try:
         from scaler.utility import telemetry_sdk
     except ImportError as e:
         raise ImportError(
-            f"{OTLP_ENDPOINT_ENV} is set but the OpenTelemetry SDK is missing: install opengris-scaler[otel]"
+            "telemetry is configured but the OpenTelemetry SDK is missing: install opengris-scaler[otel]"
         ) from e
 
-    if _logger_provider is None:
-        _logger_provider = telemetry_sdk.install_sdk(service.name.value, service.attributes)
-        logger.info(f"exporting telemetry as {service.name.value!r} to {os.environ[OTLP_ENDPOINT_ENV]!r}")
+    if _installed_sdk is None:
+        _relay_buffer = TelemetryRelayBuffer() if service.relay else None
+        _installed_sdk = telemetry_sdk.install_sdk(service.name.value, service.attributes, _relay_buffer)
+        destination = "the scheduler" if service.relay else repr(os.environ[OTLP_ENDPOINT_ENV])
+        logger.info(f"exporting telemetry as {service.name.value!r} to {destination}")
 
-    telemetry_sdk.attach_log_handler(_logger_provider, LoggingLevel[logging_level].value)
+    telemetry_sdk.attach_log_handler(_installed_sdk.logger_provider, LoggingLevel[logging_level].value)
+
+
+def relay_buffer() -> Optional[TelemetryRelayBuffer]:
+    """The buffer this process relays through the scheduler, `None` when it does not relay."""
+    return _relay_buffer
+
+
+def relay_routines(connector: AsyncConnector) -> List[Awaitable[None]]:
+    """The loop that sends this process's buffered telemetry over `connector`, none when the process does not relay."""
+    if _relay_buffer is None:
+        return []
+    sender = TelemetryRelaySender(_relay_buffer, connector)
+    return [create_async_loop_routine(sender.routine, RELAY_SEND_INTERVAL_SECONDS)]
+
+
+async def send_remaining_telemetry(connector: Optional[AsyncConnector]) -> None:
+    """Flush and send what a relaying process still buffers, before its connector closes on exit."""
+    if _relay_buffer is None or connector is None:
+        return
+    flush_telemetry()
+    for batch in _relay_buffer.drain():
+        await connector.send(batch, detached=True)
+
+
+def flush_telemetry() -> None:
+    """Hand every finished span, metric, and log record to the exporters, before a process may be killed."""
+    if _installed_sdk is not None:
+        _installed_sdk.flush()

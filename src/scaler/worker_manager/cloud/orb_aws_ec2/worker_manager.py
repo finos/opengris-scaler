@@ -432,6 +432,9 @@ set +e
         if worker_config.hard_processor_suspend:
             script += " \\\n    --hard-processor-suspend"
 
+        if worker_config.telemetry_relay:
+            script += " \\\n    --telemetry-relay"
+
         if worker_manager_config.object_storage_address:
             script += f" \\\n    --object-storage-address {worker_manager_config.object_storage_address!r}"
 

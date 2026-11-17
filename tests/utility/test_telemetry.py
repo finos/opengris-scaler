@@ -18,6 +18,8 @@ POLL_SECONDS = 0.1
 CLIENT_TRACE_ID = 0x0123456789ABCDEF0123456789ABCDEF
 CLIENT_SPAN_ID = 0x0123456789ABCDEF
 
+TASK_COUNT = 20
+
 # export within a fraction of a second, so a test waits on the cluster, not on the SDK's default 5s and 60s intervals
 FAST_EXPORT_ENVIRONMENT = {
     "OTEL_METRIC_EXPORT_INTERVAL": "200",
@@ -143,3 +145,55 @@ class TestTelemetry(unittest.TestCase):
         self.assertEqual(start.span.parent_span_id, create_unit.span.span_id)
         self.assertEqual(start.span.status.code, start.span.status.STATUS_CODE_OK)
         self.assertEqual(decision.attributes["scaler.worker_manager.desired_task_concurrency"], 1)
+
+
+class TestTelemetryRelay(unittest.TestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+        self.receiver = OTLPReceiver()
+        self.receiver.start()
+        self.addCleanup(self.receiver.stop)
+
+        environment = mock.patch.dict(
+            os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": self.receiver.endpoint, **FAST_EXPORT_ENVIRONMENT}
+        )
+        environment.start()
+        self.addCleanup(environment.stop)
+
+        self.cluster = SchedulerClusterCombo(n_workers=1, telemetry_relay=True)
+        self.addCleanup(self.cluster.shutdown)
+
+    def test_relayed_worker_spans_reach_the_collector_through_the_scheduler(self) -> None:
+        """A relaying worker's and processor's spans arrive from the scheduler's forwarder, still in the task trace."""
+        with Client(address=self.cluster.get_address()) as client:
+            self.assertEqual(client.submit(traced_work, 1).result(), 2)
+
+        span_names = ["scaler.scheduler.task", "scaler.worker.task", "scaler.processor.execute", "user.work"]
+        wait_for(lambda: all(self.receiver.spans_named(name) for name in span_names), f"spans {span_names}")
+
+        scheduler_task, worker_task, execute, user_work = [self.receiver.spans_named(name)[0] for name in span_names]
+        self.assertNotIn("urllib", scheduler_task.user_agent)
+        for relayed in (worker_task, execute, user_work):
+            self.assertIn("urllib", relayed.user_agent, relayed.name)
+
+        self.assertEqual(worker_task.span.parent_span_id, scheduler_task.span.span_id)
+        self.assertEqual(user_work.span.parent_span_id, execute.span.span_id)
+        self.assertEqual(execute.service_name, "scaler-processor")
+
+    def test_a_relaying_worker_sends_its_buffered_spans_before_it_exits(self) -> None:
+        """Worker spans still in the SDK's batch when the cluster stops reach the collector."""
+        # the default 5s batch delay holds the worker spans in its SDK until the worker exits
+        with mock.patch.dict(os.environ, {"OTEL_BSP_SCHEDULE_DELAY": "5000"}):
+            cluster = SchedulerClusterCombo(n_workers=1, telemetry_relay=True)
+        try:
+            with Client(address=cluster.get_address()) as client:
+                client.map(pow, [2] * TASK_COUNT, range(TASK_COUNT))
+        finally:
+            cluster.shutdown()
+
+        wait_for(
+            lambda: len(self.receiver.spans_named("scaler.worker.task")) >= TASK_COUNT,
+            f"{TASK_COUNT} worker task spans",
+        )

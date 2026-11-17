@@ -38,6 +38,7 @@ class VanillaProcessorManager(ProcessorManager):
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         hard_processor_suspend: bool,
+        telemetry_relay: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
         security_config: Optional[SecurityConfig] = None,
@@ -53,6 +54,7 @@ class VanillaProcessorManager(ProcessorManager):
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
         self._hard_processor_suspend = hard_processor_suspend
+        self._telemetry_relay = telemetry_relay
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
@@ -344,6 +346,7 @@ class VanillaProcessorManager(ProcessorManager):
             self._garbage_collect_interval_seconds,
             self._trim_memory_threshold_bytes,
             self._hard_processor_suspend,
+            self._telemetry_relay,
             self._logging_paths,
             self._logging_level,
             self._security_config,

@@ -34,6 +34,7 @@ class OCIJobsWorkerProvisioner(UnitProvisioner):
             worker_manager_id=config.worker_manager_config.worker_manager_id,
             worker_manager_address=self._children_address,
             unit_id=unit_id,
+            telemetry_relay=config.worker_config.telemetry_relay,
             compartment_id=container_instance_config.compartment_id,
             availability_domain=container_instance_config.availability_domain,
             subnet_id=container_instance_config.subnet_id,

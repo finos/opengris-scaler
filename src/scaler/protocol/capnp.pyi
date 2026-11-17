@@ -276,6 +276,15 @@ class ObjectInstruction(BaseMessage):
 
 class WorkerDisconnectNotification(BaseMessage): ...
 
+class TelemetryBatch(BaseMessage):
+    signal: "TelemetryBatch.Signal"
+    payload: bytes
+
+    class Signal(IntEnum):
+        traces = 0
+        metrics = 1
+        logs = 2
+
 class ClientDisconnect(BaseMessage):
     disconnectType: "ClientDisconnect.DisconnectType"
 
@@ -376,6 +385,7 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
     workerDisconnectNotification: WorkerDisconnectNotification
+    telemetryBatch: TelemetryBatch
 
 class ObjectRequestHeader(CapnpStruct):
     MESSAGE_LENGTH: ClassVar[int]

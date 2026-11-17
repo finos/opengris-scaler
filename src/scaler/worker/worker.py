@@ -30,6 +30,7 @@ from scaler.protocol.capnp import (
     TaskCancel,
     TaskLog,
     TaskResult,
+    TelemetryBatch,
     WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
 )
@@ -44,7 +45,13 @@ from scaler.utility.semantic_conventions import (
     WORKER_START_SPAN,
 )
 from scaler.utility.signal_handler import install_async_shutdown_handler
-from scaler.utility.telemetry import ServiceName, TelemetryService, extract_trace_context
+from scaler.utility.telemetry import (
+    ServiceName,
+    TelemetryService,
+    extract_trace_context,
+    relay_routines,
+    send_remaining_telemetry,
+)
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager
@@ -78,6 +85,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         task_timeout_seconds: int,
         death_timeout_seconds: int,
         hard_processor_suspend: bool,
+        telemetry_relay: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
         worker_manager_id: WorkerManagerID,
@@ -113,6 +121,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_timeout_seconds = task_timeout_seconds
         self._death_timeout_seconds = death_timeout_seconds
         self._hard_processor_suspend = hard_processor_suspend
+        self._telemetry_relay = telemetry_relay
 
         self._logging_paths = logging_paths
         self._logging_level = logging_level
@@ -219,6 +228,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
                     WORKER_MANAGER_ID_ATTRIBUTE: self._worker_manager_id.decode(),
                     UNIT_ID_ATTRIBUTE: self._unit_id,
                 },
+                relay=self._telemetry_relay,
             )
         )
         register_event_loop(self._event_loop)
@@ -270,6 +280,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
             hard_processor_suspend=self._hard_processor_suspend,
+            telemetry_relay=self._telemetry_relay,
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
             security_config=self._security_config,
@@ -338,7 +349,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             await self._processor_manager.on_internal_object_instruction(processor_id, message)
             return
 
-        if isinstance(message, TaskLog):
+        if isinstance(message, (TaskLog, TelemetryBatch)):
             await self._connector_external.send(message, detached=True)
             return
 
@@ -371,6 +382,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             create_async_loop_routine(self._timeout_manager.routine, 1),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
+            *relay_routines(self._connector_external),
         )
 
     def __end_start_span(self, status: StatusCode) -> None:
@@ -384,6 +396,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         # Guarded with `is not None` throughout: this runs even when __initialize failed partway
         # through, so some of these may never have been created.
         self.__end_start_span(StatusCode.ERROR)  # still open: the worker never reached the scheduler
+        await send_remaining_telemetry(self._connector_external)  # ahead of the exit notification, on the same socket
         await self.__notify_of_exit()
 
         destroyables: List[Tuple[str, Callable[[], None]]] = []

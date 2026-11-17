@@ -22,6 +22,20 @@ Enable export
 - Workers and processors inherit the environment of the worker manager that starts them.
 - The SDK reads every other setting from the standard `OTEL_* variables <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/>`_, for example ``OTEL_EXPORTER_OTLP_HEADERS`` and ``OTEL_METRIC_EXPORT_INTERVAL``.
 
+Relay through the scheduler
+---------------------------
+
+Workers that cannot reach a collector, such as workers in cloud units, send their telemetry through the scheduler:
+
+1. Set ``OTEL_EXPORTER_OTLP_ENDPOINT`` for the scheduler.
+2. Start the worker manager with ``--telemetry-relay``, or set ``telemetry_relay = true`` in its ``[[worker_manager]]`` section.
+
+- Its workers and processors then export into a buffer, and send it to the scheduler every second; a processor also sends after each task.
+- The scheduler forwards each batch unparsed to ``<OTEL_EXPORTER_OTLP_ENDPOINT>/v1/traces``, ``/v1/metrics``, or ``/v1/logs`` with ``OTEL_EXPORTER_OTLP_HEADERS``, from a thread.
+- A relaying worker ignores ``OTEL_EXPORTER_OTLP_ENDPOINT``, and needs the ``otel`` extra installed.
+- A full buffer, on a worker or in the scheduler, drops new batches and logs a warning with the count.
+- A scheduler without ``OTEL_EXPORTER_OTLP_ENDPOINT`` drops relayed telemetry, and logs a warning once.
+
 Services
 --------
 

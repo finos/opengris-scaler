@@ -21,9 +21,10 @@ def attributes(key_values: List[KeyValue]) -> Dict[str, object]:
 
 
 class ReceivedSpan:
-    def __init__(self, span: Span, service_name: str):
+    def __init__(self, span: Span, service_name: str, user_agent: str):
         self.span = span
         self.service_name = service_name
+        self.user_agent = user_agent  # tells the SDK's own exporter apart from the scheduler's relay forwarder
         self.name = span.name
         self.attributes = attributes(list(span.attributes))
 
@@ -54,7 +55,7 @@ class OTLPReceiver:
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self) -> None:
                 body = self.rfile.read(int(self.headers["Content-Length"]))
-                receiver.receive(self.path, body)
+                receiver.receive(self.path, body, self.headers.get("User-Agent", ""))
                 self.send_response(200)
                 self.send_header("Content-Type", "application/x-protobuf")
                 self.send_header("Content-Length", "0")
@@ -75,10 +76,10 @@ class OTLPReceiver:
         self._server.server_close()
         self._thread.join()
 
-    def receive(self, path: str, body: bytes) -> None:
+    def receive(self, path: str, body: bytes, user_agent: str) -> None:
         with self._lock:
             if path == "/v1/traces":
-                self.__receive_traces(body)
+                self.__receive_traces(body, user_agent)
             elif path == "/v1/metrics":
                 self.__receive_metrics(body)
             elif path == "/v1/logs":
@@ -96,12 +97,12 @@ class OTLPReceiver:
         with self._lock:
             return [log for log in self.logs if log.attributes.get("event.name") == event_name]
 
-    def __receive_traces(self, body: bytes) -> None:
+    def __receive_traces(self, body: bytes, user_agent: str) -> None:
         request = ExportTraceServiceRequest.FromString(body)
         for resource_spans in request.resource_spans:
             service_name = str(attributes(list(resource_spans.resource.attributes)).get("service.name"))
             for scope_spans in resource_spans.scope_spans:
-                self.spans.extend(ReceivedSpan(span, service_name) for span in scope_spans.spans)
+                self.spans.extend(ReceivedSpan(span, service_name, user_agent) for span in scope_spans.spans)
 
     def __receive_metrics(self, body: bytes) -> None:
         request = ExportMetricsServiceRequest.FromString(body)

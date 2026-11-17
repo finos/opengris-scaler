@@ -44,7 +44,14 @@ from scaler.utility.semantic_conventions import (
     TASK_ID_ATTRIBUTE,
 )
 from scaler.utility.serialization import serialize_failure
-from scaler.utility.telemetry import ServiceName, TelemetryService, extract_trace_context, is_tracing
+from scaler.utility.telemetry import (
+    ServiceName,
+    TelemetryService,
+    extract_trace_context,
+    flush_telemetry,
+    is_tracing,
+    relay_buffer,
+)
 from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
 from scaler.worker.preload import execute_preload
@@ -79,6 +86,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         suspend_trigger: Optional[EventType],
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
+        telemetry_relay: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
         security_config: Optional[SecurityConfig] = None,
@@ -106,6 +114,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
+        self._telemetry_relay = telemetry_relay
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
@@ -148,7 +157,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         bootstrap_process(
             log_paths=tuple(logging_paths),
             logging_level=self._logging_level,
-            telemetry_service=TelemetryService(ServiceName.PROCESSOR),
+            telemetry_service=TelemetryService(ServiceName.PROCESSOR, relay=self._telemetry_relay),
         )
         tblib.pickling_support.install()
 
@@ -333,6 +342,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 self.__process_task(task)
             finally:
                 detach(token)
+            self.__relay_telemetry()
             return
 
         # the task's context, baggage included, and then the execute span are current while the function runs,
@@ -347,6 +357,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 self.__process_task(task)
         finally:
             detach(token)
+
+        self.__relay_telemetry()
 
     def __cache_required_object_ids(self, task: Task) -> None:
         required_object_ids = self.__get_required_object_ids_for_task(task)
@@ -401,6 +413,15 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             result_bytes = serialize_failure(e)
 
         self.__send_result(task.source, task.taskId, task_result_type, result_bytes)
+
+    def __relay_telemetry(self) -> None:
+        """Send this task's telemetry to the agent now: an idle processor may be killed before its next export."""
+        buffer = relay_buffer()
+        if buffer is None:
+            return
+        flush_telemetry()
+        for batch in buffer.drain():
+            self._connector_agent.send(batch)
 
     def __send_result(self, source: ClientID, task_id: TaskID, task_result_type: TaskResultType, result_bytes: bytes):
         result_object_id = self.__store_result(source, task_id, result_bytes)
