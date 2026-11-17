@@ -5,7 +5,6 @@ import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 SCHEDULER_EXIT_TIMEOUT_SECONDS = 30
@@ -27,8 +26,8 @@ class TestSchedulerShutdown(unittest.TestCase):
         log_directory = tempfile.TemporaryDirectory()
         self.addCleanup(log_directory.cleanup)
         log_path = os.path.join(log_directory.name, "cluster.log")
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        cluster = SchedulerClusterCombo(address=address, n_workers=1, protected=False, logging_paths=(log_path,))
+        cluster = SchedulerClusterCombo(n_workers=1, protected=False, logging_paths=(log_path,))
+        address = cluster.get_address()
         self.addCleanup(cluster.shutdown)
 
         with Client(address=address) as client:

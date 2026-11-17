@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <span>
 #include <string>
 #include <thread>
@@ -15,7 +16,6 @@
 
 using scaler::object_storage::capnpHeaderSize;
 using scaler::object_storage::capnpWordSize;
-using scaler::object_storage::getAvailableTCPPort;
 using scaler::object_storage::ObjectID;
 using scaler::object_storage::ObjectRequestHeader;
 using scaler::object_storage::ObjectResponseHeader;
@@ -137,17 +137,21 @@ protected:
     {
         server = std::make_unique<ObjectStorageServer>();
 
-        serverPort = std::to_string(getAvailableTCPPort());
-
-        serverThread = std::thread([this] {
+        std::promise<int> boundPort;
+        std::future<int> boundPortFuture = boundPort.get_future();
+        serverThread                     = std::thread([this, boundPort = std::move(boundPort)]() mutable {
             server->run(
-                "tcp://" + serverHost + ":" + serverPort,
+                "tcp://" + serverHost + ":0",
                 "ObjectStorageServerTest",
                 "INFO",
-                "%(levelname)s: %(message)s");
+                "%(levelname)s: %(message)s",
+                {"/dev/stdout"},
+                [] { return true; },
+                std::nullopt,
+                [&boundPort](const scaler::ymq::Address& address) { boundPort.set_value(address.asTCP().port()); });
         });
 
-        server->waitUntilReady();
+        serverPort = std::to_string(boundPortFuture.get());
     }
 
     void TearDown() override
@@ -880,18 +884,22 @@ protected:
                                       ".txt";
         log_filepath /= unique_filename;
 
-        server     = std::make_unique<scaler::object_storage::ObjectStorageServer>();
-        serverPort = std::to_string(getAvailableTCPPort());
+        server = std::make_unique<scaler::object_storage::ObjectStorageServer>();
 
-        serverThread = std::thread([this] {
+        std::promise<int> boundPort;
+        std::future<int> boundPortFuture = boundPort.get_future();
+        serverThread                     = std::thread([this, boundPort = std::move(boundPort)]() mutable {
             server->run(
-                "tcp://" + serverHost + ":" + serverPort,
+                "tcp://" + serverHost + ":0",
                 "ObjectStorageLoggingTest",
                 "INFO",
                 "%(levelname)s: %(message)s",
-                {log_filepath.string()});
+                {log_filepath.string()},
+                [] { return true; },
+                std::nullopt,
+                [&boundPort](const scaler::ymq::Address& address) { boundPort.set_value(address.asTCP().port()); });
         });
-        server->waitUntilReady();
+        serverPort                       = std::to_string(boundPortFuture.get());
     }
 
     void TearDown() override

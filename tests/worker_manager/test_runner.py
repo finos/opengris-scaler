@@ -42,13 +42,16 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
             heartbeat_interval_seconds=5,
             capabilities={"cpu": 4},
             max_provisioner_units=4,
-            worker_provisioner=self.provisioner,
+            create_worker_provisioner=lambda _children_address: self.provisioner,
             children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
             workers_per_provisioner_unit=8,
         )
         connector = AsyncMock()
         connector.send = self.send_mock
         self.runner._connector_parent = connector
+        self.runner._worker_provisioner = (
+            self.provisioner
+        )  # _get_loops creates it after the bind, which never runs here
 
     async def test_set_desired_task_concurrency_calls_declarative_provisioner(self) -> None:
         requests = [MagicMock()]
