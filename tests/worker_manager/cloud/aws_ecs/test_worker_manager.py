@@ -12,6 +12,7 @@ def _make_provisioner(
     config.cloud_children_config.unit_startup_timeout_seconds = unit_startup_timeout_seconds
     config.ecs_task_cpu = ecs_task_cpu
     config.worker_config.telemetry_relay = False
+    config.cloud_children_config.advertised_otlp_endpoint = None
     with patch("boto3.Session"):
         return ECSWorkerProvisioner(config, children_address=MagicMock())
 

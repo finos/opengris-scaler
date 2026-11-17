@@ -78,7 +78,7 @@ class TestUnitEnvironment(unittest.TestCase):
         token = context.attach(trace.set_span_in_context(NonRecordingSpan(create_unit)))
         try:
             with mock.patch.dict(os.environ, manager_environment, clear=True):
-                environment = unit_environment()
+                environment = unit_environment(CloudChildrenConfig())
         finally:
             context.detach(token)
 
@@ -86,9 +86,15 @@ class TestUnitEnvironment(unittest.TestCase):
         self.assertNotIn("UNRELATED", environment)
         self.assertEqual(environment["TRACEPARENT"], f"00-{CREATE_UNIT_TRACE_ID:032x}-{CREATE_UNIT_SPAN_ID:016x}-01")
 
+    def test_an_advertised_endpoint_replaces_the_managers_endpoint(self):
+        """Units behind NAT export to the advertised endpoint, not to the address this manager uses."""
+        children = CloudChildrenConfig(advertised_otlp_endpoint="http://203.0.113.7:4318")
+        with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318"}, clear=True):
+            self.assertEqual(unit_environment(children)["OTEL_EXPORTER_OTLP_ENDPOINT"], "http://203.0.113.7:4318")
+
     def test_a_unit_started_outside_a_trace_gets_no_trace_context(self):
         with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(unit_environment(), {})
+            self.assertEqual(unit_environment(CloudChildrenConfig()), {})
 
 
 class TestUnitRequirementsSupportTelemetry(unittest.TestCase):
@@ -96,18 +102,28 @@ class TestUnitRequirementsSupportTelemetry(unittest.TestCase):
         """A manager whose units would export without the SDK refuses to start, rather than every unit failing."""
         with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}):
             with self.assertRaisesRegex(ValueError, r"opengris-scaler\[otel\]"):
-                check_unit_requirements_support_telemetry("opengris-scaler[aws]==2.9.0\nnumpy\n", False)
+                check_unit_requirements_support_telemetry(
+                    "opengris-scaler[aws]==2.9.0\nnumpy\n", False, CloudChildrenConfig()
+                )
 
     def test_relaying_units_without_the_otel_extra_fail_at_start(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
-                check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", True)
+                check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", True, CloudChildrenConfig())
 
     def test_the_otel_or_all_extra_satisfies_the_check(self):
         with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}):
-            check_unit_requirements_support_telemetry("opengris-scaler[aws, otel]>=2.9\n", False)
-            check_unit_requirements_support_telemetry("opengris_scaler[all] @ git+https://github.com/x/y.git\n", True)
+            check_unit_requirements_support_telemetry("opengris-scaler[aws, otel]>=2.9\n", False, CloudChildrenConfig())
+            check_unit_requirements_support_telemetry(
+                "opengris_scaler[all] @ git+https://github.com/x/y.git\n", True, CloudChildrenConfig()
+            )
+
+    def test_an_advertised_endpoint_alone_makes_units_export(self):
+        children = CloudChildrenConfig(advertised_otlp_endpoint="http://203.0.113.7:4318")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", False, children)
 
     def test_units_that_do_not_export_need_no_extra(self):
         with mock.patch.dict(os.environ, {}, clear=True):
-            check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", False)
+            check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", False, CloudChildrenConfig())

@@ -20,6 +20,18 @@ class CloudChildrenConfig(ConfigClass):
         ),
     )
 
+    advertised_otlp_endpoint: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-aoe",
+            help=(
+                "OTLP/HTTP endpoint the units export telemetry to, in place of this worker manager's "
+                "OTEL_EXPORTER_OTLP_ENDPOINT. Use this when the units reach the collector at another address, "
+                "e.g. through NAT."
+            ),
+        ),
+    )
+
     unit_startup_timeout_seconds: int = dataclasses.field(
         default=defaults.DEFAULT_WORKER_MANAGER_UNIT_STARTUP_TIMEOUT_SECONDS,
         metadata=dict(
