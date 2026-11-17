@@ -3,14 +3,19 @@ import unittest
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
+from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import (
     ClientDisconnect,
     ObjectInstruction,
     ObjectMetadata,
     Task,
     TaskCancel,
+    WorkerHeartbeat,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
+    WorkerManagerHeartbeat,
+    WorkerManagerHeartbeatEcho,
 )
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
@@ -30,17 +35,20 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         self.provisioner.set_desired_task_concurrency = AsyncMock()
         self.send_mock = AsyncMock()
         self.runner = WorkerManagerRunner(
-            address=MagicMock(),
             name="test_runner",
+            worker_manager_config=WorkerManagerConfig(
+                scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"), worker_manager_id="mgr"
+            ),
             heartbeat_interval_seconds=5,
             capabilities={"cpu": 4},
             max_provisioner_units=4,
-            worker_manager_id=b"mgr",
             worker_provisioner=self.provisioner,
+            children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
+            workers_per_provisioner_unit=8,
         )
         connector = AsyncMock()
         connector.send = self.send_mock
-        self.runner._connector_external = connector
+        self.runner._connector_parent = connector
 
     async def test_set_desired_task_concurrency_calls_declarative_provisioner(self) -> None:
         requests = [MagicMock()]
@@ -70,10 +78,33 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
             pass
 
         with self.assertLogs("scaler", level=logging.WARNING) as captured:
-            await self.runner._on_receive_external(_Unknown())  # type: ignore[arg-type]
+            await self.runner._on_receive_parent(_Unknown())  # type: ignore[arg-type]
 
         self.assertTrue(any("Unknown action" in m or "unrecognized" in m for m in captured.output))
         self.send_mock.assert_not_called()
+
+    async def test_a_child_manager_heartbeat_gets_an_echo_and_the_task_concurrency_of_one_unit(self) -> None:
+        binder = AsyncMock()
+        self.runner._binder_children = binder
+
+        await self.runner._on_receive_child(b"unit-1", WorkerManagerHeartbeat(workerManagerID=b"child"))
+
+        echo_call, command_call = binder.send.call_args_list
+        self.assertEqual(echo_call.args[0], b"unit-1")
+        self.assertIsInstance(echo_call.args[1], WorkerManagerHeartbeatEcho)
+        self.assertEqual(command_call.args[0], b"unit-1")
+        (request,) = command_call.args[1].setDesiredTaskConcurrencyRequests
+        self.assertEqual(request.taskConcurrency, 8)
+
+    async def test_a_worker_heartbeat_gets_an_echo(self) -> None:
+        binder = AsyncMock()
+        self.runner._binder_children = binder
+
+        await self.runner._on_receive_child(b"unit-1", WorkerHeartbeat())
+
+        binder.send.assert_awaited_once()
+        self.assertEqual(binder.send.call_args.args[0], b"unit-1")
+        self.assertIsInstance(binder.send.call_args.args[1], WorkerHeartbeatEcho)
 
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
@@ -105,6 +136,8 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
             io_threads=1,
             event_loop="asyncio",
             worker_manager_id=b"mgr",
+            worker_manager_address=MagicMock(),
+            unit_id="unit",
             processor_status_provider_factory=MagicMock(),
             execution_backend_factory=MagicMock(),
         )

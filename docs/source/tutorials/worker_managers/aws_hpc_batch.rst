@@ -331,7 +331,7 @@ How It Works
 4. Inside the Batch container, a runner script (``batch_job_runner.py``) deserializes the task, executes the function, and writes the result to S3. For array jobs, each child container uses its ``AWS_BATCH_JOB_ARRAY_INDEX`` to pick the correct payload.
 5. The worker manager polls for job completion, fetches the result from S3, and returns it to the scheduler.
 
-A semaphore limits concurrent Batch jobs (``--max-concurrent-jobs``) to prevent exceeding AWS service quotas. All AWS API calls run in a thread pool to avoid blocking the heartbeat loop.
+The worker manager keeps at most ``--max-concurrent-jobs`` Batch jobs in flight to prevent exceeding AWS service quotas. All AWS API calls run in a thread pool to avoid blocking the heartbeat loop.
 
 Configuration Reference
 ------------------------
@@ -347,6 +347,7 @@ AWS HPC Parameters
 * ``--aws-region``: AWS region (default: ``us-east-1``).
 * ``--s3-prefix``: S3 key prefix (default: ``scaler-tasks``).
 * ``--max-concurrent-jobs`` (``-mcj``): Max concurrent Batch jobs (default: ``100``).
+  The worker manager runs at most ``ceil(--max-task-concurrency / --max-concurrent-jobs)`` worker processes, each submitting up to ``--max-concurrent-jobs`` jobs.
 * ``--job-timeout-minutes``: Max job runtime in minutes (default: ``60``).
 * ``--backend`` (``-b``): HPC backend (default: ``batch``).
 * ``--name`` (``-n``): Custom name for the worker manager instance.

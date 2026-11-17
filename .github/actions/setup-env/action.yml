@@ -47,12 +47,7 @@ runs:
       shell: bash
       if: inputs.os == 'Linux'
       run: |
-        sudo apt update -y
-        sudo apt install -y build-essential tzdata cmake clang curl pkg-config g++-14
-        wget https://apt.llvm.org/llvm.sh
-        chmod +x llvm.sh
-        sudo ./llvm.sh 21
-        sudo apt install clang-format-21
+        sudo ./scripts/install_system_packages.sh
         sudo chmod 755 ./scripts/library_tool.sh
         sudo chmod 755 ./scripts/build.sh
 

@@ -3,11 +3,14 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import uuid
 from typing import TYPE_CHECKING, List
 
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.desired_concurrency import extract_desired_count
+from scaler.worker_manager.local_process import local_children_address
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.proxy.symphony.worker import create_symphony_worker
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
@@ -20,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
-    def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
+    def __init__(self, config: SymphonyWorkerManagerConfig, children_address: AddressConfig) -> None:
+        self._children_address = children_address
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._service_name = config.service_name
@@ -51,7 +55,7 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
         task_concurrency = extract_desired_count(requests, self._capabilities)
         await self._capacity_coordinator.set_desired_unit_count(task_concurrency)
 
-    def _start_unit(self) -> None:
+    def _start_unit(self, unit_id: str) -> None:
         worker = create_symphony_worker(
             address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
@@ -64,6 +68,8 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
             io_threads=self._io_threads,
             event_loop=self._event_loop,
             worker_manager_id=self._worker_manager_id,
+            worker_manager_address=self._children_address,
+            unit_id=unit_id,
         )
         worker.start()
         self._workers.append(worker)
@@ -71,7 +77,7 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     async def start_units(self, count: int) -> None:
         for _ in range(count):
-            self._start_unit()
+            self._start_unit(uuid.uuid4().hex)
 
     async def stop_units(self, count: int) -> None:
         to_stop = self._workers[:count]
@@ -89,15 +95,16 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
 
 class SymphonyWorkerManager:
     def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
-        provisioner = SymphonyWorkerProvisioner(config)
+        children_address = local_children_address(config.worker_manager_config)
+        provisioner = SymphonyWorkerProvisioner(config, children_address)
         self._runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_symphony",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=config.worker_manager_config.max_task_concurrency,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
+            children_address=children_address,
             io_threads=config.worker_config.io_threads,
         )
 

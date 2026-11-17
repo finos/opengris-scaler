@@ -139,13 +139,15 @@ class TestConfigClass(unittest.TestCase):
     @patch.dict("os.environ", {"ENV_VAR_ONE": "99", "ENV_VAR_TWO": "98"})
     @patch(
         "builtins.open",
-        mock_open(read_data=b"""
+        mock_open(
+            read_data=b"""
             [my_config]
             config-file = 99
 
             [unused_section]
             another-one = 97
-            """),
+            """
+        ),
     )
     def test_precedence(self) -> None:
         @dataclasses.dataclass
@@ -195,11 +197,13 @@ class TestConfigClass(unittest.TestCase):
     @patch("sys.argv", ["script", "--config", "file"])
     @patch(
         "builtins.open",
-        mock_open(read_data=b"""
+        mock_open(
+            read_data=b"""
             [my_config]
             my_int = 10
             my-other-int = 20
-            """),
+            """
+        ),
     )
     def test_underscore_toml_parsing(self) -> None:
         @dataclasses.dataclass
@@ -214,10 +218,12 @@ class TestConfigClass(unittest.TestCase):
     @patch("sys.argv", ["script", "--config", "file"])
     @patch(
         "builtins.open",
-        mock_open(read_data=b"""
+        mock_open(
+            read_data=b"""
             [my_config]
             color = "RED"
-            """),
+            """
+        ),
     )
     def test_enum_from_toml(self) -> None:
         """Enum fields loaded from TOML should be converted to the enum type, not left as strings."""
@@ -238,10 +244,12 @@ class TestConfigClass(unittest.TestCase):
     @patch("sys.argv", ["script", "--config", "file"])
     @patch(
         "builtins.open",
-        mock_open(read_data=b"""
+        mock_open(
+            read_data=b"""
             [my_config]
             my_value = "hello"
-            """),
+            """
+        ),
     )
     def test_config_type_from_toml(self) -> None:
         """ConfigType fields loaded from TOML should be converted via from_string(), not left as strings."""

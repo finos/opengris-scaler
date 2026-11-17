@@ -226,13 +226,6 @@ class TestScalerAllConfigShape(unittest.TestCase):
         config = self._parse(self._native_base(task_timeout_seconds=300))
         self.assertEqual(config.worker_managers[0].worker_config.task_timeout_seconds, 300)
 
-    def test_mode_value_based_string(self) -> None:
-        """mode = "fixed" (value-based, lowercase) should work the same as for scaler_worker_manager."""
-        from scaler.config.section.native_worker_manager import NativeWorkerManagerMode
-
-        config = self._parse(self._native_base(mode="fixed"))
-        self.assertEqual(config.worker_managers[0].mode, NativeWorkerManagerMode.FIXED)
-
     def test_orb_aws_ec2_worker_manager_parsed_from_toml(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
@@ -241,6 +234,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
                 "type": "orb_aws_ec2",
                 "scheduler_address": "tcp://127.0.0.1:6378",
                 "worker_manager_id": "wm-orb",
+                "children_address": "tcp://203.0.113.10:6390",
                 "image_id": "ami-0528819f94f4f5fa5",
                 "aws_region": "us-east-1",
             }
@@ -255,6 +249,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
                 "type": "orb_aws_ec2",
                 "scheduler_address": "tcp://127.0.0.1:6378",
                 "worker_manager_id": "wm-orb",
+                "children_address": "tcp://203.0.113.10:6390",
                 "image_id": "ami-0528819f94f4f5fa5",
                 "instance_type": "t3.medium",
                 "aws_region": "eu-west-1",
@@ -276,6 +271,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
                     "type": "orb_aws_ec2",
                     "scheduler_address": "tcp://127.0.0.1:6378",
                     "worker_manager_id": "wm-orb",
+                    "children_address": "tcp://203.0.113.10:6390",
                     "image_id": "ami-0528819f94f4f5fa5",
                     "aws_region": "us-east-1",
                 },
@@ -314,6 +310,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
                 "type": "oci_raw",
                 "scheduler_address": "tcp://127.0.0.1:6378",
                 "worker_manager_id": "wm-oci-raw",
+                "children_address": "tcp://203.0.113.10:6390",
                 "compartment_id": "ocid1.compartment.oc1..example",
                 "availability_domain": "AD-1",
                 "subnet_id": "ocid1.subnet.oc1.phx.example",
@@ -386,7 +383,9 @@ class TestRunWorkerManager(unittest.TestCase):
         from scaler.config.types.address import AddressConfig
 
         wmc = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
+            scheduler_address=AddressConfig.from_string("tcp://localhost:6378"),
+            worker_manager_id="wm-test",
+            children_address=AddressConfig.from_string("tcp://203.0.113.10:6390"),
         )
         return ORBAWSEC2WorkerManagerConfig(
             worker_manager_config=wmc,

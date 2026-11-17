@@ -1,6 +1,9 @@
 import os
 from typing import Dict
 
+from scaler.config.common.cloud_children import CloudChildrenConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
+
 
 def load_requirements_content(requirements_txt: str) -> str:
     """Return requirements file content, reading from disk if requirements_txt is a file path."""
@@ -23,3 +26,14 @@ def format_capabilities(capabilities: Dict[str, int]) -> str:
         else:
             parts.append(f"{name}={value}")
     return ",".join(parts)
+
+
+def child_link_arguments(
+    worker_manager_config: WorkerManagerConfig,
+    cloud_children_config: CloudChildrenConfig,
+    unit_id: str,
+    task_concurrency: int,
+) -> str:
+    """The command line arguments that make a child native manager serve this manager as unit `unit_id`."""
+    parent_address = cloud_children_config.advertised_children_address or worker_manager_config.children_address
+    return f"--parent-address {parent_address} --unit-id {unit_id} --max-task-concurrency {task_concurrency}"

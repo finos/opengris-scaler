@@ -72,6 +72,7 @@ bind_address = "tcp://127.0.0.1:{self._object_storage_port}"
 bind_address = "tcp://127.0.0.1:{self._scheduler_port}"
 object_storage_address = "tcp://127.0.0.1:{self._object_storage_port}"
 monitor_address = "tcp://127.0.0.1:{self._monitor_port}"
+policy_content = "allocate=even_load; scaling=static"
 protected = false
 event_loop = "builtin"
 
@@ -80,7 +81,6 @@ type = "baremetal_native"
 scheduler_address = "tcp://127.0.0.1:{self._scheduler_port}"
 worker_manager_id = "wm-shutdown-test"
 object_storage_address = "tcp://127.0.0.1:{self._object_storage_port}"
-mode = "fixed"
 max_task_concurrency = 1
 """)
 

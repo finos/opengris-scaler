@@ -20,6 +20,8 @@ def create_symphony_worker(
     io_threads: int,
     event_loop: str,
     worker_manager_id: bytes,
+    worker_manager_address: AddressConfig,
+    unit_id: str,
 ) -> WorkerProcess:
     return WorkerProcess(
         name=f"SYM|{uuid.uuid4().hex}",
@@ -33,6 +35,8 @@ def create_symphony_worker(
         io_threads=io_threads,
         event_loop=event_loop,
         worker_manager_id=worker_manager_id,
+        worker_manager_address=worker_manager_address,
+        unit_id=unit_id,
         processor_status_provider_factory=SymphonyProcessorStatusProvider,
         execution_backend_factory=partial(SymphonyExecutionBackend, service_name=service_name),
     )

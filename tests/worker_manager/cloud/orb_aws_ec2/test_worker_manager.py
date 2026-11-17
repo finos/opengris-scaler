@@ -43,33 +43,44 @@ class TestORBAWSEC2WorkerManagerValidateRequirements(unittest.TestCase):
 
 class TestExtractGitURLAndBranch(unittest.TestCase):
     def test_https_with_branch(self):
-        reqs = "scaler @ git+https://github.com/org/repo.git@main\n"
+        reqs = "opengris-scaler @ git+https://github.com/org/repo.git@main\n"
         self.assertEqual(_extract_git_url_and_branch(reqs), ("https://github.com/org/repo.git", "main"))
 
     def test_https_without_branch(self):
-        reqs = "scaler @ git+https://github.com/org/repo.git\n"
+        reqs = "opengris-scaler @ git+https://github.com/org/repo.git\n"
         self.assertEqual(_extract_git_url_and_branch(reqs), ("https://github.com/org/repo.git", ""))
 
     def test_ssh_with_user_at_host_and_branch(self):
-        reqs = "scaler @ git+ssh://git@github.com/org/repo.git@main\n"
+        reqs = "opengris-scaler @ git+ssh://git@github.com/org/repo.git@main\n"
         self.assertEqual(_extract_git_url_and_branch(reqs), ("ssh://git@github.com/org/repo.git", "main"))
 
     def test_https_with_token_auth(self):
-        reqs = "scaler @ git+https://TOKEN@github.com/org/repo.git@main\n"
+        reqs = "opengris-scaler @ git+https://TOKEN@github.com/org/repo.git@main\n"
         self.assertEqual(_extract_git_url_and_branch(reqs), ("https://TOKEN@github.com/org/repo.git", "main"))
 
     def test_env_marker_stripped(self):
-        reqs = 'scaler @ git+https://github.com/org/repo.git@main; python_version<"3.9"\n'
+        reqs = 'opengris-scaler @ git+https://github.com/org/repo.git@main; python_version<"3.9"\n'
         self.assertEqual(_extract_git_url_and_branch(reqs), ("https://github.com/org/repo.git", "main"))
 
     def test_comment_line_ignored(self):
-        reqs = "# scaler @ git+https://github.com/org/repo.git@main\nscaler\n"
+        reqs = "# opengris-scaler @ git+https://github.com/org/repo.git@main\nopengris-scaler\n"
         self.assertIsNone(_extract_git_url_and_branch(reqs))
 
     def test_no_git_url_returns_none(self):
-        reqs = "scaler>=1.0\nboto3\n"
+        reqs = "opengris-scaler>=1.0\nboto3\n"
         self.assertIsNone(_extract_git_url_and_branch(reqs))
 
-    def test_first_git_url_returned(self):
-        reqs = "scaler @ git+https://github.com/org/repo.git@main\nother @ git+https://github.com/org/other.git@dev\n"
+    def test_scaler_git_url_returned_after_other_git_url(self):
+        reqs = (
+            "other @ git+https://github.com/org/other.git@dev\n"
+            "opengris-scaler @ git+https://github.com/org/repo.git@main\n"
+        )
         self.assertEqual(_extract_git_url_and_branch(reqs), ("https://github.com/org/repo.git", "main"))
+
+    def test_normalized_scaler_name_with_extras(self):
+        reqs = "OpenGRIS_Scaler[all] @ git+https://github.com/org/repo.git@main\n"
+        self.assertEqual(_extract_git_url_and_branch(reqs), ("https://github.com/org/repo.git", "main"))
+
+    def test_other_git_url_only_returns_none(self):
+        reqs = "other @ git+https://github.com/org/other.git@dev\nopengris-scaler>=1.0\n"
+        self.assertIsNone(_extract_git_url_and_branch(reqs))

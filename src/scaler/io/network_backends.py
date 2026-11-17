@@ -240,6 +240,4 @@ def get_network_backend_from_env(io_threads: int = 1) -> NetworkBackend:
     elif backend == NetworkBackendType.ymq:
         return YMQNetworkBackend(num_threads=io_threads)
 
-    raise ValueError(
-        f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackendType]}"
-    )
+    raise ValueError(f"Invalid SCALER_NETWORK_BACKEND value.Expected one of: {[e.name for e in NetworkBackendType]}")

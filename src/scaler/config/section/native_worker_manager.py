@@ -1,6 +1,5 @@
 import argparse
 import dataclasses
-import enum
 from typing import ClassVar, Optional
 
 from scaler.config.common.logging import LoggingConfig
@@ -8,11 +7,7 @@ from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
-
-
-class NativeWorkerManagerMode(enum.Enum):
-    DYNAMIC = "dynamic"
-    FIXED = "fixed"
+from scaler.config.types.address import AddressConfig
 
 
 @dataclasses.dataclass
@@ -25,24 +20,29 @@ class NativeWorkerManagerConfig(ConfigClass):
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
     security: SecurityConfig = dataclasses.field(default_factory=SecurityConfig)
 
-    mode: NativeWorkerManagerMode = dataclasses.field(
-        default=NativeWorkerManagerMode.DYNAMIC,
+    worker_type: str = dataclasses.field(default="NAT", metadata=dict(help="worker type prefix used in worker IDs"))
+
+    parent_address: Optional[AddressConfig] = dataclasses.field(
+        default=None,
         metadata=dict(
-            type=NativeWorkerManagerMode,
-            help="operating mode: 'dynamic' for auto-scaling driven by scheduler, 'fixed' for pre-spawned workers",
+            short="-pa",
+            help=(
+                "address of the parent worker manager to take the desired task concurrency from, instead of the "
+                "scheduler. Set by a cloud worker manager in the command that starts this one"
+            ),
         ),
     )
 
-    worker_type: Optional[str] = dataclasses.field(
+    unit_id: Optional[str] = dataclasses.field(
         default=None,
-        metadata=dict(help="worker type prefix used in worker IDs; defaults to 'FIX' or 'NAT' based on mode"),
+        metadata=dict(help="identity of this worker manager on the parent link, required with parent_address"),
     )
+
+    def __post_init__(self) -> None:
+        if (self.parent_address is None) != (self.unit_id is None):
+            raise ValueError("parent_address and unit_id must be set together.")
 
     @classmethod
     def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
         super().configure_parser(parser)
         parser.add_argument("-n", "--num-of-workers", dest="max_task_concurrency", type=int, help=argparse.SUPPRESS)
-
-    def __post_init__(self) -> None:
-        if self.mode == NativeWorkerManagerMode.FIXED and self.worker_manager_config.max_task_concurrency < 0:
-            raise ValueError("max_task_concurrency must be >= 0 for fixed mode")
