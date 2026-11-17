@@ -31,6 +31,7 @@ def _make_processor() -> Processor:
         suspend_trigger=None,
         garbage_collect_interval_seconds=60,
         trim_memory_threshold_bytes=10**9,
+        telemetry_relay=False,
         logging_paths=("/dev/stdout",),
         logging_level="INFO",
     )

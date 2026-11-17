@@ -218,6 +218,18 @@ struct InformationResponse {
     response @0 :Data;
 }
 
+struct TelemetryBatch {
+    # one OTLP export request, protobuf-encoded, from a process that relays its telemetry through the scheduler
+    signal @0 :Signal;
+    payload @1 :Data;
+
+    enum Signal {
+        traces @0;
+        metrics @1;
+        logs @2;
+    }
+}
+
 struct Message {
     union {
         task @0 :Task;
@@ -257,5 +269,7 @@ struct Message {
         workerManagerCommand @25 :WorkerManagerCommand;
 
         workerDisconnectNotification @26 :WorkerDisconnectNotification;
+
+        telemetryBatch @27 :TelemetryBatch;
     }
 }

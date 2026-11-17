@@ -38,6 +38,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._telemetry_relay = config.worker_config.telemetry_relay
         self._preload = config.worker_config.preload
         self._event_loop = config.worker_config.event_loop
 
@@ -129,6 +130,9 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
 
         if self._hard_processor_suspend:
             command += " --hard-processor-suspend"
+
+        if self._telemetry_relay:
+            command += " --telemetry-relay"
 
         if self._object_storage_address:
             command += f" --object-storage-address {self._object_storage_address!r}"

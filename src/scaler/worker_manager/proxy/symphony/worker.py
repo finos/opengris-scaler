@@ -22,6 +22,7 @@ def create_symphony_worker(
     worker_manager_id: bytes,
     worker_manager_address: AddressConfig,
     unit_id: str,
+    telemetry_relay: bool,
 ) -> WorkerProcess:
     return WorkerProcess(
         name=f"SYM|{uuid.uuid4().hex}",
@@ -37,6 +38,7 @@ def create_symphony_worker(
         worker_manager_id=worker_manager_id,
         worker_manager_address=worker_manager_address,
         unit_id=unit_id,
+        telemetry_relay=telemetry_relay,
         processor_status_provider_factory=SymphonyProcessorStatusProvider,
         execution_backend_factory=partial(SymphonyExecutionBackend, service_name=service_name),
     )

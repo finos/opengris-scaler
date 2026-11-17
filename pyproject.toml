@@ -21,7 +21,7 @@ dependencies = [
     "argcomplete",
     "bidict",
     "cloudpickle",
-    "opentelemetry-api>=1.30",
+    "opentelemetry-api>=1.45",
     "psutil==7.2.2; sys_platform != 'emscripten'",
     "sortedcontainers==2.4.0",
     "tblib",
@@ -55,8 +55,8 @@ oci = [
     "oci==2.185.1",
 ]
 otel = [
-    "opentelemetry-sdk>=1.30",
-    "opentelemetry-exporter-otlp-proto-http>=1.30",
+    "opentelemetry-sdk>=1.45",
+    "opentelemetry-exporter-otlp-proto-http>=1.45",
 ]
 all = [
     "opengris-scaler[aws]",

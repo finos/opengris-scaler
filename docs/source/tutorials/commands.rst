@@ -474,6 +474,10 @@ Arguments (shared by all subcommands)
      - No
      - ``False``
      - Use OS-level processor suspension (SIGTSTP) for paused tasks.
+   * - ``-tr``, ``--telemetry-relay``
+     - No
+     - ``False``
+     - Send worker and processor telemetry through the scheduler (see :doc:`telemetry`).
    * - ``-it``, ``--io-threads``
      - No
      - ``1``

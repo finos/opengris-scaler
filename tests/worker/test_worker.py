@@ -74,6 +74,7 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
             task_timeout_seconds=10,
             death_timeout_seconds=10,
             hard_processor_suspend=False,
+            telemetry_relay=False,
             logging_paths=(),
             logging_level="INFO",
             worker_manager_id=b"wm",

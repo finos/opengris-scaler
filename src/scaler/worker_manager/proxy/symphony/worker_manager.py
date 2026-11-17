@@ -36,6 +36,7 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._death_timeout_seconds = config.worker_config.death_timeout_seconds
         self._event_loop = config.worker_config.event_loop
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+        self._telemetry_relay = config.worker_config.telemetry_relay
 
         self._workers: List[WorkerProcess] = []
         self._capacity_coordinator = CapacityCoordinator(
@@ -70,6 +71,7 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
             worker_manager_id=self._worker_manager_id,
             worker_manager_address=self._children_address,
             unit_id=unit_id,
+            telemetry_relay=self._telemetry_relay,
         )
         worker.start()
         self._workers.append(worker)

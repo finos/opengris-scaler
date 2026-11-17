@@ -52,6 +52,17 @@ class WorkerConfig(ConfigClass):
             ),
         ),
     )
+    telemetry_relay: bool = dataclasses.field(
+        default=False,
+        metadata=dict(
+            short="-tr",
+            action="store_true",
+            help=(
+                "send the telemetry of workers and processors through the scheduler instead of to "
+                "OTEL_EXPORTER_OTLP_ENDPOINT, for workers that cannot reach a collector"
+            ),
+        ),
+    )
     io_threads: int = dataclasses.field(
         default=defaults.DEFAULT_IO_THREADS,
         metadata=dict(short="-it", help="set the number of io threads for io backend per worker"),

@@ -119,6 +119,9 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
         if worker_config.hard_processor_suspend:
             command += " --hard-processor-suspend"
 
+        if worker_config.telemetry_relay:
+            command += " --telemetry-relay"
+
         object_storage_address = config.worker_manager_config.object_storage_address
         if object_storage_address is not None:
             command += f" --object-storage-address {object_storage_address}"
