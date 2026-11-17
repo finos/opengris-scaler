@@ -168,3 +168,38 @@ TEST_F(YMQConnectClientTest, ConnectClientDisconnectDuringWebSocketUpgrade)
 
     ASSERT_EQ(*connectError, scaler::ymq::Error::ErrorCode::SocketStopRequested);
 }
+
+TEST_F(YMQConnectClientTest, ConnectClientDisconnectDuringRetryDelay)
+{
+    // A disconnect while a failed attempt waits to retry reports the stop from the loop, not from inside disconnect().
+
+    constexpr int maxRetryTimes = 1;
+    constexpr std::chrono::milliseconds initRetryDelay {1000};
+    constexpr std::chrono::milliseconds disconnectDelay {100};
+
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
+
+    // Port 49151 is IANA reserved, hopefully never assigned. The first attempt fails at once and waits to retry.
+    const auto address = scaler::ymq::Address::fromString("tcp://127.0.0.1:49151").value();
+
+    std::optional<scaler::ymq::Error::ErrorCode> connectError;
+
+    auto onConnectCallback = [&](std::expected<scaler::ymq::internal::Client, scaler::ymq::Error> result) {
+        ASSERT_FALSE(result.has_value());
+        connectError = result.error()._errorCode;
+    };
+
+    auto connectClient =
+        scaler::ymq::internal::ConnectClient::init(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay)
+            .value();
+
+    scaler::wrapper::uv::Timer disconnectTimer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(loop));
+    UV_EXIT_ON_ERROR(disconnectTimer.start(disconnectDelay, std::nullopt, [&]() {
+        connectClient.disconnect();
+        ASSERT_FALSE(connectError.has_value());
+    }));
+
+    loop.run();
+
+    ASSERT_EQ(connectError, scaler::ymq::Error::ErrorCode::SocketStopRequested);
+}

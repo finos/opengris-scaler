@@ -75,9 +75,11 @@ void ConnectClient::disconnect() noexcept
 {
     _state->_disconnected = true;
 
+    // A retry waiting for its delay fires now to report the stop: called from here, the callback could re-enter an
+    // owner that is destroying this client.
     if (_state->_retryTimer.has_value()) {
-        UV_EXIT_ON_ERROR(_state->_retryTimer->stop());
-        _state->_retryTimer.reset();
+        UV_EXIT_ON_ERROR(_state->_retryTimer->start(
+            std::chrono::milliseconds {0}, std::nullopt, std::bind_front(&ConnectClient::tryConnect, _state)));
     }
 
     _state->_connectRequest.reset();
@@ -86,6 +88,15 @@ void ConnectClient::disconnect() noexcept
 
 void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
 {
+    state->_retryTimer.reset();
+
+    if (state->_disconnected) {
+        state->_onConnectCallback(
+            std::unexpected(scaler::ymq::Error(scaler::ymq::Error::ErrorCode::SocketStopRequested)));
+        state->_onConnectCallback = {};  // immediately release the callback resources
+        return;
+    }
+
     assert(state->_address.secure() == state->_sslContext.has_value());
 
     switch (state->_address.type()) {
