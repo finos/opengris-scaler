@@ -15,9 +15,11 @@ from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConf
 from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
     child_link_arguments,
     format_capabilities,
     load_requirements_content,
+    unit_environment,
 )
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
@@ -40,6 +42,11 @@ class _InstanceInfo:
 class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: OCIRawWorkerManagerConfig, max_instances: int) -> None:
         self._config = config
+        requirements_txt = config.python_worker_environment.requirements_txt
+        check_unit_requirements_support_telemetry(
+            load_requirements_content(requirements_txt) if requirements_txt is not None else None,
+            config.worker_config.telemetry_relay,
+        )
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._instances: List[_InstanceInfo] = []
         self._container_instances_client: Any = None
@@ -157,6 +164,7 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
                         "COMMAND": command,
                         "PYTHON_REQUIREMENTS": requirements_content,
                         "PYTHON_VERSION": config.python_worker_environment.python_version,
+                        **unit_environment(),
                     },
                 )
             ],

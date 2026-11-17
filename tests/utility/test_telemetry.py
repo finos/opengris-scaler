@@ -1,3 +1,5 @@
+import asyncio
+import multiprocessing
 import os
 import time
 import unittest
@@ -8,9 +10,17 @@ from opentelemetry import baggage, context, trace
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 
 from scaler import Client, SchedulerClusterCombo
+from scaler.cluster.combo import _run_native_worker_manager
+from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.network_util import get_available_tcp_port
+from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.otlp_receiver import OTLPReceiver
 from tests.utility.utility import logging_test_name
+from tests.worker_manager.test_nesting import UNIT_ID, _FakeParent
 
 TELEMETRY_TIMEOUT_SECONDS = 30
 POLL_SECONDS = 0.1
@@ -19,6 +29,10 @@ CLIENT_TRACE_ID = 0x0123456789ABCDEF0123456789ABCDEF
 CLIENT_SPAN_ID = 0x0123456789ABCDEF
 
 TASK_COUNT = 20
+
+# the parent's reconcile span, as a cloud worker manager passes it to a unit in TRACEPARENT
+PARENT_RECONCILE_TRACE_ID = 0x00112233445566778899AABBCCDDEEFF
+PARENT_RECONCILE_SPAN_ID = 0x0011223344556677
 
 # export within a fraction of a second, so a test waits on the cluster, not on the SDK's default 5s and 60s intervals
 FAST_EXPORT_ENVIRONMENT = {
@@ -219,3 +233,66 @@ class TestTelemetryRelay(unittest.TestCase):
             lambda: len(self.receiver.spans_named("scaler.worker.task")) >= TASK_COUNT,
             f"{TASK_COUNT} worker task spans",
         )
+
+
+class TestTelemetryOfAUnit(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+        self.receiver = OTLPReceiver()
+        self.receiver.start()
+        self.addCleanup(self.receiver.stop)
+
+    async def test_a_units_manager_joins_the_trace_of_the_reconcile_that_started_it(self) -> None:
+        """A unit started with its parent's TRACEPARENT nests its reconcile, then its worker's start, under it."""
+        traceparent = f"00-{PARENT_RECONCILE_TRACE_ID:032x}-{PARENT_RECONCILE_SPAN_ID:016x}-01"
+        unit_environment = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": self.receiver.endpoint,
+            "TRACEPARENT": traceparent,
+            **FAST_EXPORT_ENVIRONMENT,
+        }
+
+        combo = SchedulerClusterCombo(n_workers=0)
+        parent = _FakeParent(AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"))
+        parent.task_concurrency = 1
+        parent_task = asyncio.ensure_future(parent.run())
+        # started like a unit's manager: bootstrap_process installs the SDK from the environment, then the manager runs
+        child_manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
+                worker_manager_config=WorkerManagerConfig(
+                    scheduler_address=AddressConfig.from_string(combo.get_address()),
+                    worker_manager_id="unit-telemetry-test",
+                    max_task_concurrency=1,
+                ),
+                worker_config=WorkerConfig(heartbeat_interval_seconds=1),
+                parent_address=parent.address,
+                unit_id=UNIT_ID,
+            )
+        )
+        child_process = multiprocessing.get_context("spawn").Process(
+            target=_run_native_worker_manager, args=(child_manager,)
+        )
+        try:
+            await asyncio.sleep(0.5)  # let the fake parent bind before the child dials it
+            with mock.patch.dict(os.environ, unit_environment):
+                child_process.start()  # spawn copies the environment at start
+
+            span_names = ["scaler.worker_manager.reconcile", "scaler.worker.start"]
+            deadline = time.monotonic() + TELEMETRY_TIMEOUT_SECONDS
+            while not all(self.receiver.spans_named(name) for name in span_names):
+                self.assertLess(time.monotonic(), deadline, f"timed out waiting for spans {span_names}")
+                await asyncio.sleep(POLL_SECONDS)
+        finally:
+            if child_process.is_alive():
+                child_process.terminate()
+                child_process.join()
+            parent_task.cancel()
+            parent.destroy()
+            combo.shutdown()
+
+        reconcile = self.receiver.spans_named("scaler.worker_manager.reconcile")[0].span
+        start = self.receiver.spans_named("scaler.worker.start")[0].span
+        self.assertEqual(int.from_bytes(reconcile.trace_id, "big"), PARENT_RECONCILE_TRACE_ID)
+        self.assertEqual(int.from_bytes(reconcile.parent_span_id, "big"), PARENT_RECONCILE_SPAN_ID)
+        self.assertEqual(start.parent_span_id, reconcile.span_id)

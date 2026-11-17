@@ -10,7 +10,12 @@ import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import child_link_arguments, format_capabilities
+from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
+    child_link_arguments,
+    format_capabilities,
+    unit_environment,
+)
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -45,6 +50,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_cluster = config.ecs_cluster
         self._ecs_task_image = config.ecs_task_image
         self._ecs_python_requirements = config.ecs_python_requirements
+        check_unit_requirements_support_telemetry(self._ecs_python_requirements, self._telemetry_relay)
         self._ecs_python_version = config.ecs_python_version
         self._ecs_task_definition = config.ecs_task_definition
         self._ecs_task_cpu = config.ecs_task_cpu
@@ -169,6 +175,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
                             {"name": "COMMAND", "value": self._build_task_command(unit_id)},
                             {"name": "PYTHON_REQUIREMENTS", "value": self._ecs_python_requirements},
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
+                            *({"name": name, "value": value} for name, value in unit_environment().items()),
                         ],
                     }
                 ]

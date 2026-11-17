@@ -26,9 +26,11 @@ from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.telemetry import worker_manager_service
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
     child_link_arguments,
     format_capabilities,
     load_requirements_content,
+    unit_environment,
 )
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
@@ -208,6 +210,7 @@ class ORBAWSEC2WorkerManager:
         if config.image_id is None:
             requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
             self._validate_requirements(requirements_content)
+            check_unit_requirements_support_telemetry(requirements_content, config.worker_config.telemetry_relay)
 
     def _build_app_config(self) -> dict:
         region = self._config.aws_region
@@ -448,7 +451,8 @@ set +e
 
 """
 
-        backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
+        environment = {"SCALER_NETWORK_BACKEND": self._config.network_backend.name, **unit_environment()}
+        backend_prefix = "".join(f"{name}={shlex.quote(value)} " for name, value in environment.items())
         wm_id = shlex.quote(worker_manager_config.worker_manager_id)
         script += f"""{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
     {child_link_arguments(worker_manager_config, self._config.cloud_children_config, unit_id, workers_per_instance)} \\
