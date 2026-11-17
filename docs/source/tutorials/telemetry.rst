@@ -1,7 +1,7 @@
 Telemetry
 =========
 
-Scaler exports metrics and logs to an `OpenTelemetry <https://opentelemetry.io/>`_ collector over OTLP/HTTP.
+Scaler exports traces, metrics, and logs to an `OpenTelemetry <https://opentelemetry.io/>`_ collector over OTLP/HTTP.
 
 Enable export
 -------------
@@ -34,10 +34,48 @@ Each process reports itself with ``service.namespace=scaler`` and one of these `
 
 Resource attributes ``scaler.worker.id``, ``scaler.worker_manager.id``, and ``scaler.unit.id`` identify workers and worker managers.
 
+Traces
+------
+
+Each task is one trace:
+
+.. code-block:: text
+
+    scaler.client.submit                 the client hands the task to the scheduler
+    └─ scaler.scheduler.task             from arrival to a terminal state, one span event per transition
+       └─ scaler.worker.task             from arrival at the worker to the result or cancel it sends back
+          └─ scaler.processor.execute    the function call, recording the exception of a failed task
+             ├─ scaler.processor.fetch_objects
+             ├─ <spans the task function starts>
+             └─ scaler.processor.store_result
+
+- The client does not install the SDK: ``scaler.client.submit`` records only when the calling application configured OpenTelemetry, and joins the caller's trace.
+- Without a client span, ``scaler.scheduler.task`` starts the trace.
+- The task function runs inside ``scaler.processor.execute``, so spans it starts with the OpenTelemetry API nest under it.
+- ``scaler.scheduler.task`` carries ``scaler.task.id``, ``scaler.task.function``, and the terminal ``scaler.task.state``, and ends with an error status when the task failed.
+- With a client span, every Scaler process follows the client's sampling decision.
+- Without one, the scheduler decides by the standard ``OTEL_TRACES_SAMPLER`` variable, and the worker and processor follow it.
+
+Baggage
+-------
+
+- `Baggage <https://opentelemetry.io/docs/concepts/signals/baggage/>`_ the client sets travels with each task, and every span the scheduler, worker, and processor start copies it into its attributes.
+- Tag a job once on the client, and every span of its tasks carries the tag:
+
+  .. code-block:: python
+
+      from opentelemetry import baggage, context
+
+      token = context.attach(baggage.set_baggage("job", "backtest-42"))
+      try:
+          futures = [client.submit(simulate, seed) for seed in range(100)]
+      finally:
+          context.detach(token)
+
 Metrics
 -------
 
-The scheduler exports these metrics every ``status_report_interval_seconds``, except the event loop lag, which it samples every second:
+The scheduler refreshes these values every ``status_report_interval_seconds``, samples the event loop lag every second, and exports every ``OTEL_METRIC_EXPORT_INTERVAL``:
 
 - ``scaler.scheduler.tasks``: tasks per ``state``; terminal states count every task that reached them
 - ``scaler.scheduler.workers``: connected workers

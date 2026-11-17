@@ -52,6 +52,7 @@ bool SchemaRegistry::init()
     REG_STRUCT(kModCommon, TaskState);
     REG_STRUCT(kModCommon, WorkerState);
     REG_STRUCT(kModCommon, TaskCapability);
+    REG_STRUCT(kModCommon, TraceContext);
     REG_STRUCT(kModCommon, ObjectMetadata);
     REG_STRUCT(kModCommon, ObjectStorageAddress);
 

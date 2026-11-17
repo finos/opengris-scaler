@@ -7,26 +7,23 @@ import dataclasses
 import enum
 import logging
 import os
-import socket
-import uuid
 from typing import Any, Dict, Optional
 
-from scaler.about import __version__
+from opentelemetry import propagate
+from opentelemetry.context import Context
+
+from scaler.protocol.capnp import TraceContext
 from scaler.utility.logging.utility import LoggingLevel
+from scaler.utility.semantic_conventions import UNIT_ID_ATTRIBUTE, WORKER_MANAGER_ID_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
 
 OTLP_ENDPOINT_ENV = "OTEL_EXPORTER_OTLP_ENDPOINT"
 SDK_DISABLED_ENV = "OTEL_SDK_DISABLED"
 
-SERVICE_NAMESPACE = "scaler"
-SCALER_LOGGER_NAME = "scaler"
-
-EVENT_NAME_ATTRIBUTE = "event.name"
-CLIENT_ID_ATTRIBUTE = "scaler.client.id"
-WORKER_ID_ATTRIBUTE = "scaler.worker.id"
-WORKER_MANAGER_ID_ATTRIBUTE = "scaler.worker_manager.id"
-UNIT_ID_ATTRIBUTE = "scaler.unit.id"
+TRACEPARENT_HEADER = "traceparent"
+TRACESTATE_HEADER = "tracestate"
+BAGGAGE_HEADER = "baggage"
 
 # the SDK logger provider, set once per process; `None` while telemetry is off
 _logger_provider: Optional[Any] = None
@@ -54,6 +51,31 @@ def worker_manager_service(worker_manager_id: str, unit_id: Optional[str]) -> Te
     return TelemetryService(ServiceName.WORKER_MANAGER, attributes)
 
 
+def empty_trace_context() -> TraceContext:
+    """A trace context with no span; a locally built message reads every field it sets, so all three are set."""
+    return TraceContext(traceparent="", tracestate="", baggage="")
+
+
+def inject_trace_context(context: Optional[Context] = None) -> TraceContext:
+    """The W3C headers of `context`, or of the current context, all empty when no span is recording."""
+    carrier: Dict[str, str] = {}
+    propagate.inject(carrier, context=context)
+    return TraceContext(
+        traceparent=carrier.get(TRACEPARENT_HEADER, ""),
+        tracestate=carrier.get(TRACESTATE_HEADER, ""),
+        baggage=carrier.get(BAGGAGE_HEADER, ""),
+    )
+
+
+def extract_trace_context(trace_context: TraceContext) -> Context:
+    headers = {
+        TRACEPARENT_HEADER: trace_context.traceparent,
+        TRACESTATE_HEADER: trace_context.tracestate,
+        BAGGAGE_HEADER: trace_context.baggage,
+    }
+    return propagate.extract({name: value for name, value in headers.items() if value})
+
+
 def is_export_configured() -> bool:
     """True when this process exports telemetry directly to a collector."""
     if os.environ.get(SDK_DISABLED_ENV, "").lower() == "true":
@@ -72,64 +94,15 @@ def configure_telemetry(service: TelemetryService, logging_level: str) -> None:
     if not is_export_configured():
         return
 
-    if _logger_provider is None:
-        _logger_provider = _install_sdk(service)
-        logger.info(f"exporting telemetry as {service.name.value!r} to {os.environ[OTLP_ENDPOINT_ENV]!r}")
-
-    _attach_log_handler(_logger_provider, logging_level)
-
-
-def _install_sdk(service: TelemetryService) -> Any:
     try:
-        from opentelemetry import metrics, trace
-        from opentelemetry._logs import set_logger_provider
-        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-        from opentelemetry.sdk._logs import LoggerProvider
-        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-        from opentelemetry.sdk.metrics import MeterProvider
-        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from scaler.utility import telemetry_sdk
     except ImportError as e:
         raise ImportError(
             f"{OTLP_ENDPOINT_ENV} is set but the OpenTelemetry SDK is missing: install opengris-scaler[otel]"
         ) from e
 
-    resource = Resource.create(
-        {
-            "service.name": service.name.value,
-            "service.namespace": SERVICE_NAMESPACE,
-            "service.version": __version__,
-            "service.instance.id": uuid.uuid4().hex,
-            "host.name": socket.gethostname(),
-            "process.pid": os.getpid(),
-            **service.attributes,
-        }
-    )
+    if _logger_provider is None:
+        _logger_provider = telemetry_sdk.install_sdk(service.name.value, service.attributes)
+        logger.info(f"exporting telemetry as {service.name.value!r} to {os.environ[OTLP_ENDPOINT_ENV]!r}")
 
-    tracer_provider = TracerProvider(resource=resource)
-    tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
-    trace.set_tracer_provider(tracer_provider)
-
-    meter_provider = MeterProvider(
-        resource=resource, metric_readers=[PeriodicExportingMetricReader(OTLPMetricExporter())]
-    )
-    metrics.set_meter_provider(meter_provider)
-
-    logger_provider = LoggerProvider(resource=resource)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
-    set_logger_provider(logger_provider)
-    return logger_provider
-
-
-def _attach_log_handler(logger_provider: Any, logging_level: str) -> None:
-    from opentelemetry.sdk._logs import LoggingHandler
-
-    scaler_logger = logging.getLogger(SCALER_LOGGER_NAME)
-    if any(isinstance(handler, LoggingHandler) for handler in scaler_logger.handlers):
-        return
-
-    scaler_logger.addHandler(LoggingHandler(level=LoggingLevel[logging_level].value, logger_provider=logger_provider))
+    telemetry_sdk.attach_log_handler(_logger_provider, LoggingLevel[logging_level].value)

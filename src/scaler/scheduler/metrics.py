@@ -7,7 +7,18 @@ from opentelemetry.metrics import CallbackOptions, Observation
 
 from scaler.protocol.capnp import StateScheduler, TaskState
 from scaler.utility.mixins import Looper
-from scaler.utility.telemetry import WORKER_MANAGER_ID_ATTRIBUTE
+from scaler.utility.semantic_conventions import (
+    OBJECT_STORAGE_BYTES_METRIC,
+    SCHEDULER_CLIENTS_METRIC,
+    SCHEDULER_EVENT_LOOP_LAG_METRIC,
+    SCHEDULER_OBJECTS_METRIC,
+    SCHEDULER_PROCESSORS_METRIC,
+    SCHEDULER_TASKS_METRIC,
+    SCHEDULER_WORKERS_METRIC,
+    STATE_ATTRIBUTE,
+    WORKER_MANAGER_ID_ATTRIBUTE,
+    WORKER_MANAGER_PENDING_WORKERS_METRIC,
+)
 
 METER_NAME = "scaler.scheduler"
 
@@ -27,30 +38,30 @@ class SchedulerMetrics:
 
         meter = metrics.get_meter(METER_NAME)
         meter.create_observable_gauge(
-            "scaler.scheduler.tasks",
+            SCHEDULER_TASKS_METRIC,
             callbacks=[self.__observe_tasks],
             description="tasks per state; terminal states count every task that reached them",
         )
         meter.create_observable_gauge(
-            "scaler.scheduler.workers", callbacks=[self.__observe_workers], description="connected workers"
+            SCHEDULER_WORKERS_METRIC, callbacks=[self.__observe_workers], description="connected workers"
         )
         meter.create_observable_gauge(
-            "scaler.scheduler.processors", callbacks=[self.__observe_processors], description="processors per state"
+            SCHEDULER_PROCESSORS_METRIC, callbacks=[self.__observe_processors], description="processors per state"
         )
         meter.create_observable_gauge(
-            "scaler.scheduler.clients", callbacks=[self.__observe_clients], description="connected clients"
+            SCHEDULER_CLIENTS_METRIC, callbacks=[self.__observe_clients], description="connected clients"
         )
         meter.create_observable_gauge(
-            "scaler.scheduler.objects", callbacks=[self.__observe_objects], description="objects the scheduler tracks"
+            SCHEDULER_OBJECTS_METRIC, callbacks=[self.__observe_objects], description="objects the scheduler tracks"
         )
         meter.create_observable_gauge(
-            "scaler.object_storage.bytes",
+            OBJECT_STORAGE_BYTES_METRIC,
             unit="By",
             callbacks=[self.__observe_object_storage_bytes],
             description="bytes the object storage server holds",
         )
         meter.create_observable_gauge(
-            "scaler.worker_manager.pending_workers",
+            WORKER_MANAGER_PENDING_WORKERS_METRIC,
             callbacks=[self.__observe_pending_workers],
             description="workers requested from a worker manager that have not connected yet",
         )
@@ -62,7 +73,7 @@ class SchedulerMetrics:
         if self._state is None:
             return []
         return [
-            Observation(pair.count, {"state": TaskState(pair.state).name})
+            Observation(pair.count, {STATE_ATTRIBUTE: TaskState(pair.state).name})
             for pair in self._state.taskManager.stateToCount
         ]
 
@@ -85,9 +96,9 @@ class SchedulerMetrics:
                 else:
                     idle += 1
         return [
-            Observation(busy, {"state": "busy"}),
-            Observation(idle, {"state": "idle"}),
-            Observation(suspended, {"state": "suspended"}),
+            Observation(busy, {STATE_ATTRIBUTE: "busy"}),
+            Observation(idle, {STATE_ATTRIBUTE: "idle"}),
+            Observation(suspended, {STATE_ATTRIBUTE: "suspended"}),
         ]
 
     def __observe_clients(self, options: CallbackOptions) -> Iterable[Observation]:
@@ -119,7 +130,7 @@ class EventLoopLagMonitor(Looper):
 
     def __init__(self) -> None:
         self._lag = metrics.get_meter(METER_NAME).create_histogram(
-            "scaler.scheduler.event_loop.lag", unit="s", description="time the event loop woke a coroutine late"
+            SCHEDULER_EVENT_LOOP_LAG_METRIC, unit="s", description="time the event loop woke a coroutine late"
         )
 
     async def routine(self) -> None:

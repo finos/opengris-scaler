@@ -38,6 +38,13 @@ struct TaskCapability {
     value @1 :Int64;    # the quantity of the capability provided/required. Use -1 for quantity-less capabilities
 }
 
+struct TraceContext {
+    # W3C trace context headers, empty when the sender has no active span
+    traceparent @0 :Text;
+    tracestate @1 :Text;
+    baggage @2 :Text;
+}
+
 struct ObjectMetadata {
     objectIds @0 :List(Data);
     objectTypes @1 :List(ObjectContentType);

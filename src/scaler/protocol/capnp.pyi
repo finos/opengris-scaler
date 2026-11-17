@@ -52,6 +52,13 @@ class TaskCapability(CapnpStruct):
     @staticmethod
     def new_msg(name: str, value: int) -> "TaskCapability": ...
 
+class TraceContext(CapnpStruct):
+    traceparent: str
+    tracestate: str
+    baggage: str
+    @staticmethod
+    def new_msg(traceparent: str = ..., tracestate: str = ..., baggage: str = ...) -> "TraceContext": ...
+
 class ObjectMetadata(CapnpStruct):
     class ObjectContentType(IntEnum):
         serializer = 0
@@ -167,6 +174,7 @@ class Task(BaseMessage):
     funcObjectId: ScalerObjectID
     functionArgs: Any
     capabilities: Any
+    traceContext: TraceContext
 
     class Argument(CapnpStruct):
         type: Any
