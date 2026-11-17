@@ -20,6 +20,7 @@ from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerMana
 from scaler.config.types.address import AddressConfig
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.telemetry import worker_manager_service
 from scaler.worker_manager.cloud.child_command import (
     child_link_arguments,
     format_capabilities,
@@ -286,7 +287,12 @@ class ORBAWSEC2WorkerManager:
         async with orb(app_config=app_config) as sdk:
             # bootstrap_process is called after the ORB context is entered because ORB reconfigures
             # the root logger during __aenter__, which would otherwise suppress scaler log output.
-            bootstrap_process(self._logging_paths, self._logging_config_file, self._logging_level)
+            bootstrap_process(
+                self._logging_paths,
+                self._logging_config_file,
+                self._logging_level,
+                telemetry_service=worker_manager_service(self._config.worker_manager_config.worker_manager_id, None),
+            )
             await self._setup(sdk)
             try:
                 await self._runner.run_in_loop(self._loop)

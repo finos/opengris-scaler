@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from scaler.config.config_class import ConfigClass
 from scaler.config.reconstruction import _from_args
+from scaler.utility.telemetry import worker_manager_service
 
 # ---------------------------------------------------------------------------
 # Minimal stub configs for section= tests
@@ -374,7 +375,11 @@ class TestRunWorkerManager(unittest.TestCase):
             _run_worker_manager(config)
 
         mock_log.assert_called_once_with(
-            config.logging_config.paths, config.logging_config.config_file, "WARNING", process_name=config._tag
+            config.logging_config.paths,
+            config.logging_config.config_file,
+            "WARNING",
+            process_name=config._tag,
+            telemetry_service=worker_manager_service(config.worker_manager_config.worker_manager_id, None),
         )
 
     def _make_orb_aws_ec2_config(self, event_loop="builtin", logging_level="INFO"):

@@ -25,6 +25,13 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.telemetry import (
+    UNIT_ID_ATTRIBUTE,
+    WORKER_ID_ATTRIBUTE,
+    WORKER_MANAGER_ID_ATTRIBUTE,
+    ServiceName,
+    TelemetryService,
+)
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_manager.proxy.heartbeat_manager import HeartbeatManager
 from scaler.worker_manager.proxy.mixins import ExecutionBackend, ProcessorStatusProvider
@@ -172,7 +179,16 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             self._connector_storage.destroy()
 
     def __initialize(self) -> None:
-        bootstrap_process()
+        bootstrap_process(
+            telemetry_service=TelemetryService(
+                ServiceName.WORKER,
+                {
+                    WORKER_ID_ATTRIBUTE: self._ident.decode(),
+                    WORKER_MANAGER_ID_ATTRIBUTE: self._worker_manager_id.decode(),
+                    UNIT_ID_ATTRIBUTE: self._unit_id,
+                },
+            )
+        )
         register_event_loop(self._event_loop)
 
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)
