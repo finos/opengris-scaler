@@ -21,8 +21,9 @@ Enable export
 - A process exports only when ``OTEL_EXPORTER_OTLP_ENDPOINT`` is set, and ``OTEL_SDK_DISABLED=true`` turns export off.
 - Workers and processors inherit the environment of the worker manager that starts them.
 - A cloud worker manager (ECS, ORB AWS EC2, OCI) passes every ``OTEL_*`` variable it has to the units it starts, so a unit's manager, workers, and processors export the same way.
+- Units that reach the collector at another address, such as through NAT, export to ``--advertised-otlp-endpoint`` (``advertised_otlp_endpoint`` in the ``[[worker_manager]]`` section) instead; it replaces ``OTEL_EXPORTER_OTLP_ENDPOINT`` only, so a signal-specific endpoint such as ``OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`` reaches the units unchanged.
 - The cloud provider stores those variables with the unit (the ECS task overrides, the EC2 user data, the OCI container): put a secret such as an ``OTEL_EXPORTER_OTLP_HEADERS`` token there only if those places may hold it.
-- A cloud worker manager whose units install from ``requirements_txt`` refuses to start when its units would export but the requirements install ``opengris-scaler`` without the ``otel`` or ``all`` extra.
+- A cloud worker manager whose units install from ``requirements_txt`` refuses to start when its units would export (an endpoint, an advertised endpoint, or ``--telemetry-relay``) but the requirements install ``opengris-scaler`` without the ``otel`` or ``all`` extra.
 - The SDK reads every other setting from the standard `OTEL_* variables <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/>`_, for example ``OTEL_EXPORTER_OTLP_HEADERS`` and ``OTEL_METRIC_EXPORT_INTERVAL``.
 
 Relay through the scheduler

@@ -441,6 +441,11 @@ Arguments (shared by all subcommands)
      - ``--children-address``
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: address the units dial, when they reach the worker
        manager through NAT (e.g. an EC2 public IP).
+   * - ``-aoe``, ``--advertised-otlp-endpoint``
+     - No
+     - ``OTEL_EXPORTER_OTLP_ENDPOINT``
+     - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: OTLP/HTTP endpoint the units export telemetry to,
+       when they reach the collector at another address (see :doc:`telemetry`).
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty

@@ -50,7 +50,9 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_cluster = config.ecs_cluster
         self._ecs_task_image = config.ecs_task_image
         self._ecs_python_requirements = config.ecs_python_requirements
-        check_unit_requirements_support_telemetry(self._ecs_python_requirements, self._telemetry_relay)
+        check_unit_requirements_support_telemetry(
+            self._ecs_python_requirements, self._telemetry_relay, config.cloud_children_config
+        )
         self._ecs_python_version = config.ecs_python_version
         self._ecs_task_definition = config.ecs_task_definition
         self._ecs_task_cpu = config.ecs_task_cpu
@@ -175,7 +177,10 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
                             {"name": "COMMAND", "value": self._build_task_command(unit_id)},
                             {"name": "PYTHON_REQUIREMENTS", "value": self._ecs_python_requirements},
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
-                            *({"name": name, "value": value} for name, value in unit_environment().items()),
+                            *(
+                                {"name": name, "value": value}
+                                for name, value in unit_environment(self._cloud_children_config).items()
+                            ),
                         ],
                     }
                 ]

@@ -46,6 +46,7 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
         check_unit_requirements_support_telemetry(
             load_requirements_content(requirements_txt) if requirements_txt is not None else None,
             config.worker_config.telemetry_relay,
+            config.cloud_children_config,
         )
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._instances: List[_InstanceInfo] = []
@@ -164,7 +165,7 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
                         "COMMAND": command,
                         "PYTHON_REQUIREMENTS": requirements_content,
                         "PYTHON_VERSION": config.python_worker_environment.python_version,
-                        **unit_environment(),
+                        **unit_environment(config.cloud_children_config),
                     },
                 )
             ],
