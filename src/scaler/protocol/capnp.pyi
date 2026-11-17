@@ -261,6 +261,7 @@ class WorkerManagerHeartbeatEcho(BaseMessage): ...
 
 class WorkerManagerCommand(BaseMessage):
     setDesiredTaskConcurrencyRequests: Any
+    traceContext: TraceContext
 
     class DesiredTaskConcurrencyRequest(CapnpStruct):
         taskConcurrency: int

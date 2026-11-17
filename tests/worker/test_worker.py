@@ -19,6 +19,7 @@ from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, SysCallError
 from scaler.protocol.capnp import WorkerDisconnectNotification
+from scaler.utility.telemetry import empty_trace_context
 from scaler.worker.worker import Worker
 
 
@@ -78,6 +79,7 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
             worker_manager_id=b"wm",
             worker_manager_address=AddressConfig.from_string("tcp://127.0.0.1:2347"),
             unit_id="unit",
+            trace_context=empty_trace_context(),
         )
 
         worker._backend = None  # only used as a collaborator factory, which __initialize skips below

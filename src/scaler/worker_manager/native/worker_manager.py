@@ -12,6 +12,7 @@ import psutil
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.utility.exitcode import describe_exitcode
+from scaler.utility.telemetry import inject_trace_context
 from scaler.worker.worker import Worker
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.desired_concurrency import extract_desired_count
@@ -79,6 +80,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             worker_manager_id=self._worker_manager_id,
             worker_manager_address=self._children_address,
             unit_id=unit_id,
+            trace_context=inject_trace_context(),  # the reconcile span, current while start_units runs
             security_config=self._security_config,
         )
 

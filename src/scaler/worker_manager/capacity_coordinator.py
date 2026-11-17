@@ -4,10 +4,21 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
+from opentelemetry import context, trace
+from opentelemetry.context import Context
+from opentelemetry.trace import Status, StatusCode
+
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS
 from scaler.utility.cooldown import Cooldown
+from scaler.utility.semantic_conventions import (
+    CURRENT_UNITS_ATTRIBUTE,
+    DESIRED_UNITS_ATTRIBUTE,
+    WORKER_MANAGER_RECONCILE_SPAN,
+)
 
 logger = logging.getLogger(__name__)
+
+tracer = trace.get_tracer(__name__)
 
 
 class CapacityCoordinator:
@@ -53,6 +64,8 @@ class CapacityCoordinator:
         self._max_unit_count = max_unit_count
         self._scale_down_cooldown = Cooldown(scale_down_cooldown_seconds)
         self._desired_unit_count: int = 0
+        # the context of the call that last changed the desired count, so the reconcile it causes nests under it
+        self._desired_change_context: Context = context.get_current()
         self._active_reconcile_task: Optional[asyncio.Task] = None
         self._reconcile_needed: asyncio.Event = asyncio.Event()
         self._stop: asyncio.Event = asyncio.Event()
@@ -66,6 +79,7 @@ class CapacityCoordinator:
         if count != self._desired_unit_count:
             logger.info(f"Desired unit count changed: {self._desired_unit_count} -> {count}")
             self._desired_unit_count = count
+            self._desired_change_context = context.get_current()
         self._reconcile_needed.set()
         if self._active_reconcile_task is None:
             self._active_reconcile_task = asyncio.create_task(self._reconcile())
@@ -117,13 +131,22 @@ class CapacityCoordinator:
                         )
                         continue
 
-                try:
-                    if delta > 0:
-                        await self._start_units(delta)
-                    elif delta < 0:
-                        await self._stop_units(abs(delta))
-                        self._scale_down_cooldown.reset()
-                except Exception:
-                    logger.exception("Reconcile failed")
+                if delta == 0:
+                    continue
+
+                attributes = {DESIRED_UNITS_ATTRIBUTE: desired, CURRENT_UNITS_ATTRIBUTE: current}
+                with tracer.start_as_current_span(
+                    WORKER_MANAGER_RECONCILE_SPAN, context=self._desired_change_context, attributes=attributes
+                ) as span:
+                    try:
+                        if delta > 0:
+                            await self._start_units(delta)
+                        else:
+                            await self._stop_units(abs(delta))
+                            self._scale_down_cooldown.reset()
+                    except Exception as e:
+                        logger.exception("Reconcile failed")
+                        span.record_exception(e)
+                        span.set_status(Status(StatusCode.ERROR, type(e).__name__))
         finally:
             self._active_reconcile_task = None

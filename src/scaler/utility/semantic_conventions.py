@@ -11,6 +11,10 @@ FUNCTION_NAME_ATTRIBUTE = "scaler.task.function"
 TASK_STATE_ATTRIBUTE = "scaler.task.state"
 WORKER_DISCONNECT_REASON_ATTRIBUTE = "scaler.worker.disconnect_reason"
 STATE_ATTRIBUTE = "state"
+DESIRED_TASK_CONCURRENCY_ATTRIBUTE = "scaler.worker_manager.desired_task_concurrency"
+PREVIOUS_TASK_CONCURRENCY_ATTRIBUTE = "scaler.worker_manager.previous_task_concurrency"
+DESIRED_UNITS_ATTRIBUTE = "scaler.worker_manager.desired_units"
+CURRENT_UNITS_ATTRIBUTE = "scaler.worker_manager.current_units"
 
 # spans
 CLIENT_SUBMIT_SPAN = "scaler.client.submit"
@@ -19,6 +23,9 @@ WORKER_TASK_SPAN = "scaler.worker.task"
 PROCESSOR_EXECUTE_SPAN = "scaler.processor.execute"
 PROCESSOR_FETCH_OBJECTS_SPAN = "scaler.processor.fetch_objects"
 PROCESSOR_STORE_RESULT_SPAN = "scaler.processor.store_result"
+SCHEDULER_SCALING_DECISION_SPAN = "scaler.scheduler.scaling_decision"
+WORKER_MANAGER_RECONCILE_SPAN = "scaler.worker_manager.reconcile"
+WORKER_START_SPAN = "scaler.worker.start"
 
 # events on the worker task span; the scheduler task span names its events after the task event classes
 WORKER_TASK_STARTED_EVENT = "started"

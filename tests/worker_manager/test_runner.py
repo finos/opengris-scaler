@@ -21,6 +21,7 @@ from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
+from scaler.utility.telemetry import empty_trace_context
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -54,6 +55,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         requests = [MagicMock()]
         cmd = MagicMock(spec=WorkerManagerCommand)
         cmd.setDesiredTaskConcurrencyRequests = requests
+        cmd.traceContext = empty_trace_context()
 
         await self.runner._handle_command(cmd)
 

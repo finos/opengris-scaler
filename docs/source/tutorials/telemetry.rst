@@ -56,6 +56,19 @@ Each task is one trace:
 - With a client span, every Scaler process follows the client's sampling decision.
 - Without one, the scheduler decides by the standard ``OTEL_TRACES_SAMPLER`` variable, and the worker and processor follow it.
 
+Each change of a worker manager's desired concurrency is one trace:
+
+.. code-block:: text
+
+    scaler.scheduler.scaling_decision    the scaling policy changed a manager's desired task concurrency
+    └─ scaler.worker_manager.reconcile   the manager starts or stops units, including its cloud API calls
+       └─ scaler.worker.start            a native worker, from process start to its first heartbeat echo
+
+- ``scaler.scheduler.scaling_decision`` carries ``scaler.worker_manager.id``, ``scaler.worker_manager.desired_task_concurrency``, and ``scaler.worker_manager.previous_task_concurrency``.
+- ``scaler.worker_manager.reconcile`` carries ``scaler.worker_manager.desired_units`` and ``scaler.worker_manager.current_units``, and ends with an error status when starting or stopping units raised.
+- ``scaler.worker.start`` ends with an error status when the worker exits before it reaches the scheduler.
+- The trace ends at the worker manager for workers that a cloud unit starts.
+
 Baggage
 -------
 

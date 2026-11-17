@@ -127,3 +127,19 @@ class TestTelemetry(unittest.TestCase):
         scheduler_task = self.receiver.spans_named("scaler.scheduler.task")[0]
         self.assertEqual(scheduler_task.span.status.code, scheduler_task.span.status.STATUS_CODE_ERROR)
         self.assertEqual(scheduler_task.attributes["scaler.task.state"], "failed")
+
+    def test_scale_up_is_one_trace_from_decision_to_connected_worker(self) -> None:
+        """The scheduler's scaling decision parents the manager's reconcile, which parents the worker's start."""
+        span_names = ["scaler.scheduler.scaling_decision", "scaler.worker_manager.reconcile", "scaler.worker.start"]
+        wait_for(lambda: all(self.receiver.spans_named(name) for name in span_names), f"spans {span_names}")
+
+        decision, reconcile, start = [self.receiver.spans_named(name)[0] for name in span_names]
+        self.assertEqual(decision.service_name, "scaler-scheduler")
+        self.assertEqual(reconcile.service_name, "scaler-worker-manager")
+        self.assertEqual(start.service_name, "scaler-worker")
+
+        self.assertEqual(reconcile.span.trace_id, decision.span.trace_id)
+        self.assertEqual(reconcile.span.parent_span_id, decision.span.span_id)
+        self.assertEqual(start.span.parent_span_id, reconcile.span.span_id)
+        self.assertEqual(start.span.status.code, start.span.status.STATUS_CODE_OK)
+        self.assertEqual(decision.attributes["scaler.worker_manager.desired_task_concurrency"], 1)
