@@ -1,6 +1,7 @@
 #include "scaler/ymq/internal/message_connection.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -15,12 +16,14 @@ namespace ymq {
 namespace internal {
 
 MessageConnection::MessageConnection(
+    scaler::wrapper::uv::Loop& loop,
     Identity localIdentity,
     std::optional<Identity> remoteIdentity,
     RemoteIdentityCallback onRemoteIdentityCallback,
     RemoteDisconnectCallback onRemoteDisconnectCallback,
     RecvMessageCallback onRecvMessageCallback) noexcept
-    : _localIdentity(std::move(localIdentity))
+    : _loop(loop)
+    , _localIdentity(std::move(localIdentity))
     , _remoteIdentity(std::move(remoteIdentity))
     , _onRemoteIdentityCallback(std::move(onRemoteIdentityCallback))
     , _onRemoteDisconnectCallback(std::move(onRemoteDisconnectCallback))
@@ -176,6 +179,7 @@ void MessageConnection::initialize() noexcept
 {
     _client        = std::nullopt;
     _clientAborted = std::make_shared<bool>(false);
+    _eofTimer      = std::nullopt;
     _state         = State::Disconnected;
     _recvCurrent   = RecvOperation {};
 
@@ -325,8 +329,12 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
         const scaler::wrapper::uv::Error& error = result.error();
 
         if (error.code() == UV_EOF) {
-            // Remote closed the connection (graceful disconnect), unless a write consumed the error of an abort.
-            onRemoteDisconnect(*_clientAborted ? DisconnectReason::Aborted : DisconnectReason::Disconnected);
+            // Graceful unless a write consumed an abort: its callback runs after this poll phase, before the timers.
+            _client->readStop();
+            _eofTimer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(_loop));
+            UV_EXIT_ON_ERROR(_eofTimer->start(std::chrono::milliseconds {0}, std::nullopt, [this]() {
+                onRemoteDisconnect(*_clientAborted ? DisconnectReason::Aborted : DisconnectReason::Disconnected);
+            }));
             return;
         } else if (isConnectionError(error)) {
             // Connection aborted unexpectedly

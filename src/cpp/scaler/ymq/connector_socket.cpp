@@ -246,6 +246,7 @@ void ConnectorSocket::onMessage(std::shared_ptr<State> state, std::unique_ptr<By
 void ConnectorSocket::emplaceMessageConnection(std::shared_ptr<State> state) noexcept
 {
     state->_connection = std::make_unique<internal::MessageConnection>(
+        state->_thread.loop(),
         state->_identity,
         std::nullopt,
         [](Identity) {},

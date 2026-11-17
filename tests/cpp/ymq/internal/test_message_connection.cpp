@@ -44,6 +44,7 @@ public:
         : _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(_loop)))
         , _serverConnection(
+              _loop,
               serverIdentity,
               std::nullopt,
               std::move(serverOnIdentity),
@@ -51,6 +52,7 @@ public:
               std::move(serverOnMessage))
         , _clientSocket(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop)))
         , _clientConnection(
+              _loop,
               clientIdentity,
               std::nullopt,
               std::move(clientOnIdentity),
@@ -429,6 +431,7 @@ TEST_F(YMQMessageConnectionTest, InvalidMagicString)
 
     scaler::wrapper::uv::TCPSocket clientSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
     scaler::ymq::internal::MessageConnection clientConnection(
+        loop,
         "client-identity",
         std::nullopt,
         [](auto) { FAIL() << "Unexpected identity callback"; },
@@ -461,12 +464,14 @@ public:
         scaler::ymq::internal::MessageConnection::RecvMessageCallback serverOnMessage)
         : _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _serverConnection(
+              _loop,
               ConnectionPair::serverIdentity,
               std::nullopt,
               []([[maybe_unused]] auto identity) {},
               std::move(serverOnDisconnect),
               std::move(serverOnMessage))
         , _clientConnection(
+              _loop,
               ConnectionPair::clientIdentity,
               std::nullopt,
               []([[maybe_unused]] auto identity) {},
@@ -544,6 +549,46 @@ TEST_P(YMQMessageConnectionTransportTest, ResetSeenByAWriteIsStillAnAbort)
     server.sendMessage(
         std::make_unique<scaler::ymq::BufferedBytes>("seen by the reset"),
         []([[maybe_unused]] auto result, [[maybe_unused]] auto payload) {});
+
+    while (!serverDisconnectReason.has_value()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_EQ(*serverDisconnectReason, scaler::ymq::internal::MessageConnection::DisconnectReason::Aborted);
+}
+
+TEST_P(YMQMessageConnectionTransportTest, ResetSeenByAReplyIsStillAnAbort)
+{
+    // A reply from the read callback consumes a reset that arrived with the request, and libuv reports the EOF before
+    // the reply's write callback. BinderSocket replies this way when it flushes the messages queued for a peer.
+
+    std::optional<scaler::ymq::internal::MessageConnection::DisconnectReason> serverDisconnectReason;
+    scaler::ymq::internal::MessageConnection* replier = nullptr;
+
+    TransportConnectionPair connections(
+        GetParam(),
+        [&](auto reason) { serverDisconnectReason = reason; },  // server onRemoteDisconnect
+        [&]([[maybe_unused]] auto message) {                    // server onMessage
+            replier->sendMessage(
+                std::make_unique<scaler::ymq::BufferedBytes>("reply"),
+                []([[maybe_unused]] auto result, [[maybe_unused]] auto payload) {});
+        });
+
+    scaler::ymq::internal::MessageConnection& server = connections.server();
+    scaler::ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                  = connections.loop();
+    replier                                          = &server;
+
+    // Wait for identity exchange
+    while (!server.established() || !client.established()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    // The request and the reset reach the server's socket together.
+    client.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>("request"),
+        []([[maybe_unused]] auto result, [[maybe_unused]] auto payload) {});
+    client.abort();
 
     while (!serverDisconnectReason.has_value()) {
         loop.run(UV_RUN_ONCE);

@@ -46,6 +46,7 @@ public:
         : _context()
         , _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _serverConnection(
+              _loop,
               serverIdentity,
               std::nullopt,
               std::move(serverOnIdentity),
@@ -398,6 +399,7 @@ TEST_P(YMQConnectorSocketTest, TeardownWithStalledPeer)
     scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 
     scaler::ymq::internal::MessageConnection stalledPeer(
+        loop,
         "stalled-peer",
         std::nullopt,
         []([[maybe_unused]] auto identity) {},

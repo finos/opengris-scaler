@@ -280,6 +280,7 @@ internal::MessageConnection& BinderSocket::createConnection(
     ConnectionID connectionId = state->_connectionCounter++;
 
     auto connection = std::make_unique<internal::MessageConnection>(
+        state->_thread.loop(),
         state->_identity,
         remoteIdentity,
         std::bind_front(&BinderSocket::onRemoteIdentity, state, connectionId),
