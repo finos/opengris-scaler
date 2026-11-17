@@ -57,12 +57,15 @@ Each task is one trace:
 
     scaler.client.submit                 the client hands the task to the scheduler
     └─ scaler.scheduler.task             from arrival to a terminal state, one span event per transition
+       ├─ scaler.scheduler.queued        waiting for a worker with room in its queue
        └─ scaler.worker.task             from arrival at the worker to the result or cancel it sends back
+          ├─ scaler.worker.queued        waiting in the worker's queue for its processor
           └─ scaler.processor.execute    the function call, recording the exception of a failed task
              ├─ scaler.processor.fetch_objects
              ├─ <spans the task function starts>
              └─ scaler.processor.store_result
 
+- A task requeued after its worker died or a balance cancel gets another ``scaler.scheduler.queued`` span, and a suspended task another ``scaler.worker.queued`` span.
 - The client does not install the SDK: ``scaler.client.submit`` records only when the calling application configured OpenTelemetry, and joins the caller's trace.
 - Without a client span, ``scaler.scheduler.task`` starts the trace.
 - The task function runs inside ``scaler.processor.execute``, so spans it starts with the OpenTelemetry API nest under it.

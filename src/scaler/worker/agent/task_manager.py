@@ -11,10 +11,9 @@ from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.utility.semantic_conventions import (
     TASK_ID_ATTRIBUTE,
+    WORKER_QUEUED_SPAN,
     WORKER_TASK_CANCELED_EVENT,
-    WORKER_TASK_RESUMED_EVENT,
     WORKER_TASK_SPAN,
-    WORKER_TASK_STARTED_EVENT,
     WORKER_TASK_SUSPENDED_EVENT,
 )
 from scaler.utility.telemetry import extract_trace_context, inject_trace_context
@@ -52,6 +51,8 @@ class VanillaTaskManager(Looper, TaskManager):
 
         # one span per task this worker holds, from receipt to the result or cancel it sends back
         self._task_id_to_span: Dict[TaskID, Span] = dict()
+        # the open queued span of each task waiting in the queue for a processor
+        self._task_id_to_queued_span: Dict[TaskID, Span] = dict()
 
         self._connector_external: Optional[AsyncConnector] = None
         self._processor_manager: Optional[ProcessorManager] = None
@@ -107,6 +108,7 @@ class VanillaTaskManager(Looper, TaskManager):
             assert task_cancel.taskId in self._queued_task_id_to_task
             self._queued_task_ids.remove(task_cancel.taskId)
             _ = self._queued_task_id_to_task.pop(task_cancel.taskId)
+            self.__end_queued_span(task_cancel.taskId)
 
         self.__end_span(task_cancel.taskId, StatusCode.UNSET, WORKER_TASK_CANCELED_EVENT)
         await self._connector_external.send(
@@ -119,6 +121,7 @@ class VanillaTaskManager(Looper, TaskManager):
             # Finishing a queued task might happen if a task ended during the suspension process.
             self._queued_task_id_to_task.pop(result.taskId)
             self._queued_task_ids.remove(result.taskId)
+            self.__end_queued_span(result.taskId)
 
         self._processing_task_ids.remove(result.taskId)
 
@@ -140,16 +143,12 @@ class VanillaTaskManager(Looper, TaskManager):
 
         _, task_id = await self._queued_task_ids.get()
         task = self._queued_task_id_to_task.pop(task_id)
+        self.__end_queued_span(task_id)
 
-        span = self._task_id_to_span.get(task_id)
         if task_id not in self._processing_task_ids:
             self._processing_task_ids.add(task_id)
-            if span is not None:
-                span.add_event(WORKER_TASK_STARTED_EVENT)
             await self._processor_manager.on_task(task)
         else:
-            if span is not None:
-                span.add_event(WORKER_TASK_RESUMED_EVENT)
             await self._processor_manager.on_resume_task(task_id)
 
     async def __suspend_if_priority_is_higher(self, new_task: Task):
@@ -191,6 +190,15 @@ class VanillaTaskManager(Looper, TaskManager):
 
         self._queued_task_ids.put_nowait((queue_priority, task.taskId))
         self._queued_task_id_to_task[task.taskId] = task
+
+        # the task carries the worker task span's context since on_task_new, baggage included
+        task_context = extract_trace_context(task.traceContext)
+        self._task_id_to_queued_span[task.taskId] = tracer.start_span(WORKER_QUEUED_SPAN, context=task_context)
+
+    def __end_queued_span(self, task_id: TaskID) -> None:
+        queued_span = self._task_id_to_queued_span.pop(task_id, None)
+        if queued_span is not None:
+            queued_span.end()
 
     def __end_span(self, task_id: TaskID, status: StatusCode, outcome: str) -> None:
         span = self._task_id_to_span.pop(task_id, None)
