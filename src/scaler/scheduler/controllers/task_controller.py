@@ -153,7 +153,11 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             return
 
         # the first entry into inactive takes no transition, the machine starts there by construction
-        self._task_state_manager.add_state_machine(task.taskId)
+        self._task_state_manager.add_state_machine(
+            task.taskId,
+            task.traceContext,
+            lambda: self._object_controller.get_object_name(task.funcObjectId).decode(errors="replace"),
+        )
 
         self._client_controller.on_task_begin(task.source, task.taskId)
         self.__hold_task(task)
@@ -688,6 +692,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             funcObjectId=task.funcObjectId,
             functionArgs=task.functionArgs,
             capabilities=dict_to_capabilities(task.capabilities),
+            **self._task_state_manager.trace_context_field(task_id),
         )
         await self._binder.send(worker_id, task_message, detached=True)
 

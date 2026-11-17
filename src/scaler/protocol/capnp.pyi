@@ -167,6 +167,7 @@ class Task(BaseMessage):
     funcObjectId: ScalerObjectID
     functionArgs: Any
     capabilities: Any
+    traceContext: str
 
     class Argument(CapnpStruct):
         type: Any

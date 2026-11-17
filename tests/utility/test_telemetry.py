@@ -4,6 +4,9 @@ import unittest
 from typing import Callable
 from unittest import mock
 
+from opentelemetry import baggage, context, trace
+from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
+
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.otlp_receiver import OTLPReceiver
@@ -11,6 +14,9 @@ from tests.utility.utility import logging_test_name
 
 TELEMETRY_TIMEOUT_SECONDS = 30
 POLL_SECONDS = 0.1
+
+CLIENT_TRACE_ID = 0x0123456789ABCDEF0123456789ABCDEF
+CLIENT_SPAN_ID = 0x0123456789ABCDEF
 
 # export within a fraction of a second, so a test waits on the cluster, not on the SDK's default 5s and 60s intervals
 FAST_EXPORT_ENVIRONMENT = {
@@ -26,6 +32,23 @@ def wait_for(condition: Callable[[], bool], description: str) -> None:
         if time.monotonic() > deadline:
             raise AssertionError(f"timed out waiting for {description}")
         time.sleep(POLL_SECONDS)
+
+
+def traced_work(value: int) -> int:
+    with trace.get_tracer(__name__).start_as_current_span("user.work"):
+        return value + 1
+
+
+def failing_work() -> None:
+    raise ValueError("task failed on purpose")
+
+
+def client_parent_context() -> context.Context:
+    """A remote span with baggage, as a client whose caller is traced would have."""
+    span_context = SpanContext(
+        trace_id=CLIENT_TRACE_ID, span_id=CLIENT_SPAN_ID, is_remote=True, trace_flags=TraceFlags(TraceFlags.SAMPLED)
+    )
+    return baggage.set_baggage("job", "backtest-42", trace.set_span_in_context(NonRecordingSpan(span_context)))
 
 
 class TestTelemetry(unittest.TestCase):
@@ -63,3 +86,44 @@ class TestTelemetry(unittest.TestCase):
         self.assertEqual(event.service_name, "scaler-scheduler")
         self.assertTrue(str(event.attributes["scaler.worker.id"]).startswith("Worker|"))
         self.assertIn("scaler.worker_manager.id", event.attributes)
+
+    def test_task_spans_nest_from_client_to_user_code(self) -> None:
+        """A task's spans form one trace: client parent, scheduler, worker, processor, then the user's own span."""
+        token = context.attach(client_parent_context())
+        try:
+            with Client(address=self.cluster.get_address()) as client:
+                self.assertEqual(client.submit(traced_work, 1).result(), 2)
+        finally:
+            context.detach(token)
+
+        span_names = ["scaler.scheduler.task", "scaler.worker.task", "scaler.processor.execute", "user.work"]
+        wait_for(lambda: all(self.receiver.spans_named(name) for name in span_names), f"spans {span_names}")
+
+        spans = [self.receiver.spans_named(name)[0] for name in span_names]
+        for span in spans:
+            self.assertEqual(int.from_bytes(span.span.trace_id, "big"), CLIENT_TRACE_ID, span.name)
+            self.assertEqual(span.attributes.get("job"), "backtest-42", span.name)
+
+        self.assertEqual(int.from_bytes(spans[0].span.parent_span_id, "big"), CLIENT_SPAN_ID)
+        for parent, child in zip(spans, spans[1:]):
+            self.assertEqual(child.span.parent_span_id, parent.span.span_id, f"{child.name} under {parent.name}")
+
+        self.assertEqual(spans[0].attributes["scaler.task.function"], "traced_work")
+        self.assertEqual(spans[0].attributes["scaler.task.state"], "success")
+
+    def test_failed_task_spans_record_the_error(self) -> None:
+        """A task that raises ends its processor and scheduler spans with an error status."""
+        with Client(address=self.cluster.get_address()) as client:
+            with self.assertRaises(ValueError):
+                client.submit(failing_work).result()
+
+        wait_for(lambda: bool(self.receiver.spans_named("scaler.scheduler.task")), "scheduler task span")
+        wait_for(lambda: bool(self.receiver.spans_named("scaler.processor.execute")), "processor execute span")
+
+        execute = self.receiver.spans_named("scaler.processor.execute")[0]
+        self.assertEqual(execute.span.status.code, execute.span.status.STATUS_CODE_ERROR)
+        self.assertEqual([event.name for event in execute.span.events], ["exception"])
+
+        scheduler_task = self.receiver.spans_named("scaler.scheduler.task")[0]
+        self.assertEqual(scheduler_task.span.status.code, scheduler_task.span.status.STATUS_CODE_ERROR)
+        self.assertEqual(scheduler_task.attributes["scaler.task.state"], "failed")

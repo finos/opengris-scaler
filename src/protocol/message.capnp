@@ -13,6 +13,7 @@ struct Task {
     funcObjectId @3 :Data;
     functionArgs @4 :List(Argument);
     capabilities @5 :List(CommonType.TaskCapability);
+    traceContext @6 :Text;  # W3C traceparent, tracestate, and baggage, joined by newlines; unset when there is none
 
     struct Argument {
         type @0 :ArgumentType;

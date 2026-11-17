@@ -34,14 +34,9 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.semantic_conventions import UNIT_ID_ATTRIBUTE, WORKER_ID_ATTRIBUTE, WORKER_MANAGER_ID_ATTRIBUTE
 from scaler.utility.signal_handler import install_async_shutdown_handler
-from scaler.utility.telemetry import (
-    UNIT_ID_ATTRIBUTE,
-    WORKER_ID_ATTRIBUTE,
-    WORKER_MANAGER_ID_ATTRIBUTE,
-    ServiceName,
-    TelemetryService,
-)
+from scaler.utility.telemetry import ServiceName, TelemetryService
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager

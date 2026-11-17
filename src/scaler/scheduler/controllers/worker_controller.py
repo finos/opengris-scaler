@@ -24,7 +24,15 @@ from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.mixins import Looper, Reporter
-from scaler.utility.telemetry import EVENT_NAME_ATTRIBUTE, WORKER_ID_ATTRIBUTE, WORKER_MANAGER_ID_ATTRIBUTE
+from scaler.utility.semantic_conventions import (
+    EVENT_NAME_ATTRIBUTE,
+    WORKER_CONNECTED_EVENT,
+    WORKER_DISCONNECT_REASON_ATTRIBUTE,
+    WORKER_DISCONNECTED_EVENT,
+    WORKER_DRAINING_EVENT,
+    WORKER_ID_ATTRIBUTE,
+    WORKER_MANAGER_ID_ATTRIBUTE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +81,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             logger.info(
                 f"worker {worker_id!r} connected",
                 extra={
-                    EVENT_NAME_ATTRIBUTE: "scaler.worker.connected",
+                    EVENT_NAME_ATTRIBUTE: WORKER_CONNECTED_EVENT,
                     WORKER_ID_ATTRIBUTE: worker_id.decode(),
                     WORKER_MANAGER_ID_ATTRIBUTE: info.workerManagerID.decode(),
                 },
@@ -226,9 +234,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
         task_ids = self._allocation_policy.remove_worker(worker_id)
         event = {
-            EVENT_NAME_ATTRIBUTE: "scaler.worker.disconnected",
+            EVENT_NAME_ATTRIBUTE: WORKER_DISCONNECTED_EVENT,
             WORKER_ID_ATTRIBUTE: worker_id.decode(),
-            "scaler.worker.disconnect_reason": reason,
+            WORKER_DISCONNECT_REASON_ATTRIBUTE: reason,
         }
         if not task_ids:
             logger.info(f"{worker_id!r} disconnected ({reason})", extra=event)
@@ -247,7 +255,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
         logger.info(
             f"{worker_id!r} is draining: taking back {len(task_ids)} task(s)",
-            extra={EVENT_NAME_ATTRIBUTE: "scaler.worker.draining", WORKER_ID_ATTRIBUTE: worker_id.decode()},
+            extra={EVENT_NAME_ATTRIBUTE: WORKER_DRAINING_EVENT, WORKER_ID_ATTRIBUTE: worker_id.decode()},
         )
         for task_id in task_ids:
             await self._task_controller.on_task_balance_cancel(task_id)
