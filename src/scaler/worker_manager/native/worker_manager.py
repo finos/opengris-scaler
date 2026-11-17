@@ -12,6 +12,7 @@ import psutil
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.utility.exitcode import describe_exitcode
+from scaler.utility.telemetry import inject_trace_context
 from scaler.worker.worker import Worker
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.desired_concurrency import extract_desired_count
@@ -41,6 +42,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._telemetry_relay = config.worker_config.telemetry_relay
         self._event_loop = config.worker_config.event_loop
         self._preload = config.worker_config.preload
         self._logging_paths = config.logging_config.paths
@@ -73,12 +75,14 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
             hard_processor_suspend=self._hard_processor_suspend,
+            telemetry_relay=self._telemetry_relay,
             event_loop=self._event_loop,
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
             worker_manager_id=self._worker_manager_id,
             worker_manager_address=self._children_address,
             unit_id=unit_id,
+            trace_context=inject_trace_context(),  # the reconcile span, current while start_units runs
             security_config=self._security_config,
         )
 

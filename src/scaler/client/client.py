@@ -7,6 +7,9 @@ from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
+
 from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
@@ -28,13 +31,19 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
+from scaler.utility.semantic_conventions import CLIENT_SUBMIT_SPAN, TASK_ID_ATTRIBUTE
+from scaler.utility.telemetry import inject_trace_context
 
 if sys.platform != "emscripten":
     from scaler.worker.agent.processor.processor import Processor
 else:
     Processor = None  # type: ignore[assignment]
 
+
 logger = logging.getLogger(__name__)
+
+tracer = trace.get_tracer(__name__)
+
 
 _T = TypeVar("_T")
 
@@ -609,6 +618,12 @@ class Client:
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
+        # the submit span ends at once: it marks where the task left the caller and parents the scheduler's span
+        with tracer.start_as_current_span(
+            CLIENT_SUBMIT_SPAN, kind=SpanKind.PRODUCER, attributes={TASK_ID_ATTRIBUTE: task_id.hex()}
+        ):
+            trace_context = inject_trace_context()
+
         task = Task(
             taskId=task_id,
             source=self._identity,
@@ -618,6 +633,7 @@ class Client:
                 Task.Argument(type=Task.Argument.ArgumentType.objectID, data=argument) for argument in function_args
             ],
             capabilities=dict_to_capabilities(capabilities),
+            traceContext=trace_context,
         )
 
         future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
@@ -746,6 +762,7 @@ class Client:
                     for argument in arguments
                 ],
                 capabilities=dict_to_capabilities(capabilities),
+                traceContext=inject_trace_context(),
             )
 
         result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]

@@ -31,6 +31,7 @@ A cloud worker manager runs a native worker manager in each resource it provisio
 
 * ``--children-address`` (``-ca``): Address the worker manager binds for its units to dial. Local worker processes default to a free loopback port. ORB AWS EC2, AWS Raw ECS, and OCI Raw require it: each provisioned resource runs a native worker manager that dials this address, so it must be reachable from those resources.
 * ``--advertised-children-address`` (``-aca``): ORB AWS EC2, AWS Raw ECS, and OCI Raw only. Address the units dial, written into their start command. Defaults to ``--children-address``. Set it when the units reach the worker manager through NAT, such as an EC2 public IP that is not on any local interface.
+* ``--advertised-otlp-endpoint`` (``-aoe``): ORB AWS EC2, AWS Raw ECS, and OCI Raw only. OTLP/HTTP endpoint the units export telemetry to, in place of this worker manager's ``OTEL_EXPORTER_OTLP_ENDPOINT``. Set it when the units reach the collector at another address (see :doc:`../telemetry`).
 
 Worker Behavior
 ---------------
@@ -44,6 +45,7 @@ These parameters control individual worker processes started by the worker manag
 * ``--garbage-collect-interval-seconds`` (``-gc``): Interval at which the worker runs garbage collection in seconds (default: ``30``).
 * ``--trim-memory-threshold-bytes`` (``-tm``): Threshold for trimming libc's memory in bytes (default: ``1073741824``, i.e., 1 GB).
 * ``--hard-processor-suspend`` (``-hps``): When set, suspends worker processors using SIGTSTP instead of a synchronization event.
+* ``--telemetry-relay`` (``-tr``): When set, workers and processors send their telemetry through the scheduler instead of to ``OTEL_EXPORTER_OTLP_ENDPOINT`` (see :doc:`../telemetry`).
 * ``--io-threads`` (``-it``): Number of IO threads per worker (default: ``1``).
 * ``--per-worker-capabilities`` (``-pwc``): Comma-separated list of capabilities (e.g., ``"linux,cpu=4"``).
   Each entry is either a bare capability name (e.g., ``linux``, meaning unlimited) or ``name=integer`` (e.g., ``cpu=4``).

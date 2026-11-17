@@ -21,6 +21,7 @@ from scaler.protocol.capnp import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
+    TelemetryBatch,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerManagerHeartbeat,
@@ -34,7 +35,9 @@ from scaler.scheduler.controllers.object_controller import VanillaObjectControll
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
+from scaler.scheduler.metrics import EventLoopLagMonitor
 from scaler.scheduler.policies.utility import create_policies
+from scaler.scheduler.telemetry_forwarder import TelemetryForwarder
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
@@ -75,6 +78,8 @@ class Scheduler:
             config_controller=self._config_controller, allocation_policy=self._allocation_policy
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
+        self._event_loop_lag_monitor = EventLoopLagMonitor()
+        self._telemetry_forwarder = TelemetryForwarder()
         self._worker_manager_controller = WorkerManagerController(
             config_controller=self._config_controller, scaling_policy=self._scaling_policy
         )
@@ -219,6 +224,10 @@ class Scheduler:
             await self._task_controller.on_task_result(WorkerID(source), message)
             return
 
+        if isinstance(message, TelemetryBatch):
+            self._telemetry_forwarder.forward(message)
+            return
+
         if isinstance(message, TaskLog):
             client = self._client_manager.get_client_id(message.taskId)
             if client is not None:
@@ -292,6 +301,7 @@ class Scheduler:
                 self._config_controller.get_config("status_report_interval_seconds"),
                 swallow_routine_errors=True,
             ),
+            create_async_loop_routine(self._event_loop_lag_monitor.routine, 0, swallow_routine_errors=True),
         ]
 
         loop_tasks = [asyncio.ensure_future(loop) for loop in loops]
@@ -313,6 +323,7 @@ class Scheduler:
             loop_task.cancel()
         await asyncio.gather(*loop_tasks, return_exceptions=True)
 
+        self._telemetry_forwarder.stop()
         self._binder.destroy()
         self._binder_monitor.destroy()
         self._connector_storage.destroy()

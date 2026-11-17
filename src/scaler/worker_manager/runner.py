@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Dict, Optional
 
+from opentelemetry.context import attach, detach
+
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
@@ -21,6 +23,7 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.signal_handler import install_async_shutdown_handler
+from scaler.utility.telemetry import extract_trace_context, process_start_context
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 
 logger = logging.getLogger(__name__)
@@ -158,7 +161,17 @@ class WorkerManagerRunner:
         if requests is None:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
-        await self._worker_provisioner.set_desired_task_concurrency(list(requests))
+        # the scaling decision's context is current while the provisioner takes the new desired concurrency; a unit's
+        # parent sends no decision, and the unit's own start, in the parent's reconcile, is the cause of its commands
+        if command.traceContext.traceparent:
+            command_context = extract_trace_context(command.traceContext)
+        else:
+            command_context = process_start_context()
+        token = attach(command_context)
+        try:
+            await self._worker_provisioner.set_desired_task_concurrency(list(requests))
+        finally:
+            detach(token)
 
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:
         unit_id = source.decode()  # each unit dials with the unit id it was created with as its identity

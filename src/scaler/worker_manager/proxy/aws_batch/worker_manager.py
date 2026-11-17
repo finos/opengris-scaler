@@ -68,6 +68,7 @@ class AWSBatchWorkerProvisioner(DeclarativeWorkerProvisioner):
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_manager_address=self._children_address,
             unit_id=unit_id,
+            telemetry_relay=config.worker_config.telemetry_relay,
         )
         worker.start()
         self._units.append(worker)

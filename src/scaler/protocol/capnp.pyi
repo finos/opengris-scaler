@@ -52,6 +52,13 @@ class TaskCapability(CapnpStruct):
     @staticmethod
     def new_msg(name: str, value: int) -> "TaskCapability": ...
 
+class TraceContext(CapnpStruct):
+    traceparent: str
+    tracestate: str
+    baggage: str
+    @staticmethod
+    def new_msg(traceparent: str = ..., tracestate: str = ..., baggage: str = ...) -> "TraceContext": ...
+
 class ObjectMetadata(CapnpStruct):
     class ObjectContentType(IntEnum):
         serializer = 0
@@ -167,6 +174,7 @@ class Task(BaseMessage):
     funcObjectId: ScalerObjectID
     functionArgs: Any
     capabilities: Any
+    traceContext: TraceContext
 
     class Argument(CapnpStruct):
         type: Any
@@ -253,6 +261,7 @@ class WorkerManagerHeartbeatEcho(BaseMessage): ...
 
 class WorkerManagerCommand(BaseMessage):
     setDesiredTaskConcurrencyRequests: Any
+    traceContext: TraceContext
 
     class DesiredTaskConcurrencyRequest(CapnpStruct):
         taskConcurrency: int
@@ -269,6 +278,15 @@ class ObjectInstruction(BaseMessage):
         clear = 2
 
 class WorkerDisconnectNotification(BaseMessage): ...
+
+class TelemetryBatch(BaseMessage):
+    signal: "TelemetryBatch.Signal"
+    payload: bytes
+
+    class Signal(IntEnum):
+        traces = 0
+        metrics = 1
+        logs = 2
 
 class ClientDisconnect(BaseMessage):
     disconnectType: "ClientDisconnect.DisconnectType"
@@ -370,6 +388,7 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
     workerDisconnectNotification: WorkerDisconnectNotification
+    telemetryBatch: TelemetryBatch
 
 class ObjectRequestHeader(CapnpStruct):
     MESSAGE_LENGTH: ClassVar[int]

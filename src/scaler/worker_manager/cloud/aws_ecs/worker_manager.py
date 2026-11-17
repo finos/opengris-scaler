@@ -10,7 +10,12 @@ import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.cloud.child_command import child_link_arguments, format_capabilities
+from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
+    child_link_arguments,
+    format_capabilities,
+    unit_environment,
+)
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -38,12 +43,16 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._telemetry_relay = config.worker_config.telemetry_relay
         self._preload = config.worker_config.preload
         self._event_loop = config.worker_config.event_loop
 
         self._ecs_cluster = config.ecs_cluster
         self._ecs_task_image = config.ecs_task_image
         self._ecs_python_requirements = config.ecs_python_requirements
+        check_unit_requirements_support_telemetry(
+            self._ecs_python_requirements, self._telemetry_relay, config.cloud_children_config
+        )
         self._ecs_python_version = config.ecs_python_version
         self._ecs_task_definition = config.ecs_task_definition
         self._ecs_task_cpu = config.ecs_task_cpu
@@ -130,6 +139,9 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         if self._hard_processor_suspend:
             command += " --hard-processor-suspend"
 
+        if self._telemetry_relay:
+            command += " --telemetry-relay"
+
         if self._object_storage_address:
             command += f" --object-storage-address {self._object_storage_address!r}"
 
@@ -165,6 +177,10 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
                             {"name": "COMMAND", "value": self._build_task_command(unit_id)},
                             {"name": "PYTHON_REQUIREMENTS", "value": self._ecs_python_requirements},
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
+                            *(
+                                {"name": name, "value": value}
+                                for name, value in unit_environment(self._cloud_children_config).items()
+                            ),
                         ],
                     }
                 ]

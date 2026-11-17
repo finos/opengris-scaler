@@ -15,9 +15,11 @@ from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConf
 from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
     child_link_arguments,
     format_capabilities,
     load_requirements_content,
+    unit_environment,
 )
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
@@ -40,6 +42,12 @@ class _InstanceInfo:
 class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: OCIRawWorkerManagerConfig, max_instances: int) -> None:
         self._config = config
+        requirements_txt = config.python_worker_environment.requirements_txt
+        check_unit_requirements_support_telemetry(
+            load_requirements_content(requirements_txt) if requirements_txt is not None else None,
+            config.worker_config.telemetry_relay,
+            config.cloud_children_config,
+        )
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._instances: List[_InstanceInfo] = []
         self._container_instances_client: Any = None
@@ -119,6 +127,9 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
         if worker_config.hard_processor_suspend:
             command += " --hard-processor-suspend"
 
+        if worker_config.telemetry_relay:
+            command += " --telemetry-relay"
+
         object_storage_address = config.worker_manager_config.object_storage_address
         if object_storage_address is not None:
             command += f" --object-storage-address {object_storage_address}"
@@ -154,6 +165,7 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
                         "COMMAND": command,
                         "PYTHON_REQUIREMENTS": requirements_content,
                         "PYTHON_VERSION": config.python_worker_environment.python_version,
+                        **unit_environment(config.cloud_children_config),
                     },
                 )
             ],

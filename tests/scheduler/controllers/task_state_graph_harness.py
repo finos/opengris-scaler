@@ -42,6 +42,7 @@ from scaler.scheduler.task.task_event import (
 )
 from scaler.scheduler.task.task_state_machine import TaskStateMachine
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
+from scaler.utility.telemetry import empty_trace_context
 
 TASK_ID = TaskID(b"task-under-test")
 CLIENT_ID = ClientID(b"client-under-test")
@@ -70,6 +71,7 @@ def make_task(task_id: TaskID = TASK_ID, argument_object_ids: Sequence[ObjectID]
             Task.Argument(type=Task.Argument.ArgumentType.objectID, data=object_id) for object_id in argument_object_ids
         ],
         capabilities=[],
+        traceContext=empty_trace_context(),
     )
 
 

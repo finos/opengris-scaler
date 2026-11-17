@@ -21,6 +21,7 @@ dependencies = [
     "argcomplete",
     "bidict",
     "cloudpickle",
+    "opentelemetry-api>=1.45",
     "psutil==7.2.2; sys_platform != 'emscripten'",
     "sortedcontainers==2.4.0",
     "tblib",
@@ -53,12 +54,17 @@ orb = [
 oci = [
     "oci==2.185.1",
 ]
+otel = [
+    "opentelemetry-sdk>=1.45",
+    "opentelemetry-exporter-otlp-proto-http>=1.45",
+]
 all = [
     "opengris-scaler[aws]",
     # graphblas need compile on 3.14, and this python condition prevents up from building 3.14 wheel, comment it out for now
     # "opengris-scaler[graphblas]; python_version <= '3.13'",
     "opengris-scaler[orb]",
     "opengris-scaler[oci]",
+    "opengris-scaler[otel]",
     "opengris-scaler[uvloop]",
 ]
 

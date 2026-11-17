@@ -1,12 +1,32 @@
 from typing import Dict, Optional, Set
 
+from opentelemetry import trace
+from opentelemetry.trace import Span, SpanKind, Status, StatusCode
+
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.capnp import Task, TaskCancel, TaskCancelConfirm, TaskCancelConfirmType, TaskResult
+from scaler.protocol.capnp import Task, TaskCancel, TaskCancelConfirm, TaskCancelConfirmType, TaskResult, TaskResultType
 from scaler.utility.identifiers import TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
+from scaler.utility.semantic_conventions import (
+    TASK_ID_ATTRIBUTE,
+    WORKER_QUEUED_SPAN,
+    WORKER_TASK_CANCELED_EVENT,
+    WORKER_TASK_SPAN,
+    WORKER_TASK_SUSPENDED_EVENT,
+)
+from scaler.utility.telemetry import extract_trace_context, inject_trace_context
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager
+
+tracer = trace.get_tracer(__name__)
+
+
+RESULT_STATUS: Dict[TaskResultType, StatusCode] = {
+    TaskResultType.success: StatusCode.OK,
+    TaskResultType.failed: StatusCode.ERROR,
+    TaskResultType.failedWorkerDied: StatusCode.ERROR,
+}
 
 
 class VanillaTaskManager(Looper, TaskManager):
@@ -29,6 +49,11 @@ class VanillaTaskManager(Looper, TaskManager):
 
         self._processing_task_ids: Set[TaskID] = set()  # Tasks associated with a processor, including suspended tasks
 
+        # one span per task this worker holds, from receipt to the result or cancel it sends back
+        self._task_id_to_span: Dict[TaskID, Span] = dict()
+        # the open queued span of each task waiting in the queue for a processor
+        self._task_id_to_queued_span: Dict[TaskID, Span] = dict()
+
         self._connector_external: Optional[AsyncConnector] = None
         self._processor_manager: Optional[ProcessorManager] = None
 
@@ -37,6 +62,17 @@ class VanillaTaskManager(Looper, TaskManager):
         self._processor_manager = processor_manager
 
     async def on_task_new(self, task: Task):
+        parent_context = extract_trace_context(task.traceContext)
+        span = tracer.start_span(
+            WORKER_TASK_SPAN,
+            context=parent_context,
+            kind=SpanKind.CONSUMER,
+            attributes={TASK_ID_ATTRIBUTE: task.taskId.hex()},
+        )
+        self._task_id_to_span[task.taskId] = span
+        # the processor nests under this span, and receives the client's baggage with it
+        task.traceContext = inject_trace_context(trace.set_span_in_context(span, parent_context))
+
         self.__enqueue_task(task, is_suspended=False)
 
         await self.__suspend_if_priority_is_higher(task)
@@ -72,7 +108,9 @@ class VanillaTaskManager(Looper, TaskManager):
             assert task_cancel.taskId in self._queued_task_id_to_task
             self._queued_task_ids.remove(task_cancel.taskId)
             _ = self._queued_task_id_to_task.pop(task_cancel.taskId)
+            self.__end_queued_span(task_cancel.taskId)
 
+        self.__end_span(task_cancel.taskId, StatusCode.UNSET, WORKER_TASK_CANCELED_EVENT)
         await self._connector_external.send(
             TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled),
             detached=True,
@@ -83,9 +121,15 @@ class VanillaTaskManager(Looper, TaskManager):
             # Finishing a queued task might happen if a task ended during the suspension process.
             self._queued_task_id_to_task.pop(result.taskId)
             self._queued_task_ids.remove(result.taskId)
+            self.__end_queued_span(result.taskId)
 
         self._processing_task_ids.remove(result.taskId)
 
+        self.__end_span(
+            result.taskId,
+            RESULT_STATUS.get(result.resultType, StatusCode.UNSET),
+            TaskResultType(result.resultType).name,
+        )
         await self._connector_external.send(result, detached=True)
 
     async def routine(self):
@@ -99,6 +143,7 @@ class VanillaTaskManager(Looper, TaskManager):
 
         _, task_id = await self._queued_task_ids.get()
         task = self._queued_task_id_to_task.pop(task_id)
+        self.__end_queued_span(task_id)
 
         if task_id not in self._processing_task_ids:
             self._processing_task_ids.add(task_id)
@@ -120,6 +165,9 @@ class VanillaTaskManager(Looper, TaskManager):
 
         self.__enqueue_task(current_task, is_suspended=True)
 
+        span = self._task_id_to_span.get(current_task.taskId)
+        if span is not None:
+            span.add_event(WORKER_TASK_SUSPENDED_EVENT)
         await self._processor_manager.on_suspend_task(current_task.taskId)
 
     def __enqueue_task(self, task: Task, is_suspended: bool):
@@ -142,6 +190,23 @@ class VanillaTaskManager(Looper, TaskManager):
 
         self._queued_task_ids.put_nowait((queue_priority, task.taskId))
         self._queued_task_id_to_task[task.taskId] = task
+
+        # the task carries the worker task span's context since on_task_new, baggage included
+        task_context = extract_trace_context(task.traceContext)
+        self._task_id_to_queued_span[task.taskId] = tracer.start_span(WORKER_QUEUED_SPAN, context=task_context)
+
+    def __end_queued_span(self, task_id: TaskID) -> None:
+        queued_span = self._task_id_to_queued_span.pop(task_id, None)
+        if queued_span is not None:
+            queued_span.end()
+
+    def __end_span(self, task_id: TaskID, status: StatusCode, outcome: str) -> None:
+        span = self._task_id_to_span.pop(task_id, None)
+        if span is None:
+            return
+        span.add_event(outcome)
+        span.set_status(Status(status))
+        span.end()
 
     @staticmethod
     def __get_task_priority(task: Task) -> int:

@@ -13,6 +13,7 @@ from scaler.protocol.capnp import (
 )
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
+from scaler.utility.telemetry import empty_trace_context
 
 
 def _run(coro):
@@ -94,6 +95,7 @@ class TestGraphControllerCleanUp(unittest.TestCase):
                     funcObjectId=ObjectID.generate_object_id(client_id),
                     functionArgs=[],
                     capabilities={},
+                    traceContext=empty_trace_context(),
                 )
                 for subtask_id in subtask_ids
             ],

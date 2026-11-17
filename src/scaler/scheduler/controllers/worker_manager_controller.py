@@ -2,10 +2,15 @@ import logging
 import time
 from typing import Dict, List, Optional, Tuple
 
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
+from opentelemetry.util.types import AttributeValue
+
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
 from scaler.protocol.capnp import (
     ScalingManagerStatus,
+    TraceContext,
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
@@ -18,9 +23,18 @@ from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
+from scaler.utility.semantic_conventions import (
+    DESIRED_TASK_CONCURRENCY_ATTRIBUTE,
+    PREVIOUS_TASK_CONCURRENCY_ATTRIBUTE,
+    SCHEDULER_SCALING_DECISION_SPAN,
+    WORKER_MANAGER_ID_ATTRIBUTE,
+)
 from scaler.utility.snapshot import InformationSnapshot
+from scaler.utility.telemetry import empty_trace_context, inject_trace_context
 
 logger = logging.getLogger(__name__)
+
+tracer = trace.get_tracer(__name__)
 
 UINT16_MAX = 2**16 - 1
 
@@ -76,13 +90,35 @@ class WorkerManagerController(Looper, Reporter):
             information_snapshot, heartbeat, managed_worker_ids, worker_manager_snapshots
         )
 
+        desired_total = _sum_desired_for_manager(commands, heartbeat.capabilities)
+        trace_context = self.__trace_scaling_decision(source, heartbeat.workerManagerID, desired_total)
         for command in commands:
+            command.traceContext = trace_context
             await self._send_command(source, command)
 
-        self._last_desired_total[source] = _sum_desired_for_manager(commands, heartbeat.capabilities)
+        self._last_desired_total[source] = desired_total
 
     async def routine(self):
         await self._clean_managers()
+
+    def __trace_scaling_decision(self, source: bytes, worker_manager_id: bytes, desired_total: int) -> TraceContext:
+        """A span for a change of a manager's desired concurrency, which the manager's reconcile nests under.
+
+        Commands repeat on every manager heartbeat, so an unchanged desired concurrency starts no span.
+        """
+        previous_total = self._last_desired_total.get(source, 0)
+        if desired_total == previous_total:
+            return empty_trace_context()
+
+        attributes: Dict[str, AttributeValue] = {
+            WORKER_MANAGER_ID_ATTRIBUTE: worker_manager_id.decode(errors="replace"),
+            DESIRED_TASK_CONCURRENCY_ATTRIBUTE: desired_total,
+            PREVIOUS_TASK_CONCURRENCY_ATTRIBUTE: previous_total,
+        }
+        with tracer.start_as_current_span(
+            SCHEDULER_SCALING_DECISION_SPAN, kind=SpanKind.PRODUCER, attributes=attributes
+        ):
+            return inject_trace_context()
 
     def get_status(self) -> ScalingManagerStatus:
         managed_workers = self.get_managed_workers()

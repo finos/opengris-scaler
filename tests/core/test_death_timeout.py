@@ -16,6 +16,7 @@ from scaler.config.defaults import (
 from scaler.config.types.address import AddressConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.telemetry import empty_trace_context
 from scaler.worker.worker import Worker
 from tests.utility.utility import logging_test_name
 
@@ -44,11 +45,13 @@ class TestDeathTimeout(unittest.TestCase):
             task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
             death_timeout_seconds=10,
             hard_processor_suspend=False,
+            telemetry_relay=False,
             logging_paths=DEFAULT_LOGGING_PATHS,
             logging_level=DEFAULT_LOGGING_LEVEL,
             worker_manager_id=b"test_manager",
             worker_manager_address=AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
             unit_id="no_scheduler",
+            trace_context=empty_trace_context(),
         )
         worker.start()
         worker.join()
