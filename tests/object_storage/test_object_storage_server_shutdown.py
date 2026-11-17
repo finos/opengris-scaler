@@ -4,14 +4,14 @@ import time
 import unittest
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
-from scaler.config.types.address import AddressConfig
+from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.ymq import MAGIC_STRING, IOContext
 from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
 from scaler.protocol.capnp import ObjectRequestHeader
 from scaler.protocol.helpers import to_capnp_object_id
 from scaler.utility.identifiers import ClientID, ObjectID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.network_util import OS_PICKED_PORT
 from tests.utility.utility import logging_test_name
 
 # More than loopback's socket buffers hold, so a response to a client that does not read stays in flight.
@@ -32,11 +32,8 @@ class TestObjectStorageServerShutdown(unittest.TestCase):
     def test_terminates_while_a_client_has_stopped_reading(self) -> None:
         """SIGTERM stops the server even with a large response in flight to a client that stopped reading."""
         host = "127.0.0.1"
-        port = get_available_tcp_port()
-        address = AddressConfig.from_string(f"tcp://{host}:{port}")
-
         server = ObjectStorageServerProcess(
-            bind_address=address,
+            bind_address=AddressConfig(SocketType.tcp, host, OS_PICKED_PORT),
             identity="ObjectStorageServer",
             logging_paths=("/dev/stdout",),
             logging_level="INFO",
@@ -45,7 +42,8 @@ class TestObjectStorageServerShutdown(unittest.TestCase):
         server.start()
         self.addCleanup(server.join)
         self.addCleanup(server.kill)
-        server.wait_until_ready()
+        address = server.wait_until_ready()
+        assert address.port is not None
 
         object_id = ObjectID.generate_object_id(ClientID.generate_client_id("test"))
         writer = YMQSyncObjectStorageConnector(IOContext(), b"writer", address)
@@ -59,7 +57,7 @@ class TestObjectStorageServerShutdown(unittest.TestCase):
             requestType=ObjectRequestHeader.ObjectRequestType.getObject,
         )
 
-        with socket.create_connection((host, port)) as stalled_reader:
+        with socket.create_connection((host, address.port)) as stalled_reader:
             stalled_reader.sendall(MAGIC_STRING + _ymq_frame(b"stalled-reader") + _ymq_frame(get_request.to_bytes()))
             time.sleep(RESPONSE_SETTLE_SECONDS)
 

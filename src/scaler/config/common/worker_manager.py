@@ -4,6 +4,7 @@ from typing import Optional
 from scaler.config import defaults
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.address import AddressConfig
+from scaler.utility.network_util import resolve_port_zero
 
 
 @dataclasses.dataclass
@@ -55,7 +56,8 @@ class WorkerManagerConfig(ConfigClass):
             short="-ca",
             help=(
                 "address this worker manager binds for its units to dial. "
-                "Defaults to a free loopback port. A worker manager whose units are remote resources "
+                "Defaults to 127.0.0.1 on port 0. On port 0, the units dial the port the OS picked. "
+                "A worker manager whose units are remote resources "
                 "(EC2 instances, ECS tasks, OCI container instances) needs an address those resources can reach."
             ),
         ),
@@ -63,7 +65,10 @@ class WorkerManagerConfig(ConfigClass):
 
     @property
     def effective_worker_scheduler_address(self) -> AddressConfig:
-        return self.worker_scheduler_address if self.worker_scheduler_address is not None else self.scheduler_address
+        if self.worker_scheduler_address is None:
+            return self.scheduler_address
+
+        return resolve_port_zero(self.worker_scheduler_address, self.scheduler_address)
 
     def __post_init__(self) -> None:
         if not self.worker_manager_id:

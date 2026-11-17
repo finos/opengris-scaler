@@ -13,7 +13,8 @@ class CloudChildrenConfig(ConfigClass):
             short="-aca",
             help=(
                 "address written into the units' start command for them to dial; defaults to children_address. "
-                "Use this when the units reach this worker manager through NAT, e.g. an EC2 public IP."
+                "Use this when the units reach this worker manager through NAT, e.g. an EC2 public IP. "
+                "On port 0, the units dial the port children_address bound."
             ),
         ),
     )

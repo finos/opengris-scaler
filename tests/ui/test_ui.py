@@ -5,7 +5,6 @@ import unittest
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 
@@ -31,9 +30,9 @@ class TestUI(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-        self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self._workers = 10
-        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=self._workers, event_loop="builtin")
+        self.cluster = SchedulerClusterCombo(n_workers=self._workers, event_loop="builtin")
+        self.address = self.cluster.get_address()
 
     def tearDown(self) -> None:
         self.cluster.shutdown()

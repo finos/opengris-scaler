@@ -34,13 +34,7 @@ void setupSignalHandling()
 
 ObjectStorageServer::ObjectStorageServer()
 {
-    initServerReadyFds();
     setupSignalHandling();
-}
-
-ObjectStorageServer::~ObjectStorageServer()
-{
-    closeServerReadyFds();
 }
 
 void ObjectStorageServer::run(
@@ -50,7 +44,8 @@ void ObjectStorageServer::run(
     std::string log_format,
     std::vector<std::string> log_paths,
     std::function<bool()> running,
-    std::optional<scaler::ymq::TLSConfig> tlsConfig)
+    std::optional<scaler::ymq::TLSConfig> tlsConfig,
+    std::function<void(const scaler::ymq::Address&)> onReady)
 {
     _logger = scaler::ymq::Logger(log_format, std::move(log_paths), scaler::ymq::Logger::stringToLogLevel(log_level));
 
@@ -64,9 +59,12 @@ void ObjectStorageServer::run(
             throw bindResult.error();
         }
 
-        setServerReadyFd();
+        _logger.log(
+            scaler::ymq::Logger::LoggingLevel::info,
+            "ObjectStorageServer: started, listening to ",
+            bindResult->toString().value_or("<unprintable address>"));
 
-        _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: started");
+        onReady(bindResult.value());
 
         processRequests(running);
     } catch (const std::exception& e) {
@@ -77,41 +75,11 @@ void ObjectStorageServer::run(
     }
 }
 
-void ObjectStorageServer::waitUntilReady()
-{
-    std::unique_lock<std::mutex> lock {this->_serverReadyMutex};
-    this->_serverReadyConditionVariable.wait(lock, [this] { return this->_isServerReady; });
-}
-
 void ObjectStorageServer::shutdown()
 {
     if (_socket) {
         _socket.reset();
     }
-}
-
-void ObjectStorageServer::initServerReadyFds()
-{
-    std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
-    this->_isServerReady = false;
-}
-
-void ObjectStorageServer::setServerReadyFd()
-{
-    {
-        std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
-        this->_isServerReady = true;
-    }
-    this->_serverReadyConditionVariable.notify_all();
-}
-
-void ObjectStorageServer::closeServerReadyFds()
-{
-    {
-        std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
-        this->_isServerReady = true;
-    }
-    this->_serverReadyConditionVariable.notify_all();
 }
 
 void ObjectStorageServer::processRequests(std::function<bool()> running)

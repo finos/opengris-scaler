@@ -2,7 +2,6 @@ import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 N_TASKS = 30
@@ -14,8 +13,8 @@ class TestNestedTask(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-        self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=N_WORKERS, event_loop="builtin")
+        self.cluster = SchedulerClusterCombo(n_workers=N_WORKERS, event_loop="builtin")
+        self.address = self.cluster.get_address()
 
     def tearDown(self) -> None:
         self.cluster.shutdown()

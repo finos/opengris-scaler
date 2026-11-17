@@ -18,7 +18,6 @@ since browser wasm clients exclusively speak ``ws://``.
 import asyncio
 import os
 import pathlib
-import socket
 import unittest
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
@@ -30,12 +29,6 @@ from scaler.utility.identifiers import ObjectID
 _OPENSSL_TEST_DIR = pathlib.Path(__file__).resolve().parents[2] / "cpp" / "wrapper" / "openssl"
 _CERT_CHAIN = str(_OPENSSL_TEST_DIR / "sample_cert.pem")
 _PRIVATE_KEY = str(_OPENSSL_TEST_DIR / "sample_private_key.pem")
-
-
-def _free_tcp_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 class WebSocketTransportTest(unittest.IsolatedAsyncioTestCase):
@@ -126,12 +119,8 @@ class WebSocketObjectStorageTest(unittest.TestCase):
         os.environ["SCALER_NETWORK_BACKEND"] = "ymq"
         from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
 
-        port = _free_tcp_port()
-        bind_addr = f"ws://127.0.0.1:{port}"
-        addr = AddressConfig.from_string(bind_addr)
-
         proc = ObjectStorageServerProcess(
-            bind_address=addr,
+            bind_address=AddressConfig.from_string("ws://127.0.0.1:0"),
             identity="ObjectStorageServer",
             logging_paths=("/dev/stdout",),
             logging_level="WARNING",
@@ -140,7 +129,7 @@ class WebSocketObjectStorageTest(unittest.TestCase):
         proc.start()
 
         try:
-            proc.wait_until_ready()
+            addr = proc.wait_until_ready()
 
             ctx = IOContext()
             connector = YMQSyncObjectStorageConnector(ctx, b"ws-test-client", addr)

@@ -20,6 +20,7 @@ except ModuleNotFoundError as exc:
     raise ModuleNotFoundError('execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager') from exc
 
 from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
@@ -195,7 +196,6 @@ class ORBAWSEC2WorkerManager:
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
 
-        self._orb_pool: Optional[ORBWorkerProvisioner] = None
         self._runner: Optional[WorkerManagerRunner] = None
 
         self._ec2: Optional[Any] = None
@@ -271,21 +271,25 @@ class ORBAWSEC2WorkerManager:
         if self._config.debug_dump_path is not None:
             self._dump_debug_state(resource_id, template_kwargs)
 
-        self._orb_pool = ORBWorkerProvisioner(
-            config=self._config,
-            max_instances=max_instances,
-            sdk=sdk,
-            template_kwargs=template_kwargs,
-            user_data_for_unit=functools.partial(self._create_user_data, workers_per_instance=workers_per_instance),
-            workers_per_instance=workers_per_instance,
-        )
+        def create_worker_provisioner(children_address: AddressConfig) -> ORBWorkerProvisioner:
+            return ORBWorkerProvisioner(
+                config=self._config,
+                max_instances=max_instances,
+                sdk=sdk,
+                template_kwargs=template_kwargs,
+                user_data_for_unit=functools.partial(
+                    self._create_user_data, workers_per_instance=workers_per_instance, children_address=children_address
+                ),
+                workers_per_instance=workers_per_instance,
+            )
+
         self._runner = WorkerManagerRunner(
             name="worker_manager_orb_aws_ec2",
             worker_manager_config=self._config.worker_manager_config,
             heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_instances,
-            worker_provisioner=self._orb_pool,
+            create_worker_provisioner=create_worker_provisioner,
             children_address=self._config.worker_manager_config.children_address,
             io_threads=self._config.worker_config.io_threads,
             workers_per_provisioner_unit=workers_per_instance,
@@ -366,7 +370,7 @@ class ORBAWSEC2WorkerManager:
             json.dump(template_kwargs, f, indent=2, default=str)
         logger.info(f"[DEBUG] Dumped config to {config_path} and template to {template_path}")
 
-    def _create_user_data(self, unit_id: str, workers_per_instance: int) -> str:
+    def _create_user_data(self, unit_id: str, workers_per_instance: int, children_address: AddressConfig) -> str:
         worker_config = self._config.worker_config
         worker_manager_config = self._config.worker_manager_config
 
@@ -445,7 +449,7 @@ set +e
         backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
         wm_id = shlex.quote(worker_manager_config.worker_manager_id)
         script += f"""{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
-    {child_link_arguments(worker_manager_config, self._config.cloud_children_config, unit_id, workers_per_instance)} \\
+    {child_link_arguments(children_address, self._config.cloud_children_config, unit_id, workers_per_instance)} \\
     --worker-type ORB \\
     --worker-manager-id {wm_id} \\
     --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \\
