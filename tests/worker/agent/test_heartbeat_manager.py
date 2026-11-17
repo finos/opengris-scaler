@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import WorkerHeartbeat, WorkerHeartbeatEcho
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager, TimeoutManager
@@ -18,7 +19,7 @@ class TestVanillaHeartbeatManager(unittest.IsolatedAsyncioTestCase):
             object_storage_address=AddressConfig.from_string("tcp://127.0.0.1:2346"),
             capabilities={},
             task_queue_size=10,
-            worker_manager_id=b"test_manager",
+            worker_manager_id=WorkerManagerID(b"test_manager"),
         )
         self.connector_external = AsyncMock(spec=AsyncConnector)
         self.connector_manager = AsyncMock(spec=AsyncConnector)

@@ -11,6 +11,7 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.protocol.helpers import capabilities_to_dict
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.processor.processor import Processor
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
@@ -60,7 +61,7 @@ class TestCapabilities(unittest.TestCase):
                 NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
                         scheduler_address=base_config.worker_manager_config.scheduler_address,
-                        worker_manager_id="test_manager",
+                        worker_manager_id=WorkerManagerID.from_string("test_manager"),
                         object_storage_address=None,
                         max_task_concurrency=1,
                     ),
@@ -109,7 +110,7 @@ class TestCapabilities(unittest.TestCase):
                 NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
                         scheduler_address=base_config.worker_manager_config.scheduler_address,
-                        worker_manager_id="test_manager",
+                        worker_manager_id=WorkerManagerID.from_string("test_manager"),
                         object_storage_address=None,
                         max_task_concurrency=1,
                     ),

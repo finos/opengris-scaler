@@ -3,6 +3,7 @@ from functools import partial
 from typing import Dict, Optional
 
 from scaler.config.types.address import AddressConfig
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.worker_manager.proxy.symphony.execution_backend import SymphonyExecutionBackend
 from scaler.worker_manager.proxy.symphony.processor_status import SymphonyProcessorStatusProvider
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
@@ -19,7 +20,7 @@ def create_symphony_worker(
     task_queue_size: int,
     io_threads: int,
     event_loop: str,
-    worker_manager_id: bytes,
+    worker_manager_id: WorkerManagerID,
     worker_manager_address: AddressConfig,
     unit_id: str,
 ) -> WorkerProcess:

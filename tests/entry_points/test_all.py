@@ -333,9 +333,11 @@ class TestRunWorkerManager(unittest.TestCase):
         from scaler.config.common.worker_manager import WorkerManagerConfig
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
         from scaler.config.types.address import AddressConfig
+        from scaler.utility.identifiers import WorkerManagerID
 
         wmc = WorkerManagerConfig(
-            scheduler_address=AddressConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
+            scheduler_address=AddressConfig.from_string("tcp://localhost:6378"),
+            worker_manager_id=WorkerManagerID.from_string("wm-test"),
         )
         return NativeWorkerManagerConfig(
             worker_manager_config=wmc,
@@ -381,10 +383,11 @@ class TestRunWorkerManager(unittest.TestCase):
         from scaler.config.common.worker_manager import WorkerManagerConfig
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
         from scaler.config.types.address import AddressConfig
+        from scaler.utility.identifiers import WorkerManagerID
 
         wmc = WorkerManagerConfig(
             scheduler_address=AddressConfig.from_string("tcp://localhost:6378"),
-            worker_manager_id="wm-test",
+            worker_manager_id=WorkerManagerID.from_string("wm-test"),
             children_address=AddressConfig.from_string("tcp://203.0.113.10:6390"),
         )
         return ORBAWSEC2WorkerManagerConfig(

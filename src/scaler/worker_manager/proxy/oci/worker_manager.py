@@ -72,7 +72,7 @@ class OCIJobsWorkerProvisioner(DeclarativeWorkerProvisioner):
             name=f"oci-hpc-{len(self._units)}",
             address=config.worker_manager_config.effective_worker_scheduler_address,
             object_storage_address=config.worker_manager_config.object_storage_address,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
+            worker_manager_id=config.worker_manager_config.worker_manager_id,
             worker_manager_address=self._children_address,
             unit_id=unit_id,
             compartment_id=container_instance_config.compartment_id,

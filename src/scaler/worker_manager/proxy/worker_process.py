@@ -23,7 +23,7 @@ from scaler.protocol.capnp import (
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_manager.proxy.heartbeat_manager import HeartbeatManager
@@ -53,7 +53,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         task_queue_size: int,
         io_threads: int,
         event_loop: str,
-        worker_manager_id: bytes,
+        worker_manager_id: WorkerManagerID,
         worker_manager_address: AddressConfig,
         unit_id: str,
         processor_status_provider_factory: Callable[[], ProcessorStatusProvider],

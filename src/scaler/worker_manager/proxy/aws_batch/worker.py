@@ -9,6 +9,7 @@ from functools import partial
 from typing import Dict, Optional
 
 from scaler.config.types.address import AddressConfig
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.worker_manager.proxy.aws_batch.execution_backend import AWSBatchExecutionBackend
 from scaler.worker_manager.proxy.aws_batch.processor_status import AWSBatchProcessorStatusProvider
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
@@ -21,7 +22,7 @@ def create_aws_batch_worker(
     job_definition: str,
     aws_region: str,
     s3_bucket: str,
-    worker_manager_id: bytes,
+    worker_manager_id: WorkerManagerID,
     worker_manager_address: AddressConfig,
     unit_id: str,
     name: Optional[str] = None,

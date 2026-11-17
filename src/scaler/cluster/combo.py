@@ -33,6 +33,7 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.config.types.worker import WorkerCapabilities
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
@@ -118,7 +119,7 @@ class SchedulerClusterCombo:
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=self._address,
-                    worker_manager_id=worker_manager_id,
+                    worker_manager_id=WorkerManagerID.from_string(worker_manager_id),
                     object_storage_address=self._object_storage_address,
                     max_task_concurrency=n_workers,
                 ),

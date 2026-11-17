@@ -6,6 +6,7 @@ from typing import Optional
 from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.worker_manager.cloud.child_command import child_link_arguments, load_requirements_content
 
 
@@ -35,7 +36,7 @@ class TestChildLinkArguments(unittest.TestCase):
 
     WORKER_MANAGER_CONFIG = WorkerManagerConfig(
         scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:8516"),
-        worker_manager_id="wm-test",
+        worker_manager_id=WorkerManagerID.from_string("wm-test"),
         children_address=AddressConfig.from_string(BOUND_ADDRESS),
     )
 

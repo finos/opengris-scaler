@@ -485,7 +485,7 @@ def _run_native_worker_manager(
         NativeWorkerManagerConfig(
             worker_manager_config=WorkerManagerConfig(
                 scheduler_address=AddressConfig.from_string(scheduler_address),
-                worker_manager_id=worker_manager_id,
+                worker_manager_id=WorkerManagerID.from_string(worker_manager_id),
                 object_storage_address=None,
                 max_task_concurrency=max_task_concurrency,
             ),

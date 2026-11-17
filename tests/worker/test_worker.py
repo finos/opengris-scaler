@@ -17,6 +17,7 @@ from unittest import mock
 import scaler.worker.worker as worker_module
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, SysCallError
 from scaler.protocol.capnp import WorkerDisconnectNotification
 from scaler.worker.worker import Worker
@@ -75,7 +76,7 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
             hard_processor_suspend=False,
             logging_paths=(),
             logging_level="INFO",
-            worker_manager_id=b"wm",
+            worker_manager_id=WorkerManagerID(b"wm"),
             worker_manager_address=AddressConfig.from_string("tcp://127.0.0.1:2347"),
             unit_id="unit",
         )

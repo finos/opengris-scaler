@@ -16,6 +16,7 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.exceptions import DisconnectedError, MissingObjects, ProcessorDiedError
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.preload import PreloadSpecError, _parse_preload_spec, execute_preload
@@ -375,7 +376,7 @@ class TestClientPreload(unittest.TestCase):
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=self.combo._address,
-                    worker_manager_id="test_manager",
+                    worker_manager_id=WorkerManagerID.from_string("test_manager"),
                     object_storage_address=self.combo._object_storage_address,
                     max_task_concurrency=1,
                 ),

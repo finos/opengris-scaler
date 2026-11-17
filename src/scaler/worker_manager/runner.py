@@ -54,7 +54,7 @@ class WorkerManagerRunner:
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._capabilities = capabilities
         self._max_provisioner_units = max_provisioner_units
-        self._worker_manager_id = worker_manager_config.worker_manager_id.encode()
+        self._worker_manager_id = worker_manager_config.worker_manager_id
         self._worker_provisioner = worker_provisioner
         self._children_address = children_address
         self._io_threads = io_threads

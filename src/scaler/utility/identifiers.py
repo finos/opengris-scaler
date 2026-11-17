@@ -3,6 +3,8 @@ import hashlib
 import uuid
 from typing import Optional
 
+from scaler.config.mixins import ConfigType
+
 
 class Identifier(bytes, metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -108,11 +110,14 @@ class ObjectID(bytes):
         return f"ObjectID(owner_hash={self.owner_hash().hex()}, object_tag={self.object_tag().hex()})"
 
 
-class WorkerManagerID(Identifier):
+class WorkerManagerID(Identifier, ConfigType):
     """Logical ID of a worker manager."""
 
     def __repr__(self) -> str:
         return f"WorkerManagerID({self.decode()})"
+
+    def __str__(self) -> str:
+        return self.decode()
 
     @staticmethod
     def from_string(name: str) -> "WorkerManagerID":
