@@ -86,17 +86,18 @@ cp dist_wasm/opengris_scaler-*wasm32.whl "${WASM_STATIC}/"
 
 # 7. Vendor / build the runtime deps the JupyterLite kernel pulls at boot.
 #    Three groups: (a) pure-Python wheels from PyPI (cloudpickle, tblib,
-#    opengris-parfun, pargraph, bidict, pydot); (b) stub wheels built from
+#    opengris-parfun, pargraph, bidict, pydot, opentelemetry-api); (b) stub wheels built from
 #    scripts/wasm_stubs/ (psutil, loky) -- both upstream packages need C
 #    extensions Pyodide lacks; (c) Pyodide-bundled deps resolved at boot from
 #    pyodide-lock.json (attrs, jsonschema, msgpack, scikit-learn).
 rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl \
       "${WASM_STATIC}"/opengris_parfun-*.whl "${WASM_STATIC}"/pargraph-*.whl \
       "${WASM_STATIC}"/bidict-*.whl "${WASM_STATIC}"/pydot-*.whl \
+      "${WASM_STATIC}"/opentelemetry_api-*.whl \
       "${WASM_STATIC}"/psutil-*.whl "${WASM_STATIC}"/loky-*.whl \
       "${WASM_STATIC}"/attrs-*.whl
 python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" \
-    "cloudpickle" "tblib>=${TBLIB_MIN_VERSION}" "opengris-parfun" "pargraph" "bidict" "pydot"
+    "cloudpickle" "tblib>=${TBLIB_MIN_VERSION}" "opengris-parfun" "pargraph" "bidict" "pydot" "opentelemetry-api"
 for stub in psutil loky; do
     python -m pip wheel --quiet --no-deps \
         --wheel-dir "${WASM_STATIC}" "scripts/wasm_stubs/${stub}"
@@ -118,16 +119,16 @@ if command -v pyodide >/dev/null 2>&1; then
     # from pyodide-lock.json instead, but the import surface is the same.
     "${SMOKE_VENV}/bin/pip" install --quiet \
         attrs jsonschema msgpack numpy scikit-learn pyparsing \
-        argcomplete sortedcontainers
+        argcomplete sortedcontainers typing-extensions
     "${SMOKE_VENV}/bin/pip" install --quiet --no-index --find-links "${SMOKE_WHEELS}" \
-        cloudpickle "tblib>=${TBLIB_MIN_VERSION}" bidict pydot psutil loky
+        cloudpickle "tblib>=${TBLIB_MIN_VERSION}" bidict pydot psutil loky opentelemetry-api
     "${SMOKE_VENV}/bin/pip" install --quiet --no-deps --no-index \
         --find-links "${SMOKE_WHEELS}" opengris-parfun pargraph opengris-scaler
     # Pyodide's CLI sometimes raises a benign TypeError from its shutdown
     # excepthook after a successful run; check for the OK marker on stdout
     # rather than trusting the process exit code.
     SMOKE_OUT="$("${SMOKE_VENV}/bin/python" -c "
-import psutil, loky, bidict, pydot, cloudpickle, tblib
+import psutil, loky, bidict, pydot, cloudpickle, tblib, opentelemetry
 import attrs, jsonschema, msgpack, numpy, sklearn
 import parfun, pargraph
 # Exercise the psutil surface scaler's client heartbeat manager touches

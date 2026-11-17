@@ -24,6 +24,7 @@ from scaler.config.section.webgui import WebGUIConfig
 from scaler.config.section.worker_manager_union import WorkerManagerUnion
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.telemetry import worker_manager_service
 
 
 @dataclasses.dataclass
@@ -55,6 +56,10 @@ def _run_worker_manager(config: WorkerManagerUnion) -> None:
         config.logging_config.config_file,
         config.logging_config.level,
         process_name=config._tag,
+        telemetry_service=worker_manager_service(
+            config.worker_manager_config.worker_manager_id,
+            config.unit_id if isinstance(config, NativeWorkerManagerConfig) else None,
+        ),
     )
     register_event_loop(config.worker_config.event_loop)
     if isinstance(config, NativeWorkerManagerConfig):

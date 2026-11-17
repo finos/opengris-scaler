@@ -35,6 +35,7 @@ from scaler.utility.logging.utility import LogType, detect_log_type
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.serialization import serialize_failure
+from scaler.utility.telemetry import ServiceName, TelemetryService
 from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
 from scaler.worker.preload import execute_preload
@@ -132,7 +133,11 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             for path in self._logging_paths
         ]
 
-        bootstrap_process(log_paths=tuple(logging_paths), logging_level=self._logging_level)
+        bootstrap_process(
+            log_paths=tuple(logging_paths),
+            logging_level=self._logging_level,
+            telemetry_service=TelemetryService(ServiceName.PROCESSOR),
+        )
         tblib.pickling_support.install()
 
         self._backend = get_network_backend_from_env()

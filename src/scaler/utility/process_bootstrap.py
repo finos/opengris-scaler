@@ -5,6 +5,7 @@ import typing
 
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
 from scaler.utility.logging.utility import LoggingLevel, LogType, detect_log_type, get_logger_info, setup_logger
+from scaler.utility.telemetry import TelemetryService, configure_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,9 @@ def bootstrap_process(
     logging_config_file: typing.Optional[str] = None,
     logging_level: str = LoggingLevel.INFO.name,
     process_name: str = "scaler",
+    telemetry_service: typing.Optional[TelemetryService] = None,
 ) -> None:
-    """Configure logging and enable a fatal-signal crash-dump handler for this process."""
+    """Configure logging, telemetry when `telemetry_service` is given, and a fatal-signal crash-dump handler."""
     setup_logger(log_paths, logging_config_file, logging_level, process_name)
 
     # Read the primary logging location back off the logger itself, rather than off log_paths:
@@ -25,6 +27,9 @@ def bootstrap_process(
     # is not a reliable source of truth for where logging actually ended up.
     _, _, resolved_log_paths = get_logger_info(logging.getLogger("scaler"))
     __enable_faulthandler(resolved_log_paths[0])
+
+    if telemetry_service is not None:
+        configure_telemetry(telemetry_service, logging_level)
 
 
 def __enable_faulthandler(log_path: str) -> None:

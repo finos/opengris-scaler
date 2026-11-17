@@ -24,6 +24,7 @@ from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
+from scaler.utility.telemetry import EVENT_NAME_ATTRIBUTE, WORKER_ID_ATTRIBUTE, WORKER_MANAGER_ID_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,14 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat) -> None:
         info.capabilities = capabilities_to_dict(info.capabilities)
         if self._allocation_policy.add_worker(worker_id, info.capabilities, info.queueSize):
-            logger.info(f"worker {worker_id!r} connected")
+            logger.info(
+                f"worker {worker_id!r} connected",
+                extra={
+                    EVENT_NAME_ATTRIBUTE: "scaler.worker.connected",
+                    WORKER_ID_ATTRIBUTE: worker_id.decode(),
+                    WORKER_MANAGER_ID_ATTRIBUTE: info.workerManagerID.decode(),
+                },
+            )
             await self._binder_monitor.send(
                 StateWorker(
                     workerId=worker_id,
@@ -217,11 +225,16 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         )
 
         task_ids = self._allocation_policy.remove_worker(worker_id)
+        event = {
+            EVENT_NAME_ATTRIBUTE: "scaler.worker.disconnected",
+            WORKER_ID_ATTRIBUTE: worker_id.decode(),
+            "scaler.worker.disconnect_reason": reason,
+        }
         if not task_ids:
-            logger.info(f"{worker_id!r} disconnected ({reason})")
+            logger.info(f"{worker_id!r} disconnected ({reason})", extra=event)
             return
 
-        logger.warning(f"{worker_id!r} disconnected ({reason}): rerouting/failing {len(task_ids)} task(s)")
+        logger.warning(f"{worker_id!r} disconnected ({reason}): rerouting/failing {len(task_ids)} task(s)", extra=event)
         for task_id in task_ids:
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
 
@@ -232,7 +245,10 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         if not task_ids:
             return
 
-        logger.info(f"{worker_id!r} is draining: taking back {len(task_ids)} task(s)")
+        logger.info(
+            f"{worker_id!r} is draining: taking back {len(task_ids)} task(s)",
+            extra={EVENT_NAME_ATTRIBUTE: "scaler.worker.draining", WORKER_ID_ATTRIBUTE: worker_id.decode()},
+        )
         for task_id in task_ids:
             await self._task_controller.on_task_balance_cancel(task_id)
 

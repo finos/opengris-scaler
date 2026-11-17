@@ -34,6 +34,7 @@ from scaler.scheduler.controllers.object_controller import VanillaObjectControll
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
+from scaler.scheduler.metrics import EventLoopLagMonitor
 from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
@@ -75,6 +76,7 @@ class Scheduler:
             config_controller=self._config_controller, allocation_policy=self._allocation_policy
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
+        self._event_loop_lag_monitor = EventLoopLagMonitor()
         self._worker_manager_controller = WorkerManagerController(
             config_controller=self._config_controller, scaling_policy=self._scaling_policy
         )
@@ -292,6 +294,7 @@ class Scheduler:
                 self._config_controller.get_config("status_report_interval_seconds"),
                 swallow_routine_errors=True,
             ),
+            create_async_loop_routine(self._event_loop_lag_monitor.routine, 0, swallow_routine_errors=True),
         ]
 
         loop_tasks = [asyncio.ensure_future(loop) for loop in loops]
