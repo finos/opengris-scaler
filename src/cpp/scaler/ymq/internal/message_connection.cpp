@@ -149,30 +149,50 @@ void MessageConnection::shutdownClient() noexcept
     // By moving its ownership to the shutdown()'s callback, close() is guaranteed to be called only after the callback
     // completes.
 
-    auto client = std::make_unique<Client>(std::move(_client.value()));
+    auto lingeringClient = std::make_shared<LingeringClient>(
+        LingeringClient {std::move(_client.value()), UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(_loop))});
     _client.reset();
 
-    Client* clientPtr = client.get();
-
-    auto shutdownCallback = [client =
-                                 std::move(client)](std::expected<void, scaler::wrapper::uv::Error> result) noexcept {
+    auto shutdownCallback = [lingeringClient](std::expected<void, scaler::wrapper::uv::Error> result) noexcept {
         if (!result.has_value() && isConnectionError(result.error())) {
             return;  // Ignore connection errors during shutdown
         }
 
         if (!result.has_value() && result.error().code() == UV_ECANCELED) {
-            return;  // The event loop stopped before the peer read our remaining writes
+            return;  // The linger timer closed the connection before the remote read our remaining writes
         }
 
         UV_EXIT_ON_ERROR(result);
     };
 
-    auto result = clientPtr->shutdown(std::move(shutdownCallback));
+    auto result = lingeringClient->_client.shutdown(std::move(shutdownCallback));
     if (!result.has_value() && isConnectionError(result.error())) {
         return;  // Ignore connection errors during shutdown
     }
 
     UV_EXIT_ON_ERROR(result);
+
+    // A remote that stopped reading never lets the writes drain, so the shutdown cannot wait for them forever.
+    UV_EXIT_ON_ERROR(lingeringClient->_lingerTimer.start(
+        shutdownLingerTimeout,
+        std::nullopt,
+        std::bind_front(&MessageConnection::onLingerTimeout, std::weak_ptr<LingeringClient>(lingeringClient))));
+}
+
+void MessageConnection::onLingerTimeout(std::weak_ptr<LingeringClient> weakLingeringClient) noexcept
+{
+    // Weak, as the lingering client owns this timer and closes it when destroyed.
+    std::shared_ptr<LingeringClient> lingeringClient = weakLingeringClient.lock();
+    assert(lingeringClient != nullptr);
+
+    Client client = std::move(lingeringClient->_client);
+
+    // libuv refuses to reset a TCP stream whose shutdown started, and IPC has no reset: these close when destroyed.
+    auto result = client.closeReset();
+    if (!result.has_value() && result.error() != scaler::wrapper::uv::Error {UV_EINVAL} &&
+        result.error() != scaler::wrapper::uv::Error {UV_ENOTSUP}) {
+        UV_EXIT_ON_ERROR(std::move(result));
+    }
 }
 
 void MessageConnection::initialize() noexcept

@@ -116,6 +116,12 @@ private:
         RecvCallback _onRecvDone {};
     };
 
+    // A client kept open by its graceful shutdown, until the remote reads the queued writes or the timer closes it.
+    struct LingeringClient {
+        Client _client;
+        scaler::wrapper::uv::Timer _lingerTimer;
+    };
+
     Logger _logger {};
 
     scaler::wrapper::uv::Loop& _loop;
@@ -144,6 +150,8 @@ private:
     RecvOperation _recvCurrent {};
 
     void shutdownClient() noexcept;
+
+    static void onLingerTimeout(std::weak_ptr<LingeringClient> weakLingeringClient) noexcept;
 
     void initialize() noexcept;
 
