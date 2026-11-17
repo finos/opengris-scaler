@@ -42,6 +42,7 @@ CLIENT_CONNECTED_EVENT = "scaler.client.connected"
 CLIENT_DISCONNECTED_EVENT = "scaler.client.disconnected"
 
 # metrics
+SCHEDULER_METER = "scaler.scheduler"
 SCHEDULER_TASKS_METRIC = "scaler.scheduler.tasks"
 SCHEDULER_WORKERS_METRIC = "scaler.scheduler.workers"
 SCHEDULER_PROCESSORS_METRIC = "scaler.scheduler.processors"

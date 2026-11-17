@@ -5,12 +5,14 @@ from typing import Iterable, Optional
 from opentelemetry import metrics
 from opentelemetry.metrics import CallbackOptions, Observation
 
+from scaler.config.constants import EVENT_LOOP_LAG_SAMPLE_SECONDS
 from scaler.protocol.capnp import StateScheduler, TaskState
 from scaler.utility.mixins import Looper
 from scaler.utility.semantic_conventions import (
     OBJECT_STORAGE_BYTES_METRIC,
     SCHEDULER_CLIENTS_METRIC,
     SCHEDULER_EVENT_LOOP_LAG_METRIC,
+    SCHEDULER_METER,
     SCHEDULER_OBJECTS_METRIC,
     SCHEDULER_PROCESSORS_METRIC,
     SCHEDULER_TASKS_METRIC,
@@ -19,11 +21,6 @@ from scaler.utility.semantic_conventions import (
     WORKER_MANAGER_ID_ATTRIBUTE,
     WORKER_MANAGER_PENDING_WORKERS_METRIC,
 )
-
-METER_NAME = "scaler.scheduler"
-
-# how often the lag monitor wakes; its oversleep is the time other callbacks held the event loop
-EVENT_LOOP_LAG_SAMPLE_SECONDS = 1
 
 
 class SchedulerMetrics:
@@ -36,7 +33,7 @@ class SchedulerMetrics:
     def __init__(self) -> None:
         self._state: Optional[StateScheduler] = None
 
-        meter = metrics.get_meter(METER_NAME)
+        meter = metrics.get_meter(SCHEDULER_METER)
         meter.create_observable_gauge(
             SCHEDULER_TASKS_METRIC,
             callbacks=[self.__observe_tasks],
@@ -129,7 +126,7 @@ class EventLoopLagMonitor(Looper):
     """Records how late the event loop wakes a sleeping coroutine, which is how long callbacks block the loop."""
 
     def __init__(self) -> None:
-        self._lag = metrics.get_meter(METER_NAME).create_histogram(
+        self._lag = metrics.get_meter(SCHEDULER_METER).create_histogram(
             SCHEDULER_EVENT_LOOP_LAG_METRIC, unit="s", description="time the event loop woke a coroutine late"
         )
 

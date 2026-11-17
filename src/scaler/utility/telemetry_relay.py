@@ -4,17 +4,12 @@ import logging
 import threading
 from typing import List
 
+from scaler.config.constants import RELAY_BUFFER_CAPACITY
 from scaler.io.mixins import AsyncConnector
 from scaler.protocol.capnp import TelemetryBatch
 from scaler.utility.mixins import Looper
 
 logger = logging.getLogger(__name__)
-
-# OTLP export requests a process holds while its connector is slow; the SDK batches up to 512 spans per request
-RELAY_BUFFER_CAPACITY = 1024
-
-# how often a relaying worker sends its buffered batches; the SDK's own export delays are 5s for spans and logs
-RELAY_SEND_INTERVAL_SECONDS = 1
 
 
 class TelemetryRelayBuffer:

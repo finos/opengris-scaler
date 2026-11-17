@@ -10,16 +10,12 @@ from typing import Dict, Optional, Tuple
 
 from opentelemetry.util.re import parse_env_headers
 
+from scaler.config.constants import FORWARD_QUEUE_CAPACITY, FORWARD_TIMEOUT_SECONDS, OTLP_ENDPOINT_ENV, OTLP_HEADERS_ENV
 from scaler.protocol.capnp import TelemetryBatch
-from scaler.utility.telemetry import OTLP_ENDPOINT_ENV, is_export_configured
+from scaler.utility.telemetry import is_export_configured
 
 logger = logging.getLogger(__name__)
 
-OTLP_HEADERS_ENV = "OTEL_EXPORTER_OTLP_HEADERS"
-
-# export requests waiting for the collector; each holds up to 512 spans or log records
-FORWARD_QUEUE_CAPACITY = 1024
-FORWARD_TIMEOUT_SECONDS = 10
 
 SIGNAL_PATHS: Dict[TelemetryBatch.Signal, str] = {
     TelemetryBatch.Signal.traces: "/v1/traces",
