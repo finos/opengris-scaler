@@ -1,10 +1,18 @@
 #include <gtest/gtest.h>
 
+#ifdef __linux__
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#endif  // __linux__
+
+#include <chrono>
 #include <expected>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <thread>
 
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
@@ -52,6 +60,7 @@ public:
         UV_EXIT_ON_ERROR(_server.listen(16, [&](std::expected<void, scaler::wrapper::uv::Error>) {
             scaler::wrapper::uv::TCPSocket serverSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop));
             UV_EXIT_ON_ERROR(_server.accept(serverSocket));
+            ASSERT_EQ(uv_fileno(reinterpret_cast<const uv_handle_t*>(&serverSocket.handle().native()), &_serverFd), 0);
 
             _serverConnection.connect(scaler::ymq::internal::Client(std::move(serverSocket)));
         }));
@@ -79,11 +88,16 @@ public:
     {
         return _clientConnection;
     }
+    uv_os_fd_t serverFd() const
+    {
+        return _serverFd;
+    }
 
 private:
     scaler::wrapper::uv::Loop _loop;
     scaler::wrapper::uv::TCPServer _server;
     scaler::ymq::internal::MessageConnection _serverConnection;
+    uv_os_fd_t _serverFd {};
 
     scaler::wrapper::uv::TCPSocket _clientSocket;
     scaler::ymq::internal::MessageConnection _clientConnection;
@@ -309,6 +323,76 @@ TEST_F(YMQMessageConnectionTest, ResetSeenByAWriteIsStillAnAbort)
 
     ASSERT_EQ(*serverDisconnectReason, scaler::ymq::internal::MessageConnection::DisconnectReason::Aborted);
 }
+
+#ifdef __linux__
+TEST_F(YMQMessageConnectionTest, TimeoutSeenByAWriteIsStillAnAbort)
+{
+    // Like a reset, a timeout that a write consumed leaves a plain EOF for the next read, and must read as an abort.
+
+    constexpr int userTimeoutMilliseconds = 500;
+    constexpr int sendBufferBytes         = 8 * 1024 * 1024;
+    constexpr size_t windowFillingBytes   = 1024 * 1024;  // more than the client's receive buffer holds
+    constexpr std::chrono::seconds timeoutDeadline {10};
+    constexpr std::chrono::milliseconds timeoutPollInterval {50};
+
+    std::optional<scaler::ymq::internal::MessageConnection::DisconnectReason> serverDisconnectReason;
+
+    ConnectionPair connections(
+        // Server callbacks
+        []([[maybe_unused]] auto identity) {},                  // onRemoteIdentity
+        [&](auto reason) { serverDisconnectReason = reason; },  // onRemoteDisconnect
+        []([[maybe_unused]] auto message) {},                   // onMessage
+
+        // Client callbacks
+        []([[maybe_unused]] auto identity) {},  // onRemoteIdentity
+        []([[maybe_unused]] auto reason) {},    // onRemoteDisconnect
+        []([[maybe_unused]] auto message) {}    // onMessage
+    );
+
+    scaler::ymq::internal::MessageConnection& server = connections.server();
+    scaler::ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                  = connections.loop();
+
+    // Wait for identity exchange
+    while (!server.established() || !client.established()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    // The loop does not run until the timeout, so the client stops reading and the kernel times out its zero window.
+    const int serverFd = connections.serverFd();
+    ASSERT_EQ(
+        setsockopt(serverFd, IPPROTO_TCP, TCP_USER_TIMEOUT, &userTimeoutMilliseconds, sizeof(userTimeoutMilliseconds)),
+        0);
+    ASSERT_EQ(setsockopt(serverFd, SOL_SOCKET, SO_SNDBUF, &sendBufferBytes, sizeof(sendBufferBytes)), 0);
+
+    server.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(std::string(windowFillingBytes, 'x')),
+        []([[maybe_unused]] auto result, [[maybe_unused]] auto payload) {});
+
+    auto tcpState = [&]() {
+        tcp_info info {};
+        socklen_t infoSize = sizeof(info);
+        getsockopt(serverFd, IPPROTO_TCP, TCP_INFO, &info, &infoSize);
+        return info.tcpi_state;
+    };
+
+    const auto deadline = std::chrono::steady_clock::now() + timeoutDeadline;
+    while (tcpState() != TCP_CLOSE && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(timeoutPollInterval);
+    }
+    ASSERT_EQ(tcpState(), TCP_CLOSE) << "the kernel did not time the connection out";
+
+    server.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>("seen by the timeout"),
+        []([[maybe_unused]] auto result, [[maybe_unused]] auto payload) {});
+
+    while (!serverDisconnectReason.has_value()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_EQ(*serverDisconnectReason, scaler::ymq::internal::MessageConnection::DisconnectReason::Aborted);
+}
+#endif  // __linux__
 
 TEST_F(YMQMessageConnectionTest, EmptyMessage)
 {

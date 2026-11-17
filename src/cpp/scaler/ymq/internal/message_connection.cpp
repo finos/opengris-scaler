@@ -174,10 +174,10 @@ void MessageConnection::shutdownClient() noexcept
 
 void MessageConnection::initialize() noexcept
 {
-    _client      = std::nullopt;
-    _clientReset = std::make_shared<bool>(false);
-    _state       = State::Disconnected;
-    _recvCurrent = RecvOperation {};
+    _client        = std::nullopt;
+    _clientAborted = std::make_shared<bool>(false);
+    _state         = State::Disconnected;
+    _recvCurrent   = RecvOperation {};
 
     sendHandshake();
     recvMagicNumber();
@@ -277,20 +277,21 @@ void MessageConnection::recvMessage() noexcept
     });
 }
 
-void MessageConnection::noteReset(
-    bool& clientReset, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept
+void MessageConnection::noteAbort(
+    bool& clientAborted, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept
 {
-    if (!result.has_value() && result.error().code() == UV_ECONNRESET) {
-        clientReset = true;
+    // A write after the remote's graceful close fails with EPIPE, any other connection error is an abort.
+    if (!result.has_value() && isConnectionError(result.error()) && result.error().code() != UV_EPIPE) {
+        clientAborted = true;
     }
 }
 
 void MessageConnection::onWriteDone(
     SendCallback callback,
-    std::shared_ptr<bool> clientReset,
+    std::shared_ptr<bool> clientAborted,
     std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
-    noteReset(*clientReset, result);
+    noteAbort(*clientAborted, result);
 
     if (!result.has_value()) {
         const scaler::wrapper::uv::Error& error = result.error();
@@ -324,8 +325,8 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
         const scaler::wrapper::uv::Error& error = result.error();
 
         if (error.code() == UV_EOF) {
-            // Remote closed the connection (graceful disconnect), unless a write consumed the error of a reset.
-            onRemoteDisconnect(*_clientReset ? DisconnectReason::Aborted : DisconnectReason::Disconnected);
+            // Remote closed the connection (graceful disconnect), unless a write consumed the error of an abort.
+            onRemoteDisconnect(*_clientAborted ? DisconnectReason::Aborted : DisconnectReason::Disconnected);
             return;
         } else if (isConnectionError(error)) {
             // Connection aborted unexpectedly
@@ -420,9 +421,9 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
     }
 
     // Make the callback own the operation's callback
-    auto callback = [onSendDone  = std::move(operation._onSendDone),
-                     clientReset = _clientReset](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
-        onWriteDone(std::move(onSendDone), std::move(clientReset), std::move(result));
+    auto callback = [onSendDone    = std::move(operation._onSendDone),
+                     clientAborted = _clientAborted](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
+        onWriteDone(std::move(onSendDone), std::move(clientAborted), std::move(result));
     };
 
     // uv_write() normally delivers errors asynchronously via the callback, but returns UV_ENOTCONN synchronously
@@ -451,9 +452,9 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
                 const bool isLastChunk = (offset + bufferOffset + chunkSize >= totalSize);
 
                 if (!isLastChunk) {
-                    auto result = _client->write(std::span(&chunk, 1), [clientReset = _clientReset](auto chunkResult) {
-                        noteReset(*clientReset, chunkResult);
-                    });
+                    auto result = _client->write(
+                        std::span(&chunk, 1),
+                        [clientAborted = _clientAborted](auto chunkResult) { noteAbort(*clientAborted, chunkResult); });
                     if (!result.has_value()) {
                         if (result.error().code() != UV_ENOTCONN)
                             UV_EXIT_ON_ERROR(result);

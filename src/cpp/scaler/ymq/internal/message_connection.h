@@ -126,8 +126,8 @@ private:
 
     std::optional<Client> _client {};
 
-    // Whether a write on the current client saw a reset. Shared as the writes can outlive this object.
-    std::shared_ptr<bool> _clientReset {};
+    // Whether a write on the current client saw the connection abort. Shared as the writes can outlive this object.
+    std::shared_ptr<bool> _clientAborted {};
 
     // Sent buffers not yet submitted to the remote.
     std::queue<SendOperation> _sendPending {};
@@ -155,10 +155,10 @@ private:
 
     static void onWriteDone(
         SendCallback callback,
-        std::shared_ptr<bool> clientReset,
+        std::shared_ptr<bool> clientAborted,
         std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
 
-    static void noteReset(bool& clientReset, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept;
+    static void noteAbort(bool& clientAborted, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept;
 
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 
