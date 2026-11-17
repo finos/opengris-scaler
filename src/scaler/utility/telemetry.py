@@ -12,30 +12,38 @@ from typing import Any, Awaitable, Dict, List, Optional
 from opentelemetry import propagate, trace
 from opentelemetry.context import Context
 
+from scaler.config.constants import (
+    BAGGAGE_ENV,
+    BAGGAGE_HEADER,
+    OTEL_ENVIRONMENT_PREFIX,
+    OTLP_ENDPOINT_ENV,
+    RELAY_SEND_INTERVAL_SECONDS,
+    SDK_DISABLED_ENV,
+    TRACEPARENT_ENV,
+    TRACEPARENT_HEADER,
+    TRACESTATE_ENV,
+    TRACESTATE_HEADER,
+)
 from scaler.io.mixins import AsyncConnector
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import LoggingLevel
 from scaler.utility.semantic_conventions import UNIT_ID_ATTRIBUTE, WORKER_MANAGER_ID_ATTRIBUTE
-from scaler.utility.telemetry_relay import RELAY_SEND_INTERVAL_SECONDS, TelemetryRelayBuffer, TelemetryRelaySender
+from scaler.utility.telemetry_relay import TelemetryRelayBuffer, TelemetryRelaySender
 
 logger = logging.getLogger(__name__)
-
-OTLP_ENDPOINT_ENV = "OTEL_EXPORTER_OTLP_ENDPOINT"
-SDK_DISABLED_ENV = "OTEL_SDK_DISABLED"
-
-TRACEPARENT_HEADER = "traceparent"
-TRACESTATE_HEADER = "tracestate"
-BAGGAGE_HEADER = "baggage"
 
 # Task.traceContext: the W3C headers in this order, joined by a newline, which no header value contains
 TRACE_CONTEXT_HEADERS = (TRACEPARENT_HEADER, TRACESTATE_HEADER, BAGGAGE_HEADER)
 TRACE_CONTEXT_SEPARATOR = "\n"
 
-OTEL_ENVIRONMENT_PREFIX = "OTEL_"
-
 # OpenTelemetry's environment variable carrier: a process started inside a trace finds its parent here
-HEADER_TO_ENVIRONMENT = {TRACEPARENT_HEADER: "TRACEPARENT", TRACESTATE_HEADER: "TRACESTATE", BAGGAGE_HEADER: "BAGGAGE"}
+HEADER_TO_ENVIRONMENT = {
+    TRACEPARENT_HEADER: TRACEPARENT_ENV,
+    TRACESTATE_HEADER: TRACESTATE_ENV,
+    BAGGAGE_HEADER: BAGGAGE_ENV,
+}
+
 
 # the installed SDK (telemetry_sdk.InstalledSDK), set once per process; `None` while telemetry is off
 _installed_sdk: Optional[Any] = None
