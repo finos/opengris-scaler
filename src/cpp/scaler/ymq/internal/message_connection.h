@@ -179,6 +179,9 @@ private:
 
     static void noteAbort(bool& clientAborted, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept;
 
+    // Whether a write that failed with this error took an abort that the next read then reports as EOF.
+    static bool isAbortConsumedByWrite(const scaler::wrapper::uv::Error& error) noexcept;
+
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 
     void onRemoteIdentity(std::unique_ptr<Bytes> payload) noexcept;

@@ -307,8 +307,7 @@ void MessageConnection::recvMessage() noexcept
 void MessageConnection::noteAbort(
     bool& clientAborted, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept
 {
-    // A write after the remote's graceful close fails with EPIPE, any other connection error is an abort.
-    if (!result.has_value() && isConnectionError(result.error()) && result.error().code() != UV_EPIPE) {
+    if (!result.has_value() && isAbortConsumedByWrite(result.error())) {
         clientAborted = true;
     }
 }
