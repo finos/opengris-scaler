@@ -149,6 +149,9 @@ private:
     // The current partially received receive buffer being assembled.
     RecvOperation _recvCurrent {};
 
+    // Bytes received since the last complete message: a disconnect drops them.
+    size_t _recvMessageBytes {0};
+
     void shutdownClient() noexcept;
 
     static void onLingerTimeout(std::weak_ptr<LingeringClient> weakLingeringClient) noexcept;

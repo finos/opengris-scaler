@@ -197,11 +197,12 @@ void MessageConnection::onLingerTimeout(std::weak_ptr<LingeringClient> weakLinge
 
 void MessageConnection::initialize() noexcept
 {
-    _client        = std::nullopt;
-    _clientAborted = std::make_shared<bool>(false);
-    _eofTimer      = std::nullopt;
-    _state         = State::Disconnected;
-    _recvCurrent   = RecvOperation {};
+    _client           = std::nullopt;
+    _clientAborted    = std::make_shared<bool>(false);
+    _eofTimer         = std::nullopt;
+    _state            = State::Disconnected;
+    _recvCurrent      = RecvOperation {};
+    _recvMessageBytes = 0;
 
     sendHandshake();
     recvMagicNumber();
@@ -280,6 +281,8 @@ void MessageConnection::recvMagicNumber() noexcept
 
 void MessageConnection::recvMessage() noexcept
 {
+    _recvMessageBytes = 0;
+
     recv(sizeof(Header), [this](std::unique_ptr<Bytes> headerPayload) {
         assert(connected());
 
@@ -349,6 +352,16 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
         const scaler::wrapper::uv::Error& error = result.error();
 
         if (error.code() == UV_EOF) {
+            if (_recvMessageBytes > 0) {
+                _logger.log(
+                    Logger::LoggingLevel::warning,
+                    "Connection to ",
+                    _remoteIdentity.value_or("an unidentified remote"),
+                    " ended in the middle of a message, dropping its first ",
+                    _recvMessageBytes,
+                    " bytes");
+            }
+
             // Graceful unless a write consumed an abort: its callback runs after this poll phase, before the timers.
             _client->readStop();
             _eofTimer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(_loop));
@@ -382,6 +395,7 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
         std::memcpy(readDest, data.subspan(offset).data(), readCount);
 
         _recvCurrent._cursor += readCount;
+        _recvMessageBytes += readCount;
         offset += readCount;
 
         // If the receive buffer is full, invoke the callback
