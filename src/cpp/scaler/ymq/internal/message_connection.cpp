@@ -362,7 +362,7 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
                     " bytes");
             }
 
-            // Graceful unless a write consumed an abort: its callback runs after this poll phase, before the timers.
+            // A write notes a reset it consumed before the timers run. libuv reports a reset behind unread data as EOF.
             _client->readStop();
             _eofTimer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(_loop));
             UV_EXIT_ON_ERROR(_eofTimer->start(std::chrono::milliseconds {0}, std::nullopt, [this]() {
