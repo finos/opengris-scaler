@@ -64,11 +64,10 @@ class JupyterLiteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         if not (DOCS_HTML / "lite" / "lab" / "index.html").is_file():
-            raise unittest.SkipTest("docs/build/html/lite/lab/index.html missing. " "Run `cd docs && make html` first.")
+            raise unittest.SkipTest("docs/build/html/lite/lab/index.html missing. Run `cd docs && make html` first.")
         if not (DOCS_HTML / "_static" / "wasm").is_dir():
             raise unittest.SkipTest(
-                "docs/build/html/_static/wasm missing. "
-                "Run `scripts/build_wasm.sh` then `cd docs && make html` first."
+                "docs/build/html/_static/wasm missing. Run `scripts/build_wasm.sh` then `cd docs && make html` first."
             )
 
         # Serve docs/build/html on an ephemeral port. JupyterLite needs to

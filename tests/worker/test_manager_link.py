@@ -12,11 +12,11 @@ from scaler.config.defaults import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
-from scaler.config.types.address import AddressConfig
+from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import BaseMessage, WorkerDisconnectNotification, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker.worker import Worker
 from tests.utility.utility import logging_test_name
 
@@ -35,8 +35,12 @@ class _FakeManager:
         self._backend = get_network_backend_from_env(io_threads=1)
         self._binder = self._backend.create_async_binder(identity=b"fake-manager", callback=self._on_receive)
 
-    async def run(self) -> None:
+    async def bind(self) -> None:
         await self._binder.bind(self.address)
+        assert self._binder.address is not None
+        self.address = self._binder.address
+
+    async def run(self) -> None:
         while True:
             await self._binder.routine()
 
@@ -85,12 +89,12 @@ class TestWorkerManagerLink(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_worker_heartbeats_its_manager_and_reports_its_exit(self) -> None:
         combo = SchedulerClusterCombo(n_workers=0)
-        manager = _FakeManager(AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"))
+        manager = _FakeManager(AddressConfig(SocketType.tcp, "127.0.0.1", OS_PICKED_PORT))
+        await manager.bind()  # the worker dials the address the manager bound
         manager_task = asyncio.ensure_future(manager.run())
         worker = _worker(combo, manager)
         loop = asyncio.get_running_loop()
         try:
-            await asyncio.sleep(0.5)  # let the fake manager bind before the worker dials it
             worker.start()
             await asyncio.wait_for(manager.heartbeat.wait(), TIMEOUT_SECONDS)
 

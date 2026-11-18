@@ -1,9 +1,8 @@
 from enum import IntEnum
 from typing import Any, ClassVar
 
-from scaler.utility.identifiers import ClientID
+from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.identifiers import ObjectID as ScalerObjectID
-from scaler.utility.identifiers import TaskID, WorkerID
 
 class CapnpStruct:
     def __init__(self, **kwargs: Any) -> None: ...
