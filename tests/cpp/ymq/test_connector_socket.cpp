@@ -435,26 +435,17 @@ TEST_P(YMQConnectorSocketTest, ShutdownWithStalledPeer)
         std::make_unique<scaler::ymq::BufferedBytes>(std::string(stalledSendBytes, 'x')),
         [sendDone](auto result, [[maybe_unused]] auto payload) { sendDone->set_value(std::move(result)); });
 
-    // SecureSocket acknowledges a write once queued on its transport, so over TLS only the peer sees the drop.
-    const bool sendStaysInFlight = GetParam() != "tls" && GetParam() != "wss";
-
-    if (sendStaysInFlight) {
-        ASSERT_EQ(sendResult.wait_for(sendSettleTime), std::future_status::timeout);
-    }
+    ASSERT_EQ(sendResult.wait_for(sendSettleTime), std::future_status::timeout);
 
     // Returns once the socket's thread has started the graceful shutdown, after it framed the send.
     std::promise<void> shutdownStarted;
     connector->shutdown([&]() { shutdownStarted.set_value(); });
     shutdownStarted.get_future().wait();
 
-    if (sendStaysInFlight) {
-        ASSERT_EQ(sendResult.wait_for(scaler::ymq::shutdownLingerTimeout + lingerMargin), std::future_status::ready);
-        const auto result = sendResult.get();
-        ASSERT_FALSE(result.has_value());
-        ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::SocketStopRequested);
-    } else {
-        std::this_thread::sleep_for(scaler::ymq::shutdownLingerTimeout + lingerMargin);
-    }
+    ASSERT_EQ(sendResult.wait_for(scaler::ymq::shutdownLingerTimeout + lingerMargin), std::future_status::ready);
+    const auto result = sendResult.get();
+    ASSERT_FALSE(result.has_value());
+    ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::SocketStopRequested);
 
     // The peer reads what reached it, then the end of the connection, without the dropped rest of the message.
     while (!peerDisconnected) {
