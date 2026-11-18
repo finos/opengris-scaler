@@ -52,7 +52,6 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_task_memory = config.ecs_task_memory
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id
-        self._worker_manager_config = config.worker_manager_config
         self._cloud_children_config = config.cloud_children_config
         self._units: List[str] = []  # ECS task ARNs of active units
         self._capacity_coordinator = CapacityCoordinator(
