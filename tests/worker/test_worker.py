@@ -17,9 +17,9 @@ from unittest import mock
 import scaler.worker.worker as worker_module
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
-from scaler.utility.identifiers import WorkerManagerID
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, SysCallError
 from scaler.protocol.capnp import WorkerDisconnectNotification
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.worker.worker import Worker
 
 
