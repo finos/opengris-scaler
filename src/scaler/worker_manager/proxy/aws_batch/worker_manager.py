@@ -105,16 +105,16 @@ class AWSBatchWorkerManager:
 
         mtc = config.worker_manager_config.max_task_concurrency
         max_units = math.ceil(mtc / config.max_concurrent_jobs) if mtc != -1 else -1
-        children_address = local_children_address(config.worker_manager_config)
-        provisioner = AWSBatchWorkerProvisioner(config, max_units, children_address)
         runner = WorkerManagerRunner(
             name="worker_manager_aws_hpc",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=max_units,
-            worker_provisioner=provisioner,
-            children_address=children_address,
+            create_worker_provisioner=lambda children_address: AWSBatchWorkerProvisioner(
+                config, max_units, children_address
+            ),
+            children_address=local_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=config.max_concurrent_jobs,
         )

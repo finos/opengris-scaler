@@ -8,7 +8,6 @@ import psutil
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
 
 
@@ -35,10 +34,8 @@ class TestDeadWorker(unittest.TestCase):
 
         N_TASKS = 10
 
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        combo = SchedulerClusterCombo(
-            address=address, n_workers=N_WORKERS, worker_timeout_seconds=WORKER_TIMEOUT_SECONDS
-        )
+        combo = SchedulerClusterCombo(n_workers=N_WORKERS, worker_timeout_seconds=WORKER_TIMEOUT_SECONDS)
+        address = combo.get_address()
         self.addCleanup(combo.shutdown)
 
         with Client(address=address) as client:
