@@ -455,6 +455,67 @@ TEST_F(YMQMessageConnectionTest, InvalidMagicString)
     ASSERT_FALSE(clientConnection.connected());
 }
 
+TEST_F(YMQMessageConnectionTest, ConnectionLostUnderInFlightSend)
+{
+    // An abort fails a send in flight with ConnectionLost, not SocketStopRequested: nobody stopped the connection.
+    // An invalid magic string makes the connection abort itself, so the write is canceled, never failed by the OS.
+
+    constexpr size_t stalledSendBytes = 64 * 1024 * 1024;  // more than loopback's socket buffers hold
+
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
+
+    // Create a TCP server that answers with a HTTP response and never reads
+
+    const std::string_view httpResponse = "HTTP/1.1 200 OK\n";
+
+    scaler::wrapper::uv::TCPServer server = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop));
+
+    const auto listenAddress = scaler::ymq::Address::fromString("tcp://127.0.0.1:0").value();
+    UV_EXIT_ON_ERROR(server.bind(listenAddress.asTCP(), uv_tcp_flags(0)));
+
+    std::optional<scaler::wrapper::uv::TCPSocket> serverSocket;
+
+    UV_EXIT_ON_ERROR(server.listen(16, [&](std::expected<void, scaler::wrapper::uv::Error>) {
+        serverSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
+        UV_EXIT_ON_ERROR(server.accept(*serverSocket));
+
+        const std::span<const uint8_t> payload {
+            reinterpret_cast<const uint8_t*>(httpResponse.data()), httpResponse.size()};
+
+        UV_EXIT_ON_ERROR(serverSocket->write(std::span(&payload, 1), [](auto result) { UV_EXIT_ON_ERROR(result); }));
+    }));
+
+    // Send a message that the connection writes once connected, and that stays in flight as the server never reads
+
+    std::optional<std::expected<void, scaler::ymq::Error>> sendResult;
+
+    scaler::wrapper::uv::TCPSocket clientSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
+    scaler::ymq::internal::MessageConnection clientConnection(
+        loop,
+        "client-identity",
+        std::nullopt,
+        [](auto) { FAIL() << "Unexpected identity callback"; },
+        []([[maybe_unused]] auto reason) {},
+        [](auto) { FAIL() << "Unexpected message callback"; });
+
+    clientConnection.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(std::string(stalledSendBytes, 'x')),
+        [&](auto result, [[maybe_unused]] auto payload) { sendResult = std::move(result); });
+
+    UV_EXIT_ON_ERROR(clientSocket.connect(
+        UV_EXIT_ON_ERROR(server.getSockName()), [&](std::expected<void, scaler::wrapper::uv::Error>) {
+            clientConnection.connect(scaler::ymq::internal::Client(std::move(clientSocket)));
+        }));
+
+    while (!sendResult.has_value()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_FALSE(clientConnection.connected());
+    ASSERT_FALSE(sendResult->has_value());
+    ASSERT_EQ(sendResult->error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectionLost);
+}
+
 // A server and a client message connection over the given transport, both on one loop.
 class TransportConnectionPair {
 public:

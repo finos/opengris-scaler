@@ -527,6 +527,7 @@ TEST_P(YMQConnectorSocketTest, ConnectionLostUnderInFlightSend)
     const auto result = sendResult.get();
 
     // A write the OS itself failed reports success (see MessageConnection::onWriteDone), so only a failure is pinned.
+    // YMQMessageConnectionTest.ConnectionLostUnderInFlightSend pins the code unconditionally.
     if (!result.has_value()) {
         ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectionLost);
     }
