@@ -120,7 +120,7 @@ The scheduler refreshes these values every ``status_report_interval_seconds``, s
 - ``scaler.scheduler.objects``: objects the scheduler tracks
 - ``scaler.object_storage.bytes``: bytes the object storage server holds
 - ``scaler.worker_manager.pending_workers``: workers requested from each worker manager that have not connected yet
-- ``scaler.scheduler.event_loop.lag``: how late the scheduler's event loop wakes a sleeping coroutine, in seconds
+- ``scaler.scheduler.event_loop.lag``: how late the scheduler's event loop wakes a sleeping coroutine, in seconds, as a histogram with bucket boundaries from 1 ms to 10 s
 
 Logs
 ----
