@@ -46,6 +46,11 @@ SNAPSHOT_HEADER = (
 SOURCE_COLUMN_WIDTH = 17
 SCENARIO_COLUMN_WIDTH = 38
 
+# asyncio.wait_for on Python 3.10 drops a cancel landing 1 to 3 loop iterations into the event
+LOOP_ITERATIONS_BEFORE_THE_CANCEL = 6
+
+SHORT_TIMEOUT_SECONDS = 0.01
+
 
 def format_snapshot_line(source_name: str, scenario_name: str, target_name: str) -> str:
     return f"{source_name:<{SOURCE_COLUMN_WIDTH}} {scenario_name:<{SCENARIO_COLUMN_WIDTH}} -> {target_name}"
@@ -765,6 +770,43 @@ class TestTaskStateExclusion(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertFalse(state_machine.lock.locked(), "the lock must not survive a faulted transition")
+
+    async def test_a_cancel_landing_as_the_lock_is_taken_stops_the_event(self):
+        """A dropped cancel lets the event go on, and the scheduler routine that dispatched it then never stops."""
+
+        for iterations in range(LOOP_ITERATIONS_BEFORE_THE_CANCEL):
+            with self.subTest(iterations=iterations):
+                harness = TaskControllerHarness()
+                state_machine = await harness.enter_state(TaskState.running)
+
+                event = asyncio.create_task(
+                    harness.controller.on_task_result(WORKER_ID, make_task_result(TaskResultType.success))
+                )
+                for _ in range(iterations):
+                    await asyncio.sleep(0)
+
+                accepted = event.cancel()
+                await asyncio.gather(event, return_exceptions=True)
+
+                self.assertEqual(event.cancelled(), accepted, "a cancel the event accepted must end it")
+                self.assertFalse(state_machine.lock.locked(), "a cancelled event must not strand the lock")
+
+    async def test_an_event_that_waits_out_the_lock_timeout_is_dropped(self):
+        """A transition stuck holding the lock must not block the routine that dispatched the next event forever."""
+
+        state_machine = await self.harness.enter_state(TaskState.running)
+        await state_machine.lock.acquire()
+
+        with unittest.mock.patch.object(task_controller, "LOCK_ACQUIRE_TIMEOUT_SECONDS", SHORT_TIMEOUT_SECONDS):
+            with self.assertLogs("scaler.scheduler.controllers.task_controller", level="ERROR") as logs:
+                await self.harness.controller.on_task_result(WORKER_ID, make_task_result(TaskResultType.success))
+
+        self.assertTrue(any("lock not acquired" in line for line in logs.output), "the drop must name its cause")
+        self.assertEqual(state_machine.current_state(), TaskState.running, "the dropped event must not transition")
+
+        state_machine.lock.release()
+        await asyncio.sleep(0)  # a waiter still queued would take the lock in this iteration
+        self.assertFalse(state_machine.lock.locked(), "the timed-out event must not take the lock later")
 
 
 class TestTaskControllerStatistics(unittest.IsolatedAsyncioTestCase):

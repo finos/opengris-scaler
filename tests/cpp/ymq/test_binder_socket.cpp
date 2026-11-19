@@ -37,6 +37,7 @@ public:
         , _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _binder(_context, binderIdentity)
         , _client(
+              _loop,
               clientIdentity,
               std::nullopt,
               [](scaler::ymq::Identity identity) { ASSERT_EQ(identity, binderIdentity); },  // onRemoteIdentity

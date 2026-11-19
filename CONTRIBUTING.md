@@ -41,15 +41,12 @@ python -m pytest -n auto tests
 **We enforce the [PEP 8](https://peps.python.org/pep-0008/) coding style, with a relaxed constraint on the maximum line
 length (120 columns)**.
 
-`isort`, `black` and `flake8` can be installed via PIP.
+`ruff` comes with the `dev` dependency group and reads its settings from `pyproject.toml`.
 
 ```bash
-isort --profile black --line-length 120 .
-black -l 120 -C .
-flake8 --max-line-length 120 --extend-ignore=E203 .
+ruff check --fix
+ruff format
 ```
-
-The `isort`, `black` and `flake8` packages can be installed through Python's PIP.
 
 
 #### Bump version number

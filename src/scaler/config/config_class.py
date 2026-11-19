@@ -266,7 +266,9 @@ class ConfigClass:
     @classmethod
     def parse(cls: Type[T], program_name: str, section: str, disable_config_flag: bool = False) -> T:
         subcommand_fields = [
-            field for field in dataclasses.fields(cls) if "subcommand" in field.metadata  # type: ignore[arg-type]
+            field
+            for field in dataclasses.fields(cls)  # type: ignore[arg-type]
+            if "subcommand" in field.metadata
         ]
 
         if subcommand_fields:
@@ -422,7 +424,8 @@ def _build_subparser_tree(
                 parent_section_data = toml_data.get(parent_field.name, {})
                 if isinstance(parent_section_data, dict):
                     parent_section_defs = _toml_section_defaults(
-                        parent_section_data, parent_field.type  # type: ignore[arg-type]
+                        parent_section_data,
+                        parent_field.type,  # type: ignore[arg-type]
                     )
                     if parent_section_defs:
                         subparser.set_defaults(**parent_section_defs)

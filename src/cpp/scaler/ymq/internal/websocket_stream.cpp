@@ -631,6 +631,15 @@ void WebSocketStream::onRead(
     std::shared_ptr<State> state, std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept
 {
     if (!result.has_value()) {
+        const size_t partialMessageBytes = state->_recvBuffer.size() + state->_fragmentBuffer.size();
+        if (state->_readActive && result.error().code() == UV_EOF && partialMessageBytes > 0) {
+            state->_logger.log(
+                Logger::LoggingLevel::warning,
+                "WebSocket connection ended in the middle of a message, dropping its first ",
+                partialMessageBytes,
+                " bytes");
+        }
+
         if (state->_readActive && state->_readCallback) {
             state->_readCallback(std::unexpected(result.error()));
         }

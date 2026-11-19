@@ -95,16 +95,14 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
 
 class SymphonyWorkerManager:
     def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
-        children_address = local_children_address(config.worker_manager_config)
-        provisioner = SymphonyWorkerProvisioner(config, children_address)
         self._runner = WorkerManagerRunner(
             name="worker_manager_symphony",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             max_provisioner_units=config.worker_manager_config.max_task_concurrency,
-            worker_provisioner=provisioner,
-            children_address=children_address,
+            create_worker_provisioner=lambda children_address: SymphonyWorkerProvisioner(config, children_address),
+            children_address=local_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
         )
 
