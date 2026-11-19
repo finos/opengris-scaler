@@ -11,6 +11,8 @@
 #include "scaler/logging/logging.h"
 #include "scaler/utility/move_only_function.h"
 #include "scaler/wrapper/uv/error.h"
+#include "scaler/wrapper/uv/loop.h"
+#include "scaler/wrapper/uv/timer.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/internal/client.h"
 #include "scaler/ymq/typedefs.h"
@@ -52,6 +54,7 @@ public:
     using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(std::unique_ptr<Bytes>)>;
 
     MessageConnection(
+        scaler::wrapper::uv::Loop& loop,
         Identity localIdentity,
         std::optional<Identity> remoteIdentity,
         RemoteIdentityCallback onRemoteIdentityCallback,
@@ -113,7 +116,15 @@ private:
         RecvCallback _onRecvDone {};
     };
 
+    // A client kept open by its graceful shutdown, until the remote reads the queued writes or the timer closes it.
+    struct LingeringClient {
+        Client _client;
+        scaler::wrapper::uv::Timer _lingerTimer;
+    };
+
     Logger _logger {};
+
+    scaler::wrapper::uv::Loop& _loop;
 
     State _state {State::Disconnected};
 
@@ -126,13 +137,24 @@ private:
 
     std::optional<Client> _client {};
 
+    // Whether a write on the current client saw the connection abort. Shared as the writes can outlive this object.
+    std::shared_ptr<bool> _clientAborted {};
+
+    // Set from an EOF until its reason is decided.
+    std::optional<scaler::wrapper::uv::Timer> _eofTimer {};
+
     // Sent buffers not yet submitted to the remote.
     std::queue<SendOperation> _sendPending {};
 
     // The current partially received receive buffer being assembled.
     RecvOperation _recvCurrent {};
 
+    // Bytes received since the last complete message: a disconnect drops them.
+    size_t _recvMessageBytes {0};
+
     void shutdownClient() noexcept;
+
+    static void onLingerTimeout(std::weak_ptr<LingeringClient> weakLingeringClient) noexcept;
 
     void initialize() noexcept;
 
@@ -150,7 +172,15 @@ private:
 
     void recvMessage() noexcept;
 
-    static void onWriteDone(SendCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
+    static void onWriteDone(
+        SendCallback callback,
+        std::shared_ptr<bool> clientAborted,
+        std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
+
+    static void noteAbort(bool& clientAborted, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept;
+
+    // Whether a write that failed with this error took an abort that the next read then reports as EOF.
+    static bool isAbortConsumedByWrite(const scaler::wrapper::uv::Error& error) noexcept;
 
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 

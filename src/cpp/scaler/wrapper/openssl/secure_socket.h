@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <vector>
 
 #include "scaler/wrapper/openssl/ssl_context.h"
 #include "scaler/wrapper/uv/callback.h"
@@ -106,6 +107,9 @@ private:
 
         std::deque<PendingWrite> _pendingWrites {};
 
+        // Writes SSL_write took, completed by the transport write that carries their ciphertext.
+        std::vector<uv::WriteCallback> _encryptedWriteCallbacks {};
+
         State(
             SSLContext context,
             uv::TCPSocket transport,
@@ -131,6 +135,9 @@ private:
     static std::expected<void, uv::Error> processPendingWrites(std::shared_ptr<State> state) noexcept;
 
     static void failWithError(std::shared_ptr<State> state, uv::Error error) noexcept;
+
+    static void completeWrites(
+        std::vector<uv::WriteCallback> callbacks, const std::expected<void, uv::Error>& result) noexcept;
 
     static void onTransportConnected(std::shared_ptr<State> state, std::expected<void, uv::Error> result) noexcept;
 

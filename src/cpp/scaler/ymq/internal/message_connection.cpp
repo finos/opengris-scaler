@@ -1,6 +1,7 @@
 #include "scaler/ymq/internal/message_connection.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -15,12 +16,14 @@ namespace ymq {
 namespace internal {
 
 MessageConnection::MessageConnection(
+    scaler::wrapper::uv::Loop& loop,
     Identity localIdentity,
     std::optional<Identity> remoteIdentity,
     RemoteIdentityCallback onRemoteIdentityCallback,
     RemoteDisconnectCallback onRemoteDisconnectCallback,
     RecvMessageCallback onRecvMessageCallback) noexcept
-    : _localIdentity(std::move(localIdentity))
+    : _loop(loop)
+    , _localIdentity(std::move(localIdentity))
     , _remoteIdentity(std::move(remoteIdentity))
     , _onRemoteIdentityCallback(std::move(onRemoteIdentityCallback))
     , _onRemoteDisconnectCallback(std::move(onRemoteDisconnectCallback))
@@ -146,33 +149,60 @@ void MessageConnection::shutdownClient() noexcept
     // By moving its ownership to the shutdown()'s callback, close() is guaranteed to be called only after the callback
     // completes.
 
-    auto client = std::make_unique<Client>(std::move(_client.value()));
+    auto lingeringClient = std::make_shared<LingeringClient>(
+        LingeringClient {std::move(_client.value()), UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(_loop))});
     _client.reset();
 
-    Client* clientPtr = client.get();
-
-    auto shutdownCallback = [client =
-                                 std::move(client)](std::expected<void, scaler::wrapper::uv::Error> result) noexcept {
+    auto shutdownCallback = [lingeringClient](std::expected<void, scaler::wrapper::uv::Error> result) noexcept {
         if (!result.has_value() && isConnectionError(result.error())) {
             return;  // Ignore connection errors during shutdown
+        }
+
+        if (!result.has_value() && result.error().code() == UV_ECANCELED) {
+            return;  // The linger timer closed the connection before the remote read our remaining writes
         }
 
         UV_EXIT_ON_ERROR(result);
     };
 
-    auto result = clientPtr->shutdown(std::move(shutdownCallback));
+    auto result = lingeringClient->_client.shutdown(std::move(shutdownCallback));
     if (!result.has_value() && isConnectionError(result.error())) {
         return;  // Ignore connection errors during shutdown
     }
 
     UV_EXIT_ON_ERROR(result);
+
+    // A remote that stopped reading never lets the writes drain, so the shutdown cannot wait for them forever.
+    UV_EXIT_ON_ERROR(lingeringClient->_lingerTimer.start(
+        shutdownLingerTimeout,
+        std::nullopt,
+        std::bind_front(&MessageConnection::onLingerTimeout, std::weak_ptr<LingeringClient>(lingeringClient))));
+}
+
+void MessageConnection::onLingerTimeout(std::weak_ptr<LingeringClient> weakLingeringClient) noexcept
+{
+    // Weak, as the lingering client owns this timer and closes it when destroyed.
+    std::shared_ptr<LingeringClient> lingeringClient = weakLingeringClient.lock();
+    assert(lingeringClient != nullptr);
+
+    Client client = std::move(lingeringClient->_client);
+
+    // libuv refuses to reset a TCP stream whose shutdown started, and IPC has no reset: these close when destroyed.
+    auto result = client.closeReset();
+    if (!result.has_value() && result.error() != scaler::wrapper::uv::Error {UV_EINVAL} &&
+        result.error() != scaler::wrapper::uv::Error {UV_ENOTSUP}) {
+        UV_EXIT_ON_ERROR(std::move(result));
+    }
 }
 
 void MessageConnection::initialize() noexcept
 {
-    _client      = std::nullopt;
-    _state       = State::Disconnected;
-    _recvCurrent = RecvOperation {};
+    _client           = std::nullopt;
+    _clientAborted    = std::make_shared<bool>(false);
+    _eofTimer         = std::nullopt;
+    _state            = State::Disconnected;
+    _recvCurrent      = RecvOperation {};
+    _recvMessageBytes = 0;
 
     sendHandshake();
     recvMagicNumber();
@@ -251,6 +281,8 @@ void MessageConnection::recvMagicNumber() noexcept
 
 void MessageConnection::recvMessage() noexcept
 {
+    _recvMessageBytes = 0;
+
     recv(sizeof(Header), [this](std::unique_ptr<Bytes> headerPayload) {
         assert(connected());
 
@@ -272,9 +304,21 @@ void MessageConnection::recvMessage() noexcept
     });
 }
 
-void MessageConnection::onWriteDone(
-    SendCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
+void MessageConnection::noteAbort(
+    bool& clientAborted, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept
 {
+    if (!result.has_value() && isAbortConsumedByWrite(result.error())) {
+        clientAborted = true;
+    }
+}
+
+void MessageConnection::onWriteDone(
+    SendCallback callback,
+    std::shared_ptr<bool> clientAborted,
+    std::expected<void, scaler::wrapper::uv::Error> result) noexcept
+{
+    noteAbort(*clientAborted, result);
+
     if (!result.has_value()) {
         const scaler::wrapper::uv::Error& error = result.error();
 
@@ -307,8 +351,22 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
         const scaler::wrapper::uv::Error& error = result.error();
 
         if (error.code() == UV_EOF) {
-            // Remote explicitly closed the connection (graceful disconnect)
-            onRemoteDisconnect(DisconnectReason::Disconnected);
+            if (_recvMessageBytes > 0) {
+                _logger.log(
+                    Logger::LoggingLevel::warning,
+                    "Connection to ",
+                    _remoteIdentity.value_or("an unidentified remote"),
+                    " ended in the middle of a message, dropping its first ",
+                    _recvMessageBytes,
+                    " bytes");
+            }
+
+            // A write notes a reset it consumed before the timers run. libuv reports a reset behind unread data as EOF.
+            _client->readStop();
+            _eofTimer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(_loop));
+            UV_EXIT_ON_ERROR(_eofTimer->start(std::chrono::milliseconds {0}, std::nullopt, [this]() {
+                onRemoteDisconnect(*_clientAborted ? DisconnectReason::Aborted : DisconnectReason::Disconnected);
+            }));
             return;
         } else if (isConnectionError(error)) {
             // Connection aborted unexpectedly
@@ -336,6 +394,7 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
         std::memcpy(readDest, data.subspan(offset).data(), readCount);
 
         _recvCurrent._cursor += readCount;
+        _recvMessageBytes += readCount;
         offset += readCount;
 
         // If the receive buffer is full, invoke the callback
@@ -403,9 +462,9 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
     }
 
     // Make the callback own the operation's callback
-    auto callback = [onSendDone = std::move(operation._onSendDone)](
-                        std::expected<void, scaler::wrapper::uv::Error> result) mutable {
-        onWriteDone(std::move(onSendDone), std::move(result));
+    auto callback = [onSendDone    = std::move(operation._onSendDone),
+                     clientAborted = _clientAborted](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
+        onWriteDone(std::move(onSendDone), std::move(clientAborted), std::move(result));
     };
 
     // uv_write() normally delivers errors asynchronously via the callback, but returns UV_ENOTCONN synchronously
@@ -434,7 +493,9 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
                 const bool isLastChunk = (offset + bufferOffset + chunkSize >= totalSize);
 
                 if (!isLastChunk) {
-                    auto result = _client->write(std::span(&chunk, 1), [](auto) {});
+                    auto result = _client->write(
+                        std::span(&chunk, 1),
+                        [clientAborted = _clientAborted](auto chunkResult) { noteAbort(*clientAborted, chunkResult); });
                     if (!result.has_value()) {
                         if (result.error().code() != UV_ENOTCONN)
                             UV_EXIT_ON_ERROR(result);
