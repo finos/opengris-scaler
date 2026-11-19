@@ -5,7 +5,7 @@ from typing import Iterable, Optional
 from opentelemetry import metrics
 from opentelemetry.metrics import CallbackOptions, Observation
 
-from scaler.config.constants import EVENT_LOOP_LAG_SAMPLE_SECONDS
+from scaler.config.constants import EVENT_LOOP_LAG_BUCKET_BOUNDARIES_SECONDS, EVENT_LOOP_LAG_SAMPLE_SECONDS
 from scaler.protocol.capnp import StateScheduler, TaskState
 from scaler.utility.mixins import Looper
 from scaler.utility.semantic_conventions import (
@@ -127,7 +127,10 @@ class EventLoopLagMonitor(Looper):
 
     def __init__(self) -> None:
         self._lag = metrics.get_meter(SCHEDULER_METER).create_histogram(
-            SCHEDULER_EVENT_LOOP_LAG_METRIC, unit="s", description="time the event loop woke a coroutine late"
+            SCHEDULER_EVENT_LOOP_LAG_METRIC,
+            unit="s",
+            description="time the event loop woke a coroutine late",
+            explicit_bucket_boundaries_advisory=EVENT_LOOP_LAG_BUCKET_BOUNDARIES_SECONDS,
         )
 
     async def routine(self) -> None:

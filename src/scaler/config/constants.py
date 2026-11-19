@@ -37,6 +37,9 @@ BAGGAGE_ENV = "BAGGAGE"
 # how often the scheduler's lag monitor wakes; its oversleep is the time other callbacks held the event loop
 EVENT_LOOP_LAG_SAMPLE_SECONDS = 1
 
+# the SDK's default histogram buckets (0, 5, 10, ... 10000) suit milliseconds; the lag histogram records seconds
+EVENT_LOOP_LAG_BUCKET_BOUNDARIES_SECONDS = (0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)
+
 # OTLP export requests a relaying process holds while its connector is slow; the SDK batches up to 512 spans per request
 RELAY_BUFFER_CAPACITY = 1024
 
