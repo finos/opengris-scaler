@@ -29,6 +29,9 @@ constexpr size_t maxWriteBufferSize = 256ULL * 1024ULL * 1024ULL;  // 256 MB
 // carries can no longer be reproduced. Well under the idle timeouts such devices commonly enforce.
 constexpr unsigned int tcpKeepAliveDelaySeconds = 30;
 
+// How long a graceful shutdown waits for the remote to read the queued writes before dropping them and closing.
+constexpr std::chrono::seconds shutdownLingerTimeout {5};
+
 // How long a BinderSocket remembers a disconnected peer's identity so that subsequent
 // sendMessage() calls to it fail fast instead of queueing in _pendingSendMessages. The window
 // only needs to bracket the worst-case lag between libuv processing the disconnect and the user
