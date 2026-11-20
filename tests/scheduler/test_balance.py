@@ -15,8 +15,8 @@ import psutil
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
 from scaler.config.section.scheduler import PolicyConfig
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
@@ -66,13 +66,10 @@ class TestBalance(unittest.TestCase):
         N_TASKS = 8
         N_WORKERS = N_TASKS
 
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         combo = SchedulerClusterCombo(
-            address=address,
-            n_workers=1,
-            per_worker_task_queue_size=N_TASKS,
-            load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
+            n_workers=1, per_worker_task_queue_size=N_TASKS, load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS
         )
+        address = combo.get_address()
 
         client = Client(address=address)
 
@@ -86,7 +83,7 @@ class TestBalance(unittest.TestCase):
                 base_config,
                 worker_manager_config=dataclasses.replace(
                     base_config.worker_manager_config,
-                    worker_manager_id="test_manager",
+                    worker_manager_id=WorkerManagerID.from_string("test_manager"),
                     object_storage_address=None,
                     max_task_concurrency=N_WORKERS - 1,
                 ),
@@ -124,9 +121,7 @@ class TestBalance(unittest.TestCase):
         log_fd, log_path = tempfile.mkstemp(prefix="scaler_balance_cancel_worker_death_", suffix=".log")
         os.close(log_fd)
 
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         combo = SchedulerClusterCombo(
-            address=address,
             n_workers=1,
             # A single-task worker has nothing "excess" to balance away (see
             # policies/allocation/even_load.py), so it needs two tasks queued to be a candidate.
@@ -137,6 +132,7 @@ class TestBalance(unittest.TestCase):
             load_balance_trigger_times=1,
             logging_paths=(log_path,),
         )
+        address = combo.get_address()
 
         client = Client(address=address)
         second_manager_process = None
@@ -149,7 +145,8 @@ class TestBalance(unittest.TestCase):
             time.sleep(2)  # let worker_a register both tasks before it's frozen
 
             _signal_process_tree(
-                combo._worker_manager_process, signal.SIGSTOP  # type: ignore[attr-defined, unused-ignore]
+                combo._worker_manager_process,
+                signal.SIGSTOP,  # type: ignore[attr-defined, unused-ignore]
             )
 
             base_config = combo._worker_manager.config
@@ -158,7 +155,7 @@ class TestBalance(unittest.TestCase):
                     base_config,
                     worker_manager_config=dataclasses.replace(
                         base_config.worker_manager_config,
-                        worker_manager_id="test_manager",
+                        worker_manager_id=WorkerManagerID.from_string("test_manager"),
                         object_storage_address=None,
                         max_task_concurrency=2,  # both tasks can run concurrently once rerouted
                     ),
@@ -190,7 +187,8 @@ class TestBalance(unittest.TestCase):
             # SIGKILL, not terminate()/SIGTERM: worker_a may still be frozen and SIGTERM would
             # never be delivered to a stopped process.
             _signal_process_tree(
-                combo._worker_manager_process, signal.SIGKILL  # type: ignore[attr-defined, unused-ignore]
+                combo._worker_manager_process,
+                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
             )
             combo._worker_manager_process.join()
 
@@ -233,9 +231,7 @@ class TestBalance(unittest.TestCase):
         log_fd, log_path = tempfile.mkstemp(prefix="scaler_balance_cancel_socket_closed_", suffix=".log")
         os.close(log_fd)
 
-        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         combo = SchedulerClusterCombo(
-            address=address,
             n_workers=1,
             per_worker_capabilities=CAPABILITIES,
             # Two tasks queued so worker_a has something excess to be a balance candidate.
@@ -247,6 +243,7 @@ class TestBalance(unittest.TestCase):
             scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=static"),
             logging_paths=(log_path,),
         )
+        address = combo.get_address()
 
         client = Client(address=address)
         second_manager_process = None
@@ -261,7 +258,8 @@ class TestBalance(unittest.TestCase):
             # Kill worker_a's whole tree: its socket closes, but with no graceful WorkerDisconnectNotification and
             # the timeout far off the scheduler still lists it, so the balancer will send a cancel to it.
             _signal_process_tree(
-                combo._worker_manager_process, signal.SIGKILL  # type: ignore[attr-defined, unused-ignore]
+                combo._worker_manager_process,
+                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
             )
 
             base_config = combo._worker_manager.config
@@ -270,7 +268,7 @@ class TestBalance(unittest.TestCase):
                     base_config,
                     worker_manager_config=dataclasses.replace(
                         base_config.worker_manager_config,
-                        worker_manager_id="test_manager",
+                        worker_manager_id=WorkerManagerID.from_string("test_manager"),
                         object_storage_address=None,
                         max_task_concurrency=2,  # both tasks can run concurrently once rerouted
                     ),
@@ -305,7 +303,8 @@ class TestBalance(unittest.TestCase):
                 second_manager_process.join()
 
             _signal_process_tree(
-                combo._worker_manager_process, signal.SIGKILL  # type: ignore[attr-defined, unused-ignore]
+                combo._worker_manager_process,
+                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
             )
             combo._worker_manager_process.join()
 

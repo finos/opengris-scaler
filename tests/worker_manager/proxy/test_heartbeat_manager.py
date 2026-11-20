@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import WorkerHeartbeat
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.mixins import TimeoutManager
 from scaler.worker_manager.proxy.heartbeat_manager import HeartbeatManager
@@ -18,7 +19,7 @@ def _make_heartbeat_manager() -> HeartbeatManager:
         object_storage_address=None,
         capabilities={},
         task_queue_size=10,
-        worker_manager_id=b"test_manager",
+        worker_manager_id=WorkerManagerID(b"test_manager"),
         processor_status_provider=provider,
     )
 

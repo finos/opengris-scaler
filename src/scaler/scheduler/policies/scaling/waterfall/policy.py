@@ -8,7 +8,7 @@ from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 from scaler.scheduler.policies.scaling.waterfall.types import Tier, WaterfallRule
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
@@ -29,20 +29,20 @@ class WaterfallScalingPolicy(ScalingPolicy):
 
     def __init__(self, rules: List[WaterfallRule]):
         self._rules = sorted(rules, key=lambda r: r.priority)
-        self._rule_by_manager_id: Dict[bytes, WaterfallRule] = {r.worker_manager_id: r for r in self._rules}
+        self._rule_by_manager_id: Dict[WorkerManagerID, WaterfallRule] = {r.worker_manager_id: r for r in self._rules}
 
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         manager_id = worker_manager_heartbeat.workerManagerID
         rule = self._find_rule(manager_id)
 
         if rule is None:
-            logger.warning("Worker manager %r not found in waterfall rules, skipping scaling", manager_id)
+            logger.warning(f"{manager_id!r} not found in waterfall rules, skipping scaling")
             return []
 
         desired_per_capset = self._compute_desired_per_capset(
@@ -50,12 +50,12 @@ class WaterfallScalingPolicy(ScalingPolicy):
         )
         return [build_set_desired_command(desired_per_capset)]
 
-    def _find_rule(self, manager_id: bytes) -> Optional[WaterfallRule]:
+    def _find_rule(self, manager_id: WorkerManagerID) -> Optional[WaterfallRule]:
         """Find the rule whose worker manager ID matches *manager_id*."""
         return self._rule_by_manager_id.get(manager_id)
 
     def _find_matching_snapshot(
-        self, rule: WaterfallRule, snapshots: Dict[bytes, WorkerManagerSnapshot]
+        self, rule: WaterfallRule, snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot]
     ) -> Optional[WorkerManagerSnapshot]:
         """Return the manager snapshot matching *rule*'s worker manager ID, or None."""
         return snapshots.get(rule.worker_manager_id)
@@ -65,7 +65,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         current_rule: WaterfallRule,
         information_snapshot: InformationSnapshot,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
+        snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> List[Tuple[Dict[str, int], int]]:
         """Compute desired worker count per capability set for this manager only.
 
@@ -96,7 +96,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         current_rule: WaterfallRule,
         information_snapshot: InformationSnapshot,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
+        snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> int:
         """Allocate this manager's share of the cluster-wide generic worker target."""
         tiers = self._online_tiers(current_rule, current_heartbeat, snapshots)
@@ -110,7 +110,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         self,
         current_rule: WaterfallRule,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
+        snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> List[Tier]:
         """The rules of the online managers in priority order, with their concurrency limits resolved."""
         tiers = []
@@ -132,7 +132,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         required_keys: FrozenSet[str],
         information_snapshot: InformationSnapshot,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
+        snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> int:
         """Allocate this manager's share of the target for one capability set."""
         task_count = sum(
@@ -163,7 +163,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         rule: WaterfallRule,
         current_rule: WaterfallRule,
         current_heartbeat: WorkerManagerHeartbeat,
-        snapshots: Dict[bytes, WorkerManagerSnapshot],
+        snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
     ) -> Optional[int]:
         """Return effective worker capacity for *rule*.
 
@@ -199,7 +199,7 @@ def target_worker_count(task_count: int) -> int:
     return ceil(task_count / TASKS_PER_WORKER)
 
 
-def allocate(target: int, tiers: List[Tier]) -> Dict[bytes, int]:
+def allocate(target: int, tiers: List[Tier]) -> Dict[WorkerManagerID, int]:
     """Split `target` workers over `tiers`, given in priority order.
 
     Every floor counts as supply first; the rest fills each tier above its floor, up to its cap, in order."""

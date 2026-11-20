@@ -10,5 +10,5 @@ class TestOCIInstancesWorkerProvisioner(unittest.TestCase):
         config = MagicMock()
         config.cloud_children_config.unit_startup_timeout_seconds = 1800
         with patch.object(OCIInstancesWorkerProvisioner, "_initialize_oci_client"):
-            provisioner = OCIInstancesWorkerProvisioner(config, max_instances=-1)
+            provisioner = OCIInstancesWorkerProvisioner(config, max_instances=-1, children_address=MagicMock())
         self.assertEqual(provisioner.startup_timeout_seconds(), 1800)

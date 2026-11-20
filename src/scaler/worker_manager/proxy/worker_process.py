@@ -23,7 +23,7 @@ from scaler.protocol.capnp import (
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_manager.proxy.heartbeat_manager import HeartbeatManager
@@ -53,12 +53,11 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         task_queue_size: int,
         io_threads: int,
         event_loop: str,
-        worker_manager_id: bytes,
+        worker_manager_id: WorkerManagerID,
         worker_manager_address: AddressConfig,
         unit_id: str,
         processor_status_provider_factory: Callable[[], ProcessorStatusProvider],
         execution_backend_factory: Callable[[], ExecutionBackend],
-        idle_sleep_seconds: float = 0.0,
         security_config: Optional[SecurityConfig] = None,
     ) -> None:
         super().__init__(name=name)
@@ -84,7 +83,6 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
 
         self._processor_status_provider_factory = processor_status_provider_factory
         self._execution_backend_factory = execution_backend_factory
-        self._idle_sleep_seconds = idle_sleep_seconds
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -202,9 +200,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             security_config=self._security_config,
         )
         self._task_manager = TaskManager(
-            base_concurrency=self._base_concurrency,
-            execution_backend=self._execution_backend,
-            idle_sleep_seconds=self._idle_sleep_seconds,
+            base_concurrency=self._base_concurrency, execution_backend=self._execution_backend
         )
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
 
@@ -281,8 +277,8 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
             create_async_loop_routine(self._timeout_manager.routine, 1),
             create_async_loop_routine(self._execution_backend.routine, 0),
-            create_async_loop_routine(self._task_manager.process_task, 0),
-            create_async_loop_routine(self._task_manager.resolve_tasks, 0),
+            create_async_loop_routine(self._task_manager.routine, 0),
+            create_async_loop_routine(self._task_manager.upload_results, 0),
         )
 
     async def __teardown(self) -> None:

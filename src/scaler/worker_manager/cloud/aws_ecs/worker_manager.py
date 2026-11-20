@@ -8,6 +8,7 @@ import shlex
 import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.cloud.child_command import child_link_arguments, format_capabilities
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -16,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class ECSWorkerProvisioner(UnitProvisioner):
-    def __init__(self, config: ECSWorkerManagerConfig) -> None:
+    def __init__(self, config: ECSWorkerManagerConfig, children_address: AddressConfig) -> None:
+        self._children_address = children_address
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -44,8 +46,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         self._ecs_task_cpu = config.ecs_task_cpu
         self._ecs_task_memory = config.ecs_task_memory
         self._ecs_subnets = config.ecs_subnets
-        self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
-        self._worker_manager_config = config.worker_manager_config
+        self._worker_manager_id = config.worker_manager_config.worker_manager_id
         self._cloud_children_config = config.cloud_children_config
 
         aws_session = boto3.Session(
@@ -98,7 +99,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
 
     def _build_task_command(self, unit_id: str) -> str:
         link_arguments = child_link_arguments(
-            self._worker_manager_config, self._cloud_children_config, unit_id, self._ecs_task_cpu
+            self._children_address, self._cloud_children_config, unit_id, self._ecs_task_cpu
         )
         command = (
             f"scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} "
@@ -123,7 +124,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         if format_capabilities(self._capabilities).strip():
             command += f" --per-worker-capabilities {format_capabilities(self._capabilities)}"
 
-        command += f" --worker-manager-id {self._worker_manager_id.decode()}"
+        command += f" --worker-manager-id {self._worker_manager_id}"
 
         if self._preload is not None:
             command += f" --preload {shlex.quote(self._preload)}"
@@ -192,7 +193,7 @@ class ECSWorkerManager:
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            provisioner=ECSWorkerProvisioner(config),
+            create_provisioner=lambda children_address: ECSWorkerProvisioner(config, children_address),
             children_address=config.worker_manager_config.children_address,
             io_threads=config.worker_config.io_threads,
         )

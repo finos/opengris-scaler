@@ -12,7 +12,7 @@ def _make_provisioner(
     config.cloud_children_config.unit_startup_timeout_seconds = unit_startup_timeout_seconds
     config.ecs_task_cpu = ecs_task_cpu
     with patch("boto3.Session"):
-        return ECSWorkerProvisioner(config)
+        return ECSWorkerProvisioner(config, children_address=MagicMock())
 
 
 class TestECSWorkerProvisioner(unittest.IsolatedAsyncioTestCase):

@@ -8,6 +8,7 @@ from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import ProcessorStatus, Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.helpers import dict_to_capabilities
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.memory import get_memory_limit_and_available, get_process_memory
 from scaler.utility.mixins import Looper
 from scaler.utility.network_util import get_hostname
@@ -36,7 +37,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         object_storage_address: Optional[AddressConfig],
         capabilities: Dict[str, int],
         task_queue_size: int,
-        worker_manager_id: bytes,
+        worker_manager_id: WorkerManagerID,
         security_config: Optional[SecurityConfig] = None,
     ):
         self._agent_process = psutil.Process()

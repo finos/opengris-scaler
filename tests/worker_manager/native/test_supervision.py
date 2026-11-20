@@ -9,6 +9,7 @@ from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
@@ -39,7 +40,7 @@ class TestNativeWorkerSupervision(unittest.TestCase):
                 NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
                         scheduler_address=AddressConfig.from_string(combo.get_address()),
-                        worker_manager_id="supervision-test",
+                        worker_manager_id=WorkerManagerID(b"supervision-test"),
                         max_task_concurrency=1,
                         unit_timeout_seconds=UNIT_TIMEOUT_SECONDS,
                     ),

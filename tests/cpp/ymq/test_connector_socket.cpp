@@ -3,7 +3,10 @@
 #include <chrono>
 #include <expected>
 #include <future>
+#include <memory>
+#include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "scaler/wrapper/uv/error.h"
@@ -22,6 +25,12 @@ namespace {
 
 const std::string messagePayload = "Hello from ConnectorSocket!";
 
+// More than loopback's socket buffers hold, so a send to a peer that does not read stays in flight.
+constexpr size_t stalledSendBytes = 64 * 1024 * 1024;
+constexpr std::chrono::milliseconds sendSettleTime {200};
+constexpr std::chrono::seconds lingerMargin {2};
+constexpr std::chrono::seconds teardownTimeout {10};
+
 }  // namespace
 
 // Helper class to set up a server MessageConnection and ConnectorSocket pair
@@ -39,6 +48,7 @@ public:
         : _context()
         , _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _serverConnection(
+              _loop,
               serverIdentity,
               std::nullopt,
               std::move(serverOnIdentity),
@@ -381,6 +391,78 @@ TEST_P(YMQConnectorSocketTest, Reconnect)
     }
 
     ASSERT_TRUE(server.established());
+}
+
+TEST_P(YMQConnectorSocketTest, ShutdownWithStalledPeer)
+{
+    // A peer that stopped reading keeps a stopped socket's graceful shutdown waiting on its writes. The shutdown drops
+    // them and closes the connection once the linger timeout passes, without waiting for the IOContext to be destroyed.
+
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
+
+    bool peerDisconnected    = false;
+    bool peerReceivedMessage = false;
+
+    scaler::ymq::internal::MessageConnection stalledPeer(
+        loop,
+        "stalled-peer",
+        std::nullopt,
+        []([[maybe_unused]] auto identity) {},
+        [&]([[maybe_unused]] auto reason) { peerDisconnected = true; },
+        [&]([[maybe_unused]] auto message) { peerReceivedMessage = true; });
+
+    const auto listenAddress =
+        scaler::ymq::Address::fromString(getTransportAddress(GetParam(), 0), getTLSConfig(GetParam())).value();
+
+    auto server =
+        scaler::ymq::internal::AcceptServer::init(
+            loop, listenAddress, std::bind_front(&scaler::ymq::internal::MessageConnection::connect, &stalledPeer))
+            .value();
+
+    auto context   = std::make_unique<scaler::ymq::IOContext>();
+    auto connector = std::make_unique<scaler::ymq::ConnectorSocket>(scaler::ymq::ConnectorSocket::connect(
+        *context, "connector", server.address().toString().value(), []([[maybe_unused]] auto result) {}));
+
+    while (!stalledPeer.established()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    // The peer's loop does not run until the linger timeout passes, so it stops reading and the send stays in flight.
+
+    auto sendDone   = std::make_shared<std::promise<std::expected<void, scaler::ymq::Error>>>();
+    auto sendResult = sendDone->get_future();
+    connector->sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(std::string(stalledSendBytes, 'x')),
+        [sendDone](auto result, [[maybe_unused]] auto payload) { sendDone->set_value(std::move(result)); });
+
+    ASSERT_EQ(sendResult.wait_for(sendSettleTime), std::future_status::timeout);
+
+    // Returns once the socket's thread has started the graceful shutdown, after it framed the send.
+    std::promise<void> shutdownStarted;
+    connector->shutdown([&]() { shutdownStarted.set_value(); });
+    shutdownStarted.get_future().wait();
+
+    ASSERT_EQ(sendResult.wait_for(scaler::ymq::shutdownLingerTimeout + lingerMargin), std::future_status::ready);
+    const auto result = sendResult.get();
+    ASSERT_FALSE(result.has_value());
+    ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::SocketStopRequested);
+
+    // The peer reads what reached it, then the end of the connection, without the dropped rest of the message.
+    while (!peerDisconnected) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_FALSE(peerReceivedMessage);
+
+    // Detached: a teardown that hangs must fail this test, not block it forever.
+    auto contextDestroyed       = std::make_shared<std::promise<void>>();
+    auto contextDestroyedResult = contextDestroyed->get_future();
+    std::thread([context = std::move(context), contextDestroyed]() mutable {
+        context.reset();
+        contextDestroyed->set_value();
+    }).detach();
+
+    ASSERT_EQ(contextDestroyedResult.wait_for(teardownTimeout), std::future_status::ready);
 }
 
 TEST_P(YMQConnectorSocketTest, Bind)

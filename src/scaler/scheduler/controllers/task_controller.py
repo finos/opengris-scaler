@@ -242,9 +242,19 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             logger.error(f"{event.task_id!r}: received {type(event).__name__} for non-existent state machine")
             return None
 
+        # not wait_for: before Python 3.12 it drops a cancel landing as the lock is taken, and the routine never stops
+        acquire = asyncio.ensure_future(state_machine.lock.acquire())
         try:
-            await asyncio.wait_for(state_machine.lock.acquire(), timeout=LOCK_ACQUIRE_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
+            await asyncio.wait({acquire}, timeout=LOCK_ACQUIRE_TIMEOUT_SECONDS)
+        except asyncio.CancelledError:
+            if acquire.done():
+                state_machine.lock.release()  # taken as the cancel landed, and this event will not release it
+            else:
+                acquire.cancel()
+            raise
+
+        if not acquire.done():
+            acquire.cancel()
             logger.error(
                 f"{event.task_id!r}: lock not acquired in {LOCK_ACQUIRE_TIMEOUT_SECONDS}s, dropping "
                 f"{type(event).__name__}, path: {state_machine.get_path()}"
@@ -713,8 +723,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         client = self._client_controller.on_task_finish(task_cancel_confirm.taskId)
         if client is None:
             logger.warning(
-                f"{task_cancel_confirm.taskId!r}: dropping task cancel confirm, owning client is no "
-                f"longer registered"
+                f"{task_cancel_confirm.taskId!r}: dropping task cancel confirm, owning client is no longer registered"
             )
         else:
             await self._binder.send(client, task_cancel_confirm, detached=True)

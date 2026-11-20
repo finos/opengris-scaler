@@ -10,6 +10,7 @@ from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.scheduler.policies.scaling.waterfall import WaterfallScalingPolicy, parse_waterfall_rules
 from scaler.scheduler.policies.types import AllocatePolicyStrategy, PolicyEngineType, ScalingPolicyStrategy
+from scaler.utility.identifiers import WorkerManagerID
 
 _WATERFALL_V1_ALLOCATE_POLICY = AllocatePolicyStrategy.CAPABILITY
 
@@ -80,21 +81,23 @@ def _parse_strategy(name: str) -> ScalingPolicyStrategy:
         raise ValueError(f"unknown scaling policy {name!r}, expected one of {known_names}") from None
 
 
-def _parse_static_task_concurrencies(entries: str) -> Dict[bytes, int]:
+def _parse_static_task_concurrencies(entries: str) -> Dict[WorkerManagerID, int]:
     """Parse `worker_manager_id:task_concurrency` entries separated by `,`."""
     fields_by_manager = _split_entries(entries, "worker_manager_id:task_concurrency", (1,))
     return {
-        worker_manager_id.encode(): _parse_count(task_concurrency, f"static entry {worker_manager_id!r}")
+        WorkerManagerID.from_string(worker_manager_id): _parse_count(
+            task_concurrency, f"static entry {worker_manager_id!r}"
+        )
         for worker_manager_id, (task_concurrency,) in fields_by_manager.items()
     }
 
 
-def _parse_vanilla_bounds(entries: str) -> Dict[bytes, WorkerManagerBounds]:
+def _parse_vanilla_bounds(entries: str) -> Dict[WorkerManagerID, WorkerManagerBounds]:
     """Parse `worker_manager_id:max_task_concurrency[:min_task_concurrency]` entries separated by `,`.
 
     An empty max_task_concurrency leaves the cap to the manager's advertised maximum."""
     fields_by_manager = _split_entries(entries, "worker_manager_id:max_task_concurrency[:min_task_concurrency]", (1, 2))
-    bounds: Dict[bytes, WorkerManagerBounds] = {}
+    bounds: Dict[WorkerManagerID, WorkerManagerBounds] = {}
     for worker_manager_id, fields in fields_by_manager.items():
         context = f"vanilla bounds entry {worker_manager_id!r}"
         max_task_concurrency = _parse_count(fields[0], context) if fields[0] else None
@@ -102,7 +105,9 @@ def _parse_vanilla_bounds(entries: str) -> Dict[bytes, WorkerManagerBounds]:
         if max_task_concurrency is not None and min_task_concurrency > max_task_concurrency:
             raise ValueError(f"{context}: the minimum exceeds the maximum")
 
-        bounds[worker_manager_id.encode()] = WorkerManagerBounds(max_task_concurrency, min_task_concurrency)
+        bounds[WorkerManagerID.from_string(worker_manager_id)] = WorkerManagerBounds(
+            max_task_concurrency, min_task_concurrency
+        )
 
     return bounds
 

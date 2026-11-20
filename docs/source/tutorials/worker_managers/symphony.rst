@@ -88,7 +88,7 @@ How It Works
 4. Symphony schedules the task on its compute hosts. On completion, the SOAM callback delivers the result back to the worker manager.
 5. The worker manager deserializes the result and returns it to the Scaler scheduler.
 
-The worker manager uses a concurrency semaphore to limit the number of tasks in flight.
+The worker manager keeps at most ``max_task_concurrency`` tasks in flight.
 
 Configuration Reference
 ------------------------

@@ -380,6 +380,8 @@ std::expected<void, uv::Error> SecureSocket::flushToTransport(std::shared_ptr<St
     for (;;) {
         const size_t pending = BIO_ctrl_pending(state->_writeBIO.get());
         if (pending == 0) {
+            // Writes of empty buffers have no ciphertext to wait for.
+            completeWrites(std::exchange(state->_encryptedWriteCallbacks, {}), {});
             return {};
         }
 
@@ -395,10 +397,18 @@ std::expected<void, uv::Error> SecureSocket::flushToTransport(std::shared_ptr<St
 
         const std::span<const uint8_t> bufferSpan {*buffer};
 
+        // As in libuv, a write completes once written: a memory BIO returns all its ciphertext in this one write.
+        auto callbacks =
+            std::make_shared<std::vector<uv::WriteCallback>>(std::exchange(state->_encryptedWriteCallbacks, {}));
+
         // Callback captures the buffer to extend its lifetime until the write completes
         auto writeResult = state->_transport.write(
-            bufferSpan, [buffer = std::move(buffer)](std::expected<void, uv::Error>) mutable noexcept {});
+            bufferSpan,
+            [buffer = std::move(buffer), callbacks](std::expected<void, uv::Error> result) mutable noexcept {
+                completeWrites(std::move(*callbacks), result);
+            });
         if (!writeResult.has_value()) {
+            completeWrites(std::move(*callbacks), std::unexpected {writeResult.error()});
             failWithError(state, writeResult.error());
             return std::unexpected {writeResult.error()};
         }
@@ -417,9 +427,8 @@ std::expected<void, uv::Error> SecureSocket::processPendingWrites(std::shared_pt
         const std::span<const uint8_t> payload = pendingWrite._payload;
 
         if (payload.empty()) {
-            auto callback = std::move(pendingWrite._callback);
+            state->_encryptedWriteCallbacks.push_back(std::move(pendingWrite._callback));
             state->_pendingWrites.pop_front();
-            callback({});
             continue;
         }
 
@@ -448,9 +457,8 @@ std::expected<void, uv::Error> SecureSocket::processPendingWrites(std::shared_pt
         const size_t bytesWritten = static_cast<size_t>(status);
 
         if (bytesWritten >= payload.size()) {
-            auto callback = std::move(pendingWrite._callback);
+            state->_encryptedWriteCallbacks.push_back(std::move(pendingWrite._callback));
             state->_pendingWrites.pop_front();
-            callback({});
         } else {
             pendingWrite._payload = payload.subspan(bytesWritten);
         }
@@ -481,6 +489,8 @@ void SecureSocket::failWithError(std::shared_ptr<State> state, uv::Error error) 
         callback(std::unexpected {error});
     }
 
+    completeWrites(std::exchange(state->_encryptedWriteCallbacks, {}), std::unexpected {error});
+
     std::deque<PendingWrite> pendingWrites = std::move(state->_pendingWrites);
     state->_pendingWrites.clear();
     for (PendingWrite& pendingWrite: pendingWrites) {
@@ -500,6 +510,14 @@ void SecureSocket::failWithError(std::shared_ptr<State> state, uv::Error error) 
     }
 }
 
+void SecureSocket::completeWrites(
+    std::vector<uv::WriteCallback> callbacks, const std::expected<void, uv::Error>& result) noexcept
+{
+    for (uv::WriteCallback& callback: callbacks) {
+        callback(result);
+    }
+}
+
 void SecureSocket::onTransportConnected(std::shared_ptr<State> state, std::expected<void, uv::Error> result) noexcept
 {
     assert(state->_connectionState == ConnectionState::Connecting);
@@ -516,6 +534,13 @@ void SecureSocket::onTransportConnected(std::shared_ptr<State> state, std::expec
 void SecureSocket::onTransportRead(
     std::shared_ptr<State> state, std::expected<std::span<const uint8_t>, uv::Error> result) noexcept
 {
+    // A graceful close sends close_notify, so an EOF without it is an abort, such as a reset that a write consumed.
+    const bool closeNotifyReceived = (SSL_get_shutdown(state->_ssl.get()) & SSL_RECEIVED_SHUTDOWN) != 0;
+    if (!result.has_value() && result.error().code() == UV_EOF && !closeNotifyReceived) {
+        failWithError(state, uv::Error {UV_ECONNABORTED});
+        return;
+    }
+
     if (!result.has_value()) {
         failWithError(state, result.error());
         return;

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
@@ -37,6 +37,7 @@ class WorkerManagerRunner:
 
     Every link is a heartbeat and an echo. The runner answers each child manager heartbeat with the share of the
     desired task concurrency the controller assigned to that unit, so a lost message costs one heartbeat.
+    The provisioner is created once the children address is bound, so its units dial the port the binder got.
     """
 
     def __init__(
@@ -45,7 +46,7 @@ class WorkerManagerRunner:
         worker_manager_config: WorkerManagerConfig,
         heartbeat_interval_seconds: int,
         capabilities: Dict[str, int],
-        provisioner: UnitProvisioner,
+        create_provisioner: Callable[[AddressConfig], UnitProvisioner],
         children_address: AddressConfig,
         io_threads: int = 1,
         security_config: Optional[SecurityConfig] = None,
@@ -57,18 +58,15 @@ class WorkerManagerRunner:
         self._unit_id = unit_id
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._capabilities = capabilities
-        self._worker_manager_id = worker_manager_config.worker_manager_id.encode()
-        self._provisioner = provisioner
+        self._worker_manager_id = worker_manager_config.worker_manager_id
+        self._create_provisioner = create_provisioner
+        self._provisioner: Optional[UnitProvisioner] = None
+        self._unit_controller: Optional[UnitController] = None
         self._children_address = children_address
         self._io_threads = io_threads
         self._security_config = security_config
-
-        self._unit_controller = UnitController(
-            provisioner,
-            scale_down_cooldown_seconds=worker_manager_config.scale_down_cooldown_seconds,
-            unit_timeout_seconds=worker_manager_config.unit_timeout_seconds,
-            restart_backoff_seconds=DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
-        )
+        self._scale_down_cooldown_seconds = worker_manager_config.scale_down_cooldown_seconds
+        self._unit_timeout_seconds = worker_manager_config.unit_timeout_seconds
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_parent: Optional[AsyncConnector] = None
@@ -132,6 +130,8 @@ class WorkerManagerRunner:
             self._parent_address, ConnectorRemoteType.Binder, security_config=self._security_config
         )
         await self._binder_children.bind(self._children_address, security_config=self._security_config)
+        assert self._binder_children.address is not None
+        self._create_unit_controller(self._binder_children.address)
         self._register_signal()
 
         # swallow_routine_errors=True: a manager serves many units, and a defect in one routine must not take the
@@ -159,6 +159,15 @@ class WorkerManagerRunner:
 
         await self._unit_controller.terminate()
 
+    def _create_unit_controller(self, children_address: AddressConfig) -> None:
+        self._provisioner = self._create_provisioner(children_address)
+        self._unit_controller = UnitController(
+            self._provisioner,
+            scale_down_cooldown_seconds=self._scale_down_cooldown_seconds,
+            unit_timeout_seconds=self._unit_timeout_seconds,
+            restart_backoff_seconds=DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
+        )
+
     async def _on_receive_parent(self, message: BaseMessage) -> None:
         try:
             if isinstance(message, WorkerManagerCommand):
@@ -175,6 +184,7 @@ class WorkerManagerRunner:
         if requests is None:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
+        assert self._unit_controller is not None
         self._unit_controller.set_desired_task_concurrency(extract_desired_count(list(requests), self._capabilities))
 
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:

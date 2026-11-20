@@ -30,7 +30,7 @@ class SymphonyWorkerProvisioner(UnitProvisioner):
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
         self._death_timeout_seconds = config.worker_config.death_timeout_seconds
         self._event_loop = config.worker_config.event_loop
-        self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+        self._worker_manager_id = config.worker_manager_config.worker_manager_id
 
     async def create_unit(self, unit_id: str) -> UnitHandle:
         worker = create_symphony_worker(
@@ -69,15 +69,13 @@ class SymphonyWorkerProvisioner(UnitProvisioner):
 
 class SymphonyWorkerManager:
     def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
-        children_address = local_children_address(config.worker_manager_config)
-        provisioner = SymphonyWorkerProvisioner(config, children_address)
         self._runner = WorkerManagerRunner(
             name="worker_manager_symphony",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            provisioner=provisioner,
-            children_address=children_address,
+            create_provisioner=lambda children_address: SymphonyWorkerProvisioner(config, children_address),
+            children_address=local_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
         )
 

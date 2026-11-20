@@ -47,9 +47,8 @@ class SchedulerConfig(ConfigClass):
         default=None,
         metadata=dict(
             short="-ma",
-            help="specify monitoring address, if not specified, the monitoring address is scheduler address with port "
-            "number plus 2, e.g.: if scheduler address is tcp://localhost:2345, then monitoring address is "
-            "tcp://localhost:2347",
+            help="monitor address to bind; defaults to the scheduler port + 2, e.g. tcp://localhost:2347 for "
+            "tcp://localhost:2345, or port 0 when the scheduler binds port 0",
         ),
     )
     status_report_interval_seconds: int = dataclasses.field(

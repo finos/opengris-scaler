@@ -3,6 +3,7 @@ from typing import Dict, Optional
 
 from scaler.config.types.address import AddressConfig
 from scaler.config.types.oci_auth_type import OCIAuthType
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.worker_manager.proxy.oci.execution_backend import OCIExecutionBackend
 from scaler.worker_manager.proxy.oci.processor_status import OCIProcessorStatusProvider
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
@@ -12,7 +13,7 @@ def create_oci_worker(
     name: str,
     address: AddressConfig,
     object_storage_address: Optional[AddressConfig],
-    worker_manager_id: bytes,
+    worker_manager_id: WorkerManagerID,
     worker_manager_address: AddressConfig,
     unit_id: str,
     compartment_id: str,
@@ -69,5 +70,4 @@ def create_oci_worker(
             oci_profile=oci_profile,
             auth_type=auth_type,
         ),
-        idle_sleep_seconds=0.1,
     )

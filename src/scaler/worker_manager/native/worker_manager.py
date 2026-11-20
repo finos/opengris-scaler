@@ -22,7 +22,7 @@ class NativeWorkerProvisioner(UnitProvisioner):
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+        self._worker_manager_id = config.worker_manager_config.worker_manager_id
         self._io_threads = config.worker_config.io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
@@ -94,16 +94,13 @@ class NativeWorkerManager:
         return self._config
 
     def run(self) -> None:
-        children_address = local_children_address(self._config.worker_manager_config)
-        provisioner = NativeWorkerProvisioner(self._config, children_address)
-
         runner = WorkerManagerRunner(
             name="worker_manager_native",
             worker_manager_config=self._config.worker_manager_config,
             heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
-            provisioner=provisioner,
-            children_address=children_address,
+            create_provisioner=lambda children_address: NativeWorkerProvisioner(self._config, children_address),
+            children_address=local_children_address(self._config.worker_manager_config),
             io_threads=self._config.worker_config.io_threads,
             security_config=self._config.security,
             parent_address=self._config.parent_address,

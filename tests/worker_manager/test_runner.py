@@ -19,7 +19,7 @@ from scaler.protocol.capnp import (
     WorkerManagerCommand,
 )
 from scaler.utility.exceptions import ClientShutdownException
-from scaler.utility.identifiers import ClientID, ObjectID, TaskID
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker_manager.mixins import UnitProvisioner
@@ -39,16 +39,19 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         self.runner = WorkerManagerRunner(
             name="test_runner",
             worker_manager_config=WorkerManagerConfig(
-                scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"), worker_manager_id="mgr"
+                scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"),
+                worker_manager_id=WorkerManagerID(b"mgr"),
             ),
             heartbeat_interval_seconds=5,
             capabilities={"cpu": 4},
-            provisioner=self.provisioner,
+            create_provisioner=lambda _children_address: self.provisioner,
             children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
         )
         connector = AsyncMock()
         connector.send = self.send_mock
         self.runner._connector_parent = connector
+        # _get_loops creates the controller after the bind, which never runs here
+        self.runner._create_unit_controller(AddressConfig.from_string("tcp://127.0.0.1:2"))
 
     async def test_command_sets_the_matching_desired_task_concurrency(self) -> None:
         cmd = WorkerManagerCommand(
@@ -135,7 +138,7 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
             task_queue_size=10,
             io_threads=1,
             event_loop="asyncio",
-            worker_manager_id=b"mgr",
+            worker_manager_id=WorkerManagerID(b"mgr"),
             worker_manager_address=MagicMock(),
             unit_id="unit",
             processor_status_provider_factory=MagicMock(),

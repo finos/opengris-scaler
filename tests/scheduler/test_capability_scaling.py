@@ -4,7 +4,7 @@ from typing import Dict, Optional
 from scaler.protocol.capnp import Task, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
-from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -24,7 +24,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
     def test_no_tasks_emits_empty_requests(self):
         """No tasks: per-capset list is empty -> emits a command with no capset requests."""
         snapshot = InformationSnapshot(tasks={}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"))
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {})
 
@@ -36,7 +36,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         """A single capset with one task targets one worker for that capset."""
         task_id = TaskID.generate_task_id()
         snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1})
 
         command = self._commands(snapshot, heartbeat, [])
 
@@ -51,7 +51,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         tpu_id = TaskID.generate_task_id()
         tasks = {gpu_id: _create_mock_task(gpu_id, {"gpu": 1}), tpu_id: _create_mock_task(tpu_id, {"tpu": 1})}
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1, "tpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1, "tpu": -1})
 
         command = self._commands(snapshot, heartbeat, [])
 
@@ -68,7 +68,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
             tid = TaskID.generate_task_id()
             tasks[tid] = _create_mock_task(tid, {"gpu": 1})
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1})
 
         command = self._commands(snapshot, heartbeat, [])
 
@@ -84,7 +84,9 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
             tid = TaskID.generate_task_id()
             tasks[tid] = _create_mock_task(tid, {"gpu": 1})
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=3, capabilities={"gpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(
+            WorkerManagerID(b"mgr"), max_task_concurrency=3, capabilities={"gpu": -1}
+        )
 
         command = self._commands(snapshot, heartbeat, [])
 
@@ -96,7 +98,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         # 1 gpu task; tpu capset has no tasks even if the manager advertises tpu.
         task_id = TaskID.generate_task_id()
         snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1, "tpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1, "tpu": -1})
 
         command = self._commands(snapshot, heartbeat, [])
 
@@ -111,7 +113,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         task_id = TaskID.generate_task_id()
         snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
         # Manager advertises gpu so the request is serviceable; no managed workers yet.
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1})
 
         command = self._commands(snapshot, heartbeat, [])
 
@@ -134,7 +136,7 @@ class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
         is told to drain (via extract_desired_count returning 0 for the empty list)."""
         managed = [WorkerID(f"w{i}".encode()) for i in range(3)]
         snapshot = InformationSnapshot(tasks={}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1})
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -157,7 +159,7 @@ def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
 
 
 def _create_worker_manager_heartbeat(
-    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: WorkerManagerID, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat(
         maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
