@@ -12,12 +12,17 @@ static std::size_t computePayloadHash(const scaler::ymq::Bytes& payload) noexcep
     return std::hash<std::string_view> {}({reinterpret_cast<const char*>(payload.data()), payload.size()});
 }
 
+static bool hasSameBytes(const ObjectPayload& left, const ObjectPayload& right) noexcept
+{
+    return std::equal(left.data(), left.data() + left.size(), right.data(), right.data() + right.size());
+}
+
 ObjectManager::ObjectManager(): ObjectManager(computePayloadHash)
 {
 }
 
 ObjectManager::ObjectManager(PayloadHashFunction payloadHashFunction)
-    : totalObjectsBytes {}, payloadHashFunction {payloadHashFunction}
+    : totalObjectsBytes {}, uniqueObjectsCount {}, payloadHashFunction {payloadHashFunction}
 {
 }
 
@@ -31,64 +36,73 @@ std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
 
     const ObjectHash hash = payloadHashFunction(*payload);
 
-    objectIDToHash[objectID] = hash;
+    std::vector<ManagedObject>& bucket = hashToObjects[hash];
 
-    auto objectIt = hashToObject.find(hash);
+    auto objectIt = std::ranges::find_if(
+        bucket, [&payload](const ManagedObject& object) { return hasSameBytes(*object.payload, *payload); });
 
-    if (objectIt == hashToObject.end()) {
+    if (objectIt == bucket.end()) {
         // New object payload
-        objectIt = hashToObject
-                       .emplace(
-                           hash,
-                           ManagedObject {
-                               .useCount = 1,
-                               // Converts unique_ptr -> shared_ptr, keeping the Bytes subtype intact.
-                               // Two allocations (object + separate control block); use
-                               // make_shared<BufferedBytes> if this ever becomes a hot path.
-                               .payload = std::shared_ptr<const ObjectPayload>(std::move(payload)),
-                           })
-                       .first;
-        totalObjectsBytes += objectIt->second.payload->size();
+        objectIt = bucket.insert(
+            bucket.end(),
+            ManagedObject {
+                .useCount = 1,
+                // Converts unique_ptr -> shared_ptr, keeping the Bytes subtype intact.
+                // Two allocations (object + separate control block); use
+                // make_shared<BufferedBytes> if this ever becomes a hot path.
+                .payload = std::shared_ptr<const ObjectPayload>(std::move(payload)),
+            });
+        totalObjectsBytes += objectIt->payload->size();
+        ++uniqueObjectsCount;
     } else {
         // Known object payload
-        ++(objectIt->second.useCount);
+        ++(objectIt->useCount);
     }
 
-    return objectIt->second.payload;
+    objectIDToObject[objectID] = ObjectLocation {.hash = hash, .payload = objectIt->payload};
+
+    return objectIt->payload;
 }
 
 std::shared_ptr<const ObjectPayload> ObjectManager::getObject(const ObjectID& objectID) const noexcept
 {
-    auto hashIt = objectIDToHash.find(objectID);
+    auto locationIt = objectIDToObject.find(objectID);
 
-    if (hashIt == objectIDToHash.end()) {
+    if (locationIt == objectIDToObject.end()) {
         return SharedObjectPayload(nullptr);
     }
 
-    return hashToObject.at(hashIt->second).payload;
+    return locationIt->second.payload;
 }
 
 bool ObjectManager::deleteObject(const ObjectID& objectID) noexcept
 {
-    auto hashIt = objectIDToHash.find(objectID);
+    auto locationIt = objectIDToObject.find(objectID);
 
-    if (hashIt == objectIDToHash.end()) {
+    if (locationIt == objectIDToObject.end()) {
         return false;
     }
 
-    const ObjectHash& hash = hashIt->second;
+    const ObjectLocation& location = locationIt->second;
 
-    auto objectIt = hashToObject.find(hash);
+    auto bucketIt                      = hashToObjects.find(location.hash);
+    std::vector<ManagedObject>& bucket = bucketIt->second;
 
-    --objectIt->second.useCount;
-    if (objectIt->second.useCount < 1) {
-        assert(totalObjectsBytes >= objectIt->second.payload->size());
-        totalObjectsBytes -= objectIt->second.payload->size();
+    auto objectIt = std::ranges::find(bucket, location.payload, &ManagedObject::payload);
 
-        hashToObject.erase(objectIt);
+    --objectIt->useCount;
+    if (objectIt->useCount < 1) {
+        assert(totalObjectsBytes >= objectIt->payload->size());
+        totalObjectsBytes -= objectIt->payload->size();
+        --uniqueObjectsCount;
+
+        bucket.erase(objectIt);
+        if (bucket.empty()) {
+            hashToObjects.erase(bucketIt);
+        }
     }
 
-    objectIDToHash.erase(hashIt);
+    objectIDToObject.erase(locationIt);
 
     return true;
 }
@@ -96,15 +110,15 @@ bool ObjectManager::deleteObject(const ObjectID& objectID) noexcept
 std::shared_ptr<const ObjectPayload> ObjectManager::duplicateObject(
     const ObjectID& originalObjectID, const ObjectID& newObjectID) noexcept
 {
-    auto hashIt = objectIDToHash.find(originalObjectID);
+    auto locationIt = objectIDToObject.find(originalObjectID);
 
-    if (hashIt == objectIDToHash.end()) {
+    if (locationIt == objectIDToObject.end()) {
         return nullptr;
     }
 
     if (originalObjectID == newObjectID) {
         // Overriding the object with itself would delete it first.
-        return hashToObject.at(hashIt->second).payload;
+        return locationIt->second.payload;
     }
 
     if (hasObject(newObjectID)) {
@@ -112,30 +126,32 @@ std::shared_ptr<const ObjectPayload> ObjectManager::duplicateObject(
         deleteObject(newObjectID);
     }
 
-    auto hash = hashIt->second;
+    const ObjectLocation location = locationIt->second;
 
-    ManagedObject& object = hashToObject[hash];
+    std::vector<ManagedObject>& bucket = hashToObjects[location.hash];
 
-    ++(object.useCount);
+    auto objectIt = std::ranges::find(bucket, location.payload, &ManagedObject::payload);
 
-    objectIDToHash[newObjectID] = hash;
+    ++(objectIt->useCount);
 
-    return object.payload;
+    objectIDToObject[newObjectID] = location;
+
+    return location.payload;
 }
 
 bool ObjectManager::hasObject(const ObjectID& objectID) const noexcept
 {
-    return objectIDToHash.contains(objectID);
+    return objectIDToObject.contains(objectID);
 }
 
 size_t ObjectManager::size() const noexcept
 {
-    return objectIDToHash.size();
+    return objectIDToObject.size();
 }
 
 size_t ObjectManager::sizeUnique() const noexcept
 {
-    return hashToObject.size();
+    return uniqueObjectsCount;
 }
 
 };  // namespace object_storage

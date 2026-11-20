@@ -148,3 +148,74 @@ TEST(ObjectManagerTestSuite, TestDuplicateObjectOntoItself)
     EXPECT_EQ(objectManager.sizeUnique(), 0);
     EXPECT_EQ(objectManager.totalObjectsSize(), 0);
 }
+
+static const scaler::object_storage::ObjectManager::ObjectHash collidingHashValue {42};
+
+static scaler::object_storage::ObjectManager::ObjectHash collidingHash(
+    const scaler::object_storage::ObjectPayload&) noexcept
+{
+    return collidingHashValue;
+}
+
+static std::unique_ptr<scaler::object_storage::ObjectPayload> makePayload(const std::string& content)
+{
+    return std::make_unique<scaler::ymq::BufferedBytes>(content);
+}
+
+// Different payloads with the same hash are stored, read, duplicated, deleted and counted separately.
+TEST(ObjectManagerTestSuite, TestHashCollisionKeepsPayloadsApart)
+{
+    scaler::object_storage::ObjectManager objectManager {collidingHash};
+
+    const std::string payloadContentA {"payload-A"};
+    const std::string payloadContentB {"payload-B"};
+
+    scaler::object_storage::ObjectID objectIDA {21, 0, 0, 0};
+    scaler::object_storage::ObjectID objectIDB {22, 0, 0, 0};
+    scaler::object_storage::ObjectID objectIDC {23, 0, 0, 0};
+
+    objectManager.setObject(objectIDA, makePayload(payloadContentA));
+    auto storedPayloadB = objectManager.setObject(objectIDB, makePayload(payloadContentB));
+
+    EXPECT_EQ(storedPayloadB->asString(), payloadContentB);
+    EXPECT_EQ(objectManager.getObject(objectIDA)->asString(), payloadContentA);
+    EXPECT_EQ(objectManager.getObject(objectIDB)->asString(), payloadContentB);
+    EXPECT_EQ(objectManager.size(), 2);
+    EXPECT_EQ(objectManager.sizeUnique(), 2);
+    EXPECT_EQ(objectManager.totalObjectsSize(), payloadContentA.size() + payloadContentB.size());
+
+    auto duplicatedPayload = objectManager.duplicateObject(objectIDB, objectIDC);
+    EXPECT_EQ(duplicatedPayload->asString(), payloadContentB);
+    EXPECT_EQ(objectManager.sizeUnique(), 2);
+
+    objectManager.deleteObject(objectIDA);
+
+    EXPECT_EQ(objectManager.getObject(objectIDB)->asString(), payloadContentB);
+    EXPECT_EQ(objectManager.getObject(objectIDC)->asString(), payloadContentB);
+    EXPECT_EQ(objectManager.sizeUnique(), 1);
+    EXPECT_EQ(objectManager.totalObjectsSize(), payloadContentB.size());
+
+    objectManager.deleteObject(objectIDB);
+    objectManager.deleteObject(objectIDC);
+
+    EXPECT_EQ(objectManager.size(), 0);
+    EXPECT_EQ(objectManager.sizeUnique(), 0);
+    EXPECT_EQ(objectManager.totalObjectsSize(), 0);
+}
+
+// Identical payloads with the same hash still share one stored copy.
+TEST(ObjectManagerTestSuite, TestHashCollisionStillSharesIdenticalPayloads)
+{
+    scaler::object_storage::ObjectManager objectManager {collidingHash};
+
+    scaler::object_storage::ObjectID objectID1 {31, 0, 0, 0};
+    scaler::object_storage::ObjectID objectID2 {32, 0, 0, 0};
+
+    auto storedPayload1 = objectManager.setObject(objectID1, makePayload());
+    auto storedPayload2 = objectManager.setObject(objectID2, makePayload());
+
+    EXPECT_EQ(storedPayload1, storedPayload2);
+    EXPECT_EQ(objectManager.size(), 2);
+    EXPECT_EQ(objectManager.sizeUnique(), 1);
+    EXPECT_EQ(objectManager.totalObjectsSize(), payloadContent.size());
+}

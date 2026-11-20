@@ -2,6 +2,7 @@
 
 #include <map>
 #include <memory>
+#include <vector>
 
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/message.h"
@@ -54,9 +55,17 @@ private:
         std::shared_ptr<const ObjectPayload> payload;
     };
 
-    std::map<ObjectID, ObjectHash> objectIDToHash;
-    std::map<ObjectHash, ManagedObject> hashToObject;
+    // The payload identifies the object within its hash bucket.
+    struct ObjectLocation {
+        ObjectHash hash;
+        std::shared_ptr<const ObjectPayload> payload;
+    };
+
+    std::map<ObjectID, ObjectLocation> objectIDToObject;
+    // Payloads with the same hash share a bucket and are told apart by their bytes.
+    std::map<ObjectHash, std::vector<ManagedObject>> hashToObjects;
     size_t totalObjectsBytes;
+    size_t uniqueObjectsCount;
     PayloadHashFunction payloadHashFunction;
 };
 
