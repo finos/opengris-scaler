@@ -1,7 +1,9 @@
-from typing import Dict, Iterable, List, Tuple, TypeVar
+from typing import Dict, FrozenSet, Iterable, List, Tuple, TypeVar
 
 from scaler.protocol.capnp import TaskCapability, WorkerManagerCommand
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
 from scaler.utility.identifiers import WorkerManagerID
+from scaler.utility.snapshot import InformationSnapshot
 
 StateT = TypeVar("StateT")
 
@@ -36,3 +38,28 @@ def build_set_desired_command(desired_per_capset: List[Tuple[Dict[str, int], int
         for caps, count in desired_per_capset
     ]
     return WorkerManagerCommand(setDesiredTaskConcurrencyRequests=requests)
+
+
+def build_cluster_state(
+    information_snapshot: InformationSnapshot, worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo]
+) -> ClusterState:
+    """Build an immutable ClusterState from live observations.
+
+    Each capset's representative is the first task's capabilities dict.
+    """
+
+    n_tasks_by_capset: Dict[FrozenSet[str], int] = {}
+    capset_representatives: Dict[FrozenSet[str], Dict[str, int]] = {}
+    for task in information_snapshot.tasks.values():
+        capset = frozenset(task.capabilities.keys())
+        n_tasks_by_capset[capset] = n_tasks_by_capset.get(capset, 0) + 1
+        if capset not in capset_representatives:
+            capset_representatives[capset] = task.capabilities
+
+    return ClusterState(
+        n_tasks=len(information_snapshot.tasks),
+        n_workers=len(information_snapshot.workers),
+        n_tasks_by_capset=n_tasks_by_capset,
+        capset_representatives=capset_representatives,
+        managers=worker_manager_infos,
+    )

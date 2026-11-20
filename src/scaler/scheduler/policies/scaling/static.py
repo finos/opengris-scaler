@@ -1,11 +1,10 @@
 from typing import Dict, List, Optional
 
-from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
-from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
-from scaler.utility.identifiers import WorkerID, WorkerManagerID
-from scaler.utility.snapshot import InformationSnapshot
+from scaler.scheduler.types import ClusterState
+from scaler.utility.identifiers import WorkerManagerID
 
 
 class StaticScalingPolicy(ScalingPolicy):
@@ -20,16 +19,11 @@ class StaticScalingPolicy(ScalingPolicy):
         self._task_concurrency_by_manager = task_concurrency_by_manager
 
     def get_scaling_commands(
-        self,
-        information_snapshot: InformationSnapshot,
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
-        managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
+        self, worker_manager_id: WorkerManagerID, cluster_state: ClusterState
     ) -> List[WorkerManagerCommand]:
-        desired = worker_manager_heartbeat.maxTaskConcurrency
-        task_concurrency = self._task_concurrency_by_manager.get(
-            worker_manager_heartbeat.workerManagerID, self._task_concurrency
-        )
+        info = cluster_state.managers[worker_manager_id]
+        desired = info.max_task_concurrency or -1
+        task_concurrency = self._task_concurrency_by_manager.get(worker_manager_id, self._task_concurrency)
         if task_concurrency is not None:
             desired = min(task_concurrency, desired)
         return [build_set_desired_command([({}, desired)])]
