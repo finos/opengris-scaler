@@ -51,7 +51,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_task_cpu = config.ecs_task_cpu
         self._ecs_task_memory = config.ecs_task_memory
         self._ecs_subnets = config.ecs_subnets
-        self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+        self._worker_manager_id = config.worker_manager_config.worker_manager_id
         self._cloud_children_config = config.cloud_children_config
         self._units: List[str] = []  # ECS task ARNs of active units
         self._capacity_coordinator = CapacityCoordinator(
@@ -137,7 +137,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         if format_capabilities(self._capabilities).strip():
             command += f" --per-worker-capabilities {format_capabilities(self._capabilities)}"
 
-        command += f" --worker-manager-id {self._worker_manager_id.decode()}"
+        command += f" --worker-manager-id {self._worker_manager_id}"
 
         if self._preload is not None:
             command += f" --preload {shlex.quote(self._preload)}"

@@ -15,6 +15,7 @@ from scaler.config.defaults import (
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import BaseMessage, WorkerDisconnectNotification, WorkerHeartbeat, WorkerHeartbeatEcho
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker.worker import Worker
@@ -76,7 +77,7 @@ def _worker(combo: SchedulerClusterCombo, manager: _FakeManager) -> Worker:
         hard_processor_suspend=False,
         logging_paths=DEFAULT_LOGGING_PATHS,
         logging_level=DEFAULT_LOGGING_LEVEL,
-        worker_manager_id=b"fake-manager",
+        worker_manager_id=WorkerManagerID(b"fake-manager"),
         worker_manager_address=manager.address,
         unit_id=UNIT_ID,
     )

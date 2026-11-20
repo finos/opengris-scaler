@@ -11,6 +11,7 @@ from unittest.mock import mock_open, patch
 
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.section.webgui import WebGUIConfig
+from scaler.utility.identifiers import WorkerManagerID
 
 README_TOML = b"""
 [scheduler]
@@ -80,7 +81,7 @@ class TestReadmeConfig(unittest.TestCase):
         )
 
         self.assertEqual(config.worker_manager_config.max_task_concurrency, 8)
-        self.assertEqual(config.worker_manager_config.worker_manager_id, "my-manager")
+        self.assertEqual(config.worker_manager_config.worker_manager_id, WorkerManagerID.from_string("my-manager"))
         self.assertEqual(config.worker_config.task_timeout_seconds, 600)
         self.assertIn("linux", config.worker_config.per_worker_capabilities.capabilities)
         self.assertEqual(config.logging_config.level, "INFO")

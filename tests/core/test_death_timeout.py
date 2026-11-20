@@ -15,6 +15,7 @@ from scaler.config.defaults import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
 from scaler.config.types.address import AddressConfig
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker.worker import Worker
@@ -53,7 +54,7 @@ class TestDeathTimeout(unittest.TestCase):
             hard_processor_suspend=False,
             logging_paths=DEFAULT_LOGGING_PATHS,
             logging_level=DEFAULT_LOGGING_LEVEL,
-            worker_manager_id=b"test_manager",
+            worker_manager_id=WorkerManagerID(b"test_manager"),
             worker_manager_address=AddressConfig.from_string(f"tcp://127.0.0.1:{refusing_port}"),
             unit_id="no_scheduler",
         )

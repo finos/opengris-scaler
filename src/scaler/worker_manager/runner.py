@@ -55,7 +55,7 @@ class WorkerManagerRunner:
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._capabilities = capabilities
         self._max_provisioner_units = max_provisioner_units
-        self._worker_manager_id = worker_manager_config.worker_manager_id.encode()
+        self._worker_manager_id = worker_manager_config.worker_manager_id
         self._create_worker_provisioner = create_worker_provisioner
         self._worker_provisioner: Optional[DeclarativeWorkerProvisioner] = None
         self._children_address = children_address

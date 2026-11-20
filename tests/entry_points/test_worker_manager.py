@@ -12,6 +12,7 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
+from scaler.utility.identifiers import WorkerManagerID
 
 
 @dataclasses.dataclass
@@ -1027,7 +1028,7 @@ def _make_orb_config(
 ):
     wmc = WorkerManagerConfig(
         scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"),
-        worker_manager_id="wm-test",
+        worker_manager_id=WorkerManagerID.from_string("wm-test"),
         children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS),
     )
     return ORBAWSEC2WorkerManagerConfig(
