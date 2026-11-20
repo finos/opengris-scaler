@@ -73,6 +73,7 @@ class UnitController(Looper, Reporter):
 
         self._consecutive_unit_losses = 0
         self._create_not_before = 0.0  # time.monotonic()
+        self._terminating = False  # set by terminate(): every unit is destroyed as soon as it has a handle
 
     def set_desired_task_concurrency(self, task_concurrency: int) -> None:
         if task_concurrency != self._desired_task_concurrency:
@@ -122,32 +123,19 @@ class UnitController(Looper, Reporter):
         self._drive_destroys()
 
     async def terminate(self) -> None:
-        """Destroy every created unit now, then each unit whose create or destroy was in flight once it returns.
+        """Destroy every unit: a created one now, one still being created as soon as its create returns.
 
-        A create can take minutes, such as an OCI instance polled until ACTIVE, and the process may be killed meanwhile.
+        A create can take minutes, such as an ORB request polled for its instance, and the process may be killed.
         """
-        in_flight = list(self._tasks)
-        await self._destroy_created_units()
-        if in_flight:
-            logger.info(f"waiting for {len(in_flight)} provisioner call(s) in flight")
-            await asyncio.gather(*in_flight, return_exceptions=True)
-            await self._destroy_created_units()
-        self._units.clear()
+        self._terminating = True
+        for unit in self._units_in(UnitState.pending, UnitState.active):
+            if unit.handle is not None:
+                self._set_state(unit, UnitState.stopping)
+        self._drive_destroys()
 
-    async def _destroy_created_units(self) -> None:
-        """Destroy every unit that has a handle and no destroy in flight."""
-        units = [
-            unit for unit in self._units.values() if unit.handle is not None and unit.state != UnitState.destroying
-        ]
-        results = await asyncio.gather(
-            *(self._provisioner.destroy_unit(unit.handle) for unit in units), return_exceptions=True
-        )
-        for unit, result in zip(units, results):
-            if isinstance(result, BaseException):
-                logger.error(f"failed to destroy unit {unit.unit_id!r}: {result!r}")
-                continue
-            logger.info(f"destroyed unit {unit.unit_id!r}")
-            self._units.pop(unit.unit_id, None)
+        while self._tasks:
+            logger.info(f"waiting for {len(self._tasks)} provisioner call(s) in flight")
+            await asyncio.wait(set(self._tasks))
 
     def _on_unit_lost(self, unit: Unit) -> None:
         """Count a unit lost before it was stable toward the crash-loop backoff; a stable unit's loss resets it."""
@@ -230,6 +218,9 @@ class UnitController(Looper, Reporter):
             return
 
         unit.handle = task.result()
+        if self._terminating:
+            self._set_state(unit, UnitState.stopping)
+            self._drive_destroys()
 
     def _drive_destroys(self) -> None:
         """Destroy each stopping unit, and retry each destroy that failed."""
@@ -242,6 +233,10 @@ class UnitController(Looper, Reporter):
 
     def _on_destroy_done(self, unit: Unit, task: asyncio.Task) -> None:
         error = _failure_of(task)
+        if error is not None and self._terminating:
+            logger.error(f"failed to destroy unit {unit.unit_id!r}: {error!r}")
+            self._units.pop(unit.unit_id, None)
+            return
         if error is not None:
             logger.error(f"failed to destroy unit {unit.unit_id!r}, retrying: {error!r}")
             self._set_state(unit, UnitState.stopping)

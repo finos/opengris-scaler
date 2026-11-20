@@ -25,19 +25,23 @@ class _FakeProvisioner(UnitProvisioner):
         self.fail_creates = False
         self.fail_destroys = False
         self.hold_creates = False
-        self.release_creates = asyncio.Event()
+        self.create_releases: Dict[str, asyncio.Event] = {}  # one per held create, in the order they started
         self.destroy_calls = 0
         self.hold_destroys = False
         self.release_destroys = asyncio.Event()
 
     async def create_unit(self, unit_id: str) -> UnitHandle:
         if self.hold_creates:
-            await self.release_creates.wait()
+            await self.create_releases.setdefault(unit_id, asyncio.Event()).wait()
         if self.fail_creates:
             raise RuntimeError("no capacity")
         self.created.append(unit_id)
         self.existing.add(unit_id)
         return unit_id
+
+    def release_creates(self) -> None:
+        for release in self.create_releases.values():
+            release.set()
 
     async def destroy_unit(self, handle: UnitHandle) -> None:
         self.destroy_calls += 1
@@ -112,7 +116,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         await self.__tick(self.controller)
         self.assertEqual(self.__states(self.controller), {UnitState.pending: 1})
 
-        self.provisioner.release_creates.set()
+        self.provisioner.release_creates()
         await self.__tick(self.controller)
         self.__heartbeat_all(self.controller, self.provisioner)
         await self.__tick(self.controller)
@@ -294,11 +298,39 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0)
         self.assertEqual(self.provisioner.destroyed, [serving_unit_id], "destroyed while the create is in flight")
 
-        self.provisioner.release_creates.set()
+        self.provisioner.release_creates()
         await terminate
 
         self.assertEqual(sorted(self.provisioner.destroyed), sorted(self.provisioner.created))
         self.assertEqual(len(self.provisioner.destroyed), 2)
+        self.assertEqual(self.controller._units, {})
+
+    async def test_terminate_destroys_each_unit_as_soon_as_its_own_create_returns(self) -> None:
+        """A fast create is not held back by a slow one, such as an ORB request still polled for its instance."""
+        self.provisioner.hold_creates = True
+        self.controller.set_desired_task_concurrency(2 * TASK_CONCURRENCY_PER_UNIT)
+        await self.__tick(self.controller)
+        fast_unit_id, _slow_unit_id = self.provisioner.create_releases
+
+        terminate = asyncio.ensure_future(self.controller.terminate())
+        self.provisioner.create_releases[fast_unit_id].set()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        self.assertEqual(self.provisioner.destroyed, [fast_unit_id], "destroyed while the slow create is in flight")
+
+        self.provisioner.release_creates()
+        await terminate
+        self.assertEqual(sorted(self.provisioner.destroyed), sorted(self.provisioner.created))
+        self.assertEqual(self.controller._units, {})
+
+    async def test_terminate_ends_when_a_destroy_fails(self) -> None:
+        """terminate() gives a failed destroy up rather than retrying it until the process is killed."""
+        await self.__active_units(1)
+        self.provisioner.fail_destroys = True
+
+        await asyncio.wait_for(self.controller.terminate(), timeout=1)
+
+        self.assertEqual(self.provisioner.destroy_calls, 1)
         self.assertEqual(self.controller._units, {})
 
     async def test_terminate_waits_for_a_destroy_in_flight_instead_of_repeating_it(self) -> None:
