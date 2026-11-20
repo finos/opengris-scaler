@@ -260,8 +260,9 @@ void BinderSocket::onMessage(
     assert(connection.remoteIdentity().has_value());
 
     Message message;
-    message.address = std::make_unique<BufferedBytes>(connection.remoteIdentity().value());
-    message.payload = std::move(messagePayload);
+    message.address      = std::make_unique<BufferedBytes>(connection.remoteIdentity().value());
+    message.payload      = std::move(messagePayload);
+    message.connectionID = connectionId;
 
     if (state->_pendingRecvCallbacks.empty()) {
         // No callback waiting, buffer the message until the user calls recvMessage()
