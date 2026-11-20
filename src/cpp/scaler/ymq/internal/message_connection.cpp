@@ -199,6 +199,7 @@ void MessageConnection::initialize() noexcept
 {
     _client           = std::nullopt;
     _clientAborted    = std::make_shared<bool>(false);
+    _writeCancelError = std::make_shared<Error::ErrorCode>(Error::ErrorCode::SocketStopRequested);
     _eofTimer         = std::nullopt;
     _state            = State::Disconnected;
     _recvCurrent      = RecvOperation {};
@@ -315,6 +316,7 @@ void MessageConnection::noteAbort(
 void MessageConnection::onWriteDone(
     SendCallback callback,
     std::shared_ptr<bool> clientAborted,
+    Error::ErrorCode writeCancelError,
     std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
     noteAbort(*clientAborted, result);
@@ -332,7 +334,7 @@ void MessageConnection::onWriteDone(
             // FIXME: as we are certain these bytes haven't been issued on the wire, we could requeue these messages
             // in case the connection is later re-established. But we can't be sure the MessageConnection object is
             // still live, as this callback might be called after the connection object got destroyed.
-            callback(std::unexpected(Error {Error::ErrorCode::SocketStopRequested}));
+            callback(std::unexpected(Error {writeCancelError}));
             return;
         } else {
             // Unexpected error
@@ -432,6 +434,8 @@ void MessageConnection::onRemoteDisconnect(MessageConnection::DisconnectReason r
 {
     assert(connected());
 
+    *_writeCancelError = Error::ErrorCode::ConnectionLost;
+
     if (reason == DisconnectReason::Disconnected) {
         shutdownClient();
     }
@@ -463,8 +467,10 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
 
     // Make the callback own the operation's callback
     auto callback = [onSendDone    = std::move(operation._onSendDone),
-                     clientAborted = _clientAborted](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
-        onWriteDone(std::move(onSendDone), std::move(clientAborted), std::move(result));
+                     clientAborted = _clientAborted,
+                     writeCancelError =
+                         _writeCancelError](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
+        onWriteDone(std::move(onSendDone), std::move(clientAborted), *writeCancelError, std::move(result));
     };
 
     // uv_write() normally delivers errors asynchronously via the callback, but returns UV_ENOTCONN synchronously

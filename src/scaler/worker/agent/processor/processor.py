@@ -229,6 +229,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         except ymq.SocketStopRequestedError as e:
             self.__log_exit("agent connector stop requested", exception=e)
 
+        except ymq.ConnectionLostError as e:
+            self.__log_exit("agent connector lost its connection", exception=e)
+
         except ObjectStorageException as e:
             # Never swallow this silently: a storage error mid-task orphans the task (no result is ever
             # sent) and the process exits 0, which the agent can only observe later as a zombie.
@@ -424,7 +427,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         while True:
             try:
                 return step()
-            except (ymq.SocketStopRequestedError, ObjectStorageException) as e:
+            except (ymq.ConnectionLostError, ObjectStorageException) as e:
                 if self._interrupted or attempt >= RESULT_HAND_OFF_MAX_ATTEMPTS:
                     raise
 

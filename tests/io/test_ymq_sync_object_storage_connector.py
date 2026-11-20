@@ -1,6 +1,6 @@
 """``YMQSyncObjectStorageConnector`` must report a transport failure as an object storage failure.
 
-A peer that aborts the connection mid-write cancels the send, which YMQ reports as ``SocketStopRequested``.
+A peer that aborts the connection mid-write cancels the send, which YMQ reports as ``ConnectionLost``.
 Both the read and the write side translate it, so a caller sees a failure of the storage connection rather
 than a raw YMQ error, which names no socket and reads as a failure of whatever else the caller handles.
 """
@@ -11,7 +11,7 @@ from unittest import mock
 
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
-from scaler.io.ymq import SocketStopRequestedError
+from scaler.io.ymq import ConnectionLostError, SocketStopRequestedError
 from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID
@@ -38,7 +38,7 @@ class SyncObjectStorageConnectorSendFailureTest(unittest.TestCase):
         self.connector._socket = None
 
     def test_a_canceled_write_is_reported_as_a_storage_failure(self) -> None:
-        canceled = SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "connection aborted mid-write")
+        canceled = ConnectionLostError(ymq.ErrorCode.ConnectionLost, "connection aborted mid-write")
         self.connector._socket.send_message_sync.side_effect = canceled
 
         with self.assertRaises(ObjectStorageException) as context:
@@ -50,7 +50,7 @@ class SyncObjectStorageConnectorSendFailureTest(unittest.TestCase):
         # The header is small enough to leave in a socket buffer, so a big payload is the write that fails.
         self.connector._socket.send_message_sync.side_effect = [
             None,
-            SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "connection aborted mid-write"),
+            ConnectionLostError(ymq.ErrorCode.ConnectionLost, "connection aborted mid-write"),
         ]
 
         with self.assertRaises(ObjectStorageException):

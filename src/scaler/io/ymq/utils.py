@@ -9,7 +9,12 @@ except ImportError:
     from typing_extensions import Concatenate, ParamSpec  # type: ignore[assignment]
 
 from scaler.config.common.security import SecurityConfig
-from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, TLSConfig
+from scaler.io.ymq import (
+    ConnectionLostError,
+    ConnectorSocketClosedByRemoteEndError,
+    SocketStopRequestedError,
+    TLSConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +92,11 @@ def run_detached(
         if exception is None:
             return
 
-        if isinstance(exception, (ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError)):
-            # The peer left, or our own socket closed during teardown. Routine, and the reason this send
-            # is fire-and-forget in the first place.
+        if isinstance(
+            exception, (ConnectionLostError, ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError)
+        ):
+            # The peer left, the connection dropped, or our own socket closed during teardown. Routine, and the reason
+            # this send is fire-and-forget in the first place.
             logger.debug(f"{description}: detached operation failed: {exception!r}")
         else:
             # Nobody is waiting on this send, so this callback is the only place the failure can surface.

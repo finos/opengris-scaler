@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import scaler.worker.agent.processor.processor as processor_module
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
-from scaler.io.ymq import SocketStopRequestedError
+from scaler.io.ymq import ConnectionLostError, SocketStopRequestedError
 from scaler.protocol.capnp import Task, TaskResultType
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
@@ -186,8 +186,8 @@ class ProcessorResultHandOffRetryTest(unittest.TestCase):
         )
 
     @staticmethod
-    def __canceled_send() -> SocketStopRequestedError:
-        return SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "connection aborted mid-write")
+    def __canceled_send() -> ConnectionLostError:
+        return ConnectionLostError(ymq.ErrorCode.ConnectionLost, "connection aborted mid-write")
 
     def test_a_dropped_storage_write_is_retried_until_it_lands(self) -> None:
         storage: Any = self.processor._connector_storage
@@ -243,6 +243,17 @@ class ProcessorResultHandOffRetryTest(unittest.TestCase):
             self.__send_result()
 
         self.assertEqual(storage.set_object.call_count, 1)
+        self.sleep.assert_not_called()
+
+    def test_a_stopped_agent_connector_is_not_retried(self) -> None:
+        # Only a lost connection comes back: a socket that stopped stays stopped, so a retry can only fail again.
+        agent: Any = self.processor._connector_agent
+        agent.send.side_effect = SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "socket shut down")
+
+        with self.assertRaises(SocketStopRequestedError):
+            self.__send_result()
+
+        self.assertEqual(agent.send.call_count, 1)
         self.sleep.assert_not_called()
 
     def test_backoff_grows_between_attempts(self) -> None:

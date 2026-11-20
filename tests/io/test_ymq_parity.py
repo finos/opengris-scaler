@@ -79,6 +79,7 @@ class ModuleSurfaceParityTest(unittest.TestCase):
         "ConnectorSocket",
         "ErrorCode",
         "YMQException",
+        "ConnectionLostError",
         "ConnectorSocketClosedByRemoteEndError",
         "InvalidAddressFormatError",
         "InvalidPortFormatError",
@@ -98,6 +99,7 @@ class ModuleSurfaceParityTest(unittest.TestCase):
 
     def test_exception_hierarchy_matches(self) -> None:
         subclass_names = [
+            "ConnectionLostError",
             "ConnectorSocketClosedByRemoteEndError",
             "InvalidAddressFormatError",
             "InvalidPortFormatError",

@@ -53,6 +53,7 @@ class ErrorCode(IntEnum):
     ConnectorSocketClosedByRemoteEnd = 4
     SocketStopRequested = 5
     SysCallError = 6
+    ConnectionLost = 7
 
     def explanation(self) -> str:
         return {
@@ -65,6 +66,7 @@ class ErrorCode(IntEnum):
             ErrorCode.ConnectorSocketClosedByRemoteEnd: "Connector socket closed by remote end",
             ErrorCode.SocketStopRequested: "Socket stop requested",
             ErrorCode.SysCallError: "System call error",
+            ErrorCode.ConnectionLost: "Connection lost",
         }[self]
 
 
@@ -105,6 +107,10 @@ class SysCallError(YMQException):
     pass
 
 
+class ConnectionLostError(YMQException):
+    pass
+
+
 _ERROR_CODE_TO_CLASS = {
     ErrorCode.InvalidPortFormat: InvalidPortFormatError,
     ErrorCode.InvalidAddressFormat: InvalidAddressFormatError,
@@ -114,6 +120,7 @@ _ERROR_CODE_TO_CLASS = {
     ErrorCode.ConnectorSocketClosedByRemoteEnd: ConnectorSocketClosedByRemoteEndError,
     ErrorCode.SocketStopRequested: SocketStopRequestedError,
     ErrorCode.SysCallError: SysCallError,
+    ErrorCode.ConnectionLost: ConnectionLostError,
 }
 
 
@@ -723,6 +730,7 @@ __all__ = [
     "InvalidAddressFormatError",
     "InvalidPortFormatError",
     "RemoteEndDisconnectedOnSocketWithoutGuaranteedDeliveryError",
+    "ConnectionLostError",
     "SocketStopRequestedError",
     "SysCallError",
     "DEFAULT_MAX_RETRY_TIMES",
