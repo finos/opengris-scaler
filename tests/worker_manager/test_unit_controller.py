@@ -282,17 +282,37 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.provisioner.destroy_calls, 1)
 
     async def test_terminate_destroys_every_unit_including_one_still_being_created(self) -> None:
-        await self.__active_units(1)
+        """A slow create, such as an OCI instance polled until ACTIVE, does not hold back destroying the others."""
+        (serving_unit_id,) = await self.__active_units(1)
 
         self.provisioner.hold_creates = True
         self.controller.set_desired_task_concurrency(2 * TASK_CONCURRENCY_PER_UNIT)
         await self.__tick(self.controller)
 
         terminate = asyncio.ensure_future(self.controller.terminate())
-        await asyncio.sleep(0)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        self.assertEqual(self.provisioner.destroyed, [serving_unit_id], "destroyed while the create is in flight")
+
         self.provisioner.release_creates.set()
         await terminate
 
         self.assertEqual(sorted(self.provisioner.destroyed), sorted(self.provisioner.created))
         self.assertEqual(len(self.provisioner.destroyed), 2)
+        self.assertEqual(self.controller._units, {})
+
+    async def test_terminate_waits_for_a_destroy_in_flight_instead_of_repeating_it(self) -> None:
+        (unit_id,) = await self.__active_units(1)
+        self.provisioner.hold_destroys = True
+        self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+        self.assertEqual(self.__states(self.controller), {UnitState.destroying: 1})
+
+        terminate = asyncio.ensure_future(self.controller.terminate())
+        await asyncio.sleep(0)
+        self.provisioner.release_destroys.set()
+        await terminate
+
+        self.assertEqual(self.provisioner.destroy_calls, 1)
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
         self.assertEqual(self.controller._units, {})

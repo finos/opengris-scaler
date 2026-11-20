@@ -122,22 +122,32 @@ class UnitController(Looper, Reporter):
         self._drive_destroys()
 
     async def terminate(self) -> None:
-        """Destroy every unit at once. Waits for the provisioner calls in flight first, so a
-        create that finishes now is destroyed too."""
-        if self._tasks:
-            logger.info(f"waiting for {len(self._tasks)} provisioner call(s) in flight")
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+        """Destroy every created unit now, then each unit whose create or destroy was in flight once it returns.
 
-        units = [unit for unit in self._units.values() if unit.handle is not None]
+        A create can take minutes, such as an OCI instance polled until ACTIVE, and the process may be killed meanwhile.
+        """
+        in_flight = list(self._tasks)
+        await self._destroy_created_units()
+        if in_flight:
+            logger.info(f"waiting for {len(in_flight)} provisioner call(s) in flight")
+            await asyncio.gather(*in_flight, return_exceptions=True)
+            await self._destroy_created_units()
+        self._units.clear()
+
+    async def _destroy_created_units(self) -> None:
+        """Destroy every unit that has a handle and no destroy in flight."""
+        units = [
+            unit for unit in self._units.values() if unit.handle is not None and unit.state != UnitState.destroying
+        ]
         results = await asyncio.gather(
             *(self._provisioner.destroy_unit(unit.handle) for unit in units), return_exceptions=True
         )
         for unit, result in zip(units, results):
             if isinstance(result, BaseException):
                 logger.error(f"failed to destroy unit {unit.unit_id!r}: {result!r}")
-            else:
-                logger.info(f"destroyed unit {unit.unit_id!r}")
-        self._units.clear()
+                continue
+            logger.info(f"destroyed unit {unit.unit_id!r}")
+            self._units.pop(unit.unit_id, None)
 
     def _on_unit_lost(self, unit: Unit) -> None:
         """Count a unit lost before it was stable toward the crash-loop backoff; a stable unit's loss resets it."""
