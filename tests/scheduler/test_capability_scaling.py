@@ -3,7 +3,9 @@ from typing import Dict, Optional
 
 from scaler.protocol.capnp import Task, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
+from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
+from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
@@ -142,6 +144,17 @@ class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
         # No per-capset requests because there are no tasks -- the manager interprets this
         # as "desired 0" and drains its workers.
         self.assertEqual(list(commands[0].setDesiredTaskConcurrencyRequests), [])
+
+    def test_create_policies_accepts_capability_allocate_with_capability_scaling(self):
+        allocate_policy, scaling_policy = create_policies("simple", "allocate=capability; scaling=capability")
+        self.assertIsInstance(allocate_policy, CapabilityAllocatePolicy)
+        self.assertIsInstance(scaling_policy, CapabilityScalingPolicy)
+
+    def test_create_policies_refuses_even_load_with_capability_scaling(self):
+        with self.assertRaisesRegex(
+            ValueError, "scaling=capability requires allocate=capability, got allocate=even_load"
+        ):
+            create_policies("simple", "allocate=even_load; scaling=capability")
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:

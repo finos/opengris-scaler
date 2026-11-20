@@ -143,10 +143,15 @@ def create_policies(policy_engine_type: str, policy_content: str) -> Tuple[TaskA
         if policy_kv.keys() != required_keys:
             raise ValueError(f"simple policy_content requires keys {required_keys}, got {set(policy_kv.keys())}")
 
-        return (
-            create_allocate_policy(AllocatePolicyStrategy(policy_kv["allocate"])),
-            create_scaling_policy(policy_kv["scaling"]),
-        )
+        allocate_strategy = AllocatePolicyStrategy(policy_kv["allocate"])
+        allocate_policy = create_allocate_policy(allocate_strategy)
+        scaling_policy = create_scaling_policy(policy_kv["scaling"])
+        if allocate_strategy == AllocatePolicyStrategy.EVEN_LOAD and isinstance(
+            scaling_policy, CapabilityScalingPolicy
+        ):
+            raise ValueError("scaling=capability requires allocate=capability, got allocate=even_load")
+
+        return allocate_policy, scaling_policy
 
     if engine_type == PolicyEngineType.WATERFALL_V1:
         rules = parse_waterfall_rules(policy_content)

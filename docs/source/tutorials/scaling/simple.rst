@@ -125,6 +125,7 @@ The ``scaling`` option controls how worker capacity grows or shrinks.
 * ``scaling=capability``
 
   * Capability-aware autoscaling for heterogeneous clusters.
+  * Requires ``allocate=capability`` (``allocate=even_load; scaling=capability`` is refused at startup).
   * Groups demand by capability and scales per capability group.
   * Scale up when ``tasks / capable_workers > 5``.
   * Scale down when ``tasks / capable_workers < 0.5``.
