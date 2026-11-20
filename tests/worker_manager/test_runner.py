@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import unittest
 from typing import Optional
@@ -17,7 +18,9 @@ from scaler.protocol.capnp import (
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
+    WorkerManagerHeartbeat,
 )
+from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
@@ -26,6 +29,70 @@ from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
 from tests.utility.utility import logging_test_name
+
+TASK_CONCURRENCY_PER_UNIT = 4
+
+
+class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+        provisioner = MagicMock(spec=UnitProvisioner)
+        provisioner.create_unit = AsyncMock(side_effect=lambda unit_id: unit_id)
+        provisioner.max_units.return_value = -1
+        provisioner.task_concurrency_per_unit.return_value = TASK_CONCURRENCY_PER_UNIT
+        provisioner.startup_timeout_seconds.return_value = 60
+        self.runner = WorkerManagerRunner(
+            name="test_runner",
+            worker_manager_config=WorkerManagerConfig(
+                scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"),
+                worker_manager_id=WorkerManagerID(b"mgr"),
+                scale_down_cooldown_seconds=60,
+            ),
+            heartbeat_interval_seconds=5,
+            capabilities={},
+            create_provisioner=lambda _children_address: provisioner,
+            children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
+        )
+        # _get_loops creates the controller after the bind, which never runs here
+        self.runner._create_unit_controller(AddressConfig.from_string("tcp://127.0.0.1:2"))
+        self.binder = AsyncMock()
+        self.runner._binder_children = self.binder
+
+    async def __child_heartbeat(self, unit_id: str, assigned_tasks: int) -> int:
+        """Send a child manager heartbeat from `unit_id`, and return the task concurrency the runner asks of it."""
+        heartbeat = WorkerManagerHeartbeat(
+            maxTaskConcurrency=TASK_CONCURRENCY_PER_UNIT,
+            capabilities=dict_to_capabilities({}),
+            workerManagerID=WorkerManagerID(unit_id.encode()),
+            activeTaskConcurrency=TASK_CONCURRENCY_PER_UNIT,
+            assignedTasks=assigned_tasks,
+            activeUnits=0,
+            pendingUnits=0,
+        )
+        self.binder.send.reset_mock()
+        await self.runner._on_receive_child(unit_id.encode(), deserialize(serialize(heartbeat)))
+        (command,) = [
+            call.args[1] for call in self.binder.send.call_args_list if isinstance(call.args[1], WorkerManagerCommand)
+        ]
+        return command.setDesiredTaskConcurrencyRequests[0].taskConcurrency
+
+    async def test_every_child_manager_runs_a_whole_unit_while_the_fleet_shrinks(self) -> None:
+        """A unit the shed keeps never drains first: every child is asked for the task concurrency of a whole unit."""
+        controller = self.runner._unit_controller
+        controller.set_desired_task_concurrency(3 * TASK_CONCURRENCY_PER_UNIT)
+        await controller.routine()
+        await asyncio.sleep(0)
+        first, second, busiest = list(controller._units)
+        for unit_id in (first, second):
+            await self.__child_heartbeat(unit_id, assigned_tasks=0)
+        await self.__child_heartbeat(busiest, assigned_tasks=TASK_CONCURRENCY_PER_UNIT)
+
+        controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT // 2)
+        await controller.routine()
+
+        for unit_id in (first, second, busiest):
+            self.assertEqual(await self.__child_heartbeat(unit_id, assigned_tasks=0), TASK_CONCURRENCY_PER_UNIT)
 
 
 class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):

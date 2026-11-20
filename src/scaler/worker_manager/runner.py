@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 class WorkerManagerRunner:
     """Connects a unit controller to its parent (the scheduler, or a parent worker manager) and to its units.
 
-    Every link is a heartbeat and an echo. The runner answers each child manager heartbeat with the share of the
-    desired task concurrency the controller assigned to that unit, so a lost message costs one heartbeat.
+    Every link is a heartbeat and an echo. The runner answers each child manager heartbeat with the task concurrency
+    of one whole unit: a cloud unit is billed whole, so it runs full until it is shed.
     The provisioner is created once the children address is bound, so its units dial the port the binder got.
     """
 
@@ -203,7 +203,7 @@ class WorkerManagerRunner:
         if isinstance(message, WorkerManagerHeartbeat):
             self._unit_controller.on_unit_heartbeat(unit_id, message.activeTaskConcurrency, message.assignedTasks)
             await self._binder_children.send(source, WorkerManagerHeartbeatEcho(), detached=True)
-            await self._binder_children.send(source, self._instruction_for(unit_id), detached=True)
+            await self._binder_children.send(source, self._unit_command(), detached=True)
             return
 
         if isinstance(message, WorkerDisconnectNotification):
@@ -213,10 +213,11 @@ class WorkerManagerRunner:
 
         logger.error(f"unknown message from unit {unit_id!r}: {message}")
 
-    def _instruction_for(self, unit_id: str) -> WorkerManagerCommand:
-        desired = self._unit_controller.get_unit_desired_task_concurrency(unit_id)
+    def _unit_command(self) -> WorkerManagerCommand:
         return WorkerManagerCommand(
             setDesiredTaskConcurrencyRequests=[
-                WorkerManagerCommand.DesiredTaskConcurrencyRequest(taskConcurrency=desired, capabilities=[])
+                WorkerManagerCommand.DesiredTaskConcurrencyRequest(
+                    taskConcurrency=self._provisioner.task_concurrency_per_unit(), capabilities=[]
+                )
             ]
         )

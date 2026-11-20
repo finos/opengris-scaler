@@ -29,7 +29,6 @@ class Unit:
     handle: Optional[UnitHandle]  # None until create_unit returns
     state: UnitState
     state_since: float  # time.monotonic()
-    desired_task_concurrency: int = 0  # the share of the desired task concurrency this unit is asked for
     active_task_concurrency: int = 0  # task slots the unit reported
     assigned_tasks: int = 0  # queued and running tasks the unit reported
     last_heartbeat: Optional[float] = None  # time.monotonic(); None until the first heartbeat
@@ -108,10 +107,6 @@ class UnitController(Looper, Reporter):
         self._on_unit_lost(unit)
         self._set_state(unit, UnitState.stopping)
 
-    def get_unit_desired_task_concurrency(self, unit_id: str) -> int:
-        unit = self._units.get(unit_id)
-        return unit.desired_task_concurrency if unit is not None else 0
-
     def get_status(self) -> UnitControllerStatus:
         active = self._units_in(UnitState.active)
         return UnitControllerStatus(
@@ -188,8 +183,6 @@ class UnitController(Looper, Reporter):
         if self._provisioner.max_units() != -1:
             desired_units = min(desired_units, self._provisioner.max_units())
 
-        self._assign_unit_targets()
-
         supply = len(self._units_in(UnitState.pending, UnitState.active))
         if supply <= desired_units:
             self._scale_down_cooldown.reset()
@@ -207,17 +200,6 @@ class UnitController(Looper, Reporter):
         for unit in self._select_units_to_shed(supply - desired_units):
             logger.info(f"shedding unit {unit.unit_id!r} (assigned_tasks={unit.assigned_tasks})")
             self._set_state(unit, UnitState.stopping)
-
-    def _assign_unit_targets(self) -> None:
-        """Fill each active unit to capacity except the last, which takes the remainder.
-
-        Only a unit that runs a child manager reads its target: the task concurrency of a local process is fixed.
-        """
-        per_unit = self._provisioner.task_concurrency_per_unit()
-        remaining = self._desired_task_concurrency
-        for unit in self._units_in(UnitState.active):
-            unit.desired_task_concurrency = min(per_unit, remaining)
-            remaining -= unit.desired_task_concurrency
 
     def _dispatch_create(self) -> None:
         """Add a pending unit and create it in the background, unless the crash-loop backoff is active."""

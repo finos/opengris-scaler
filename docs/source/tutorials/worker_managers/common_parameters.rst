@@ -12,15 +12,16 @@ Networking
 * ``scheduler_address`` (positional, required): The address of the scheduler (e.g., ``tcp://127.0.0.1:8516``).
 * ``--worker-scheduler-address`` (``-wsa``): Scheduler address used by spawned workers. If omitted, it defaults to ``scheduler_address``.
 * ``--worker-manager-id`` (``-wmi``, required): A stable identifier for this worker manager instance. Must be unique across all managers connected to the same scheduler. The scheduler uses this ID to associate workers with their manager and to detect duplicate connections.
-* ``--max-task-concurrency`` (``-mtc``): Maximum total number of workers that can be active across all spawned instances or containers (default: number of CPUs). Set to ``-1`` for no limit. For worker managers that spawn multi-worker machines (e.g. ORB AWS EC2, AWS Raw ECS), the number of instances spawned is ``ceil(max_task_concurrency / workers_per_instance)``. Every instance runs ``workers_per_instance`` workers except the last, which runs the remainder.
+* ``--max-task-concurrency`` (``-mtc``): Maximum total number of workers that can be active across all spawned instances or containers (default: number of CPUs). Set to ``-1`` for no limit. For worker managers that spawn multi-worker machines (e.g. ORB AWS EC2, AWS Raw ECS, AWS HPC, OCI HPC), the number of instances spawned is ``ceil(max_task_concurrency / workers_per_instance)``, so the actual worker count may exceed ``max_task_concurrency`` by up to ``workers_per_instance - 1`` due to rounding up to the nearest whole instance.
 
   **Example** — ``--max-task-concurrency 10`` with an EC2 instance type that has 4 vCPUs (e.g. ``c5.xlarge``):
 
   .. math::
 
-      \lceil 10 / 4 \rceil = 3 \text{ instances, running } 4 + 4 + 2 = 10 \text{ workers}
+      \lceil 10 / 4 \rceil = 3 \text{ instances} \times 4 \text{ workers} = 12 \text{ workers active}
 
-  The last instance is billed in full although it runs only 2 workers.
+  The ceiling ensures enough instances are launched to reach at least 10 workers, at the cost of up to 3 extra workers (``4 - 1``).
+  A scaling policy's request rounds up to whole instances the same way, so a per-manager ``max_task_concurrency`` bound of a vanilla or waterfall policy can be exceeded by up to ``workers_per_instance - 1``.
 * ``--object-storage-address`` (``-osa``): Optional object storage server address override (e.g., ``tcp://127.0.0.1:8517``). If omitted, workers use the address advertised by scheduler heartbeats.
 * ``--config`` (``-c``): Path to a TOML configuration file.
 

@@ -243,13 +243,6 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(unit_id, self.controller._units)
         self.assertEqual(self.controller._consecutive_unit_losses, 1)
 
-    async def test_units_are_filled_before_the_last_one_takes_the_remainder(self) -> None:
-        first, second = await self.__active_units(2)
-        self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT + 1)
-        await self.__tick(self.controller)
-        self.assertEqual(self.controller.get_unit_desired_task_concurrency(first), TASK_CONCURRENCY_PER_UNIT)
-        self.assertEqual(self.controller.get_unit_desired_task_concurrency(second), 1)
-
     async def test_scale_down_waits_for_the_cooldown(self) -> None:
         controller = self.__make_controller(self.provisioner, scale_down_cooldown_seconds=60)
         controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
