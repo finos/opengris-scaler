@@ -11,7 +11,13 @@ namespace object_storage {
 
 class ObjectManager {
 public:
+    using ObjectHash          = std::size_t;
+    using PayloadHashFunction = ObjectHash (*)(const ObjectPayload& payload) noexcept;
+
     ObjectManager();
+
+    // Tests pass a hash function that collides on purpose.
+    explicit ObjectManager(PayloadHashFunction payloadHashFunction);
 
     // Returns the pointer to the created (and moved) object.
     std::shared_ptr<const ObjectPayload> setObject(
@@ -43,8 +49,6 @@ public:
     };
 
 private:
-    using ObjectHash = std::size_t;
-
     struct ManagedObject {
         size_t useCount;
         std::shared_ptr<const ObjectPayload> payload;
@@ -53,6 +57,7 @@ private:
     std::map<ObjectID, ObjectHash> objectIDToHash;
     std::map<ObjectHash, ManagedObject> hashToObject;
     size_t totalObjectsBytes;
+    PayloadHashFunction payloadHashFunction;
 };
 
 };  // namespace object_storage

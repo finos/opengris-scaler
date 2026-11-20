@@ -12,7 +12,12 @@ static std::size_t computePayloadHash(const scaler::ymq::Bytes& payload) noexcep
     return std::hash<std::string_view> {}({reinterpret_cast<const char*>(payload.data()), payload.size()});
 }
 
-ObjectManager::ObjectManager(): totalObjectsBytes {}
+ObjectManager::ObjectManager(): ObjectManager(computePayloadHash)
+{
+}
+
+ObjectManager::ObjectManager(PayloadHashFunction payloadHashFunction)
+    : totalObjectsBytes {}, payloadHashFunction {payloadHashFunction}
 {
 }
 
@@ -24,7 +29,7 @@ std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
         deleteObject(objectID);
     }
 
-    const ObjectHash hash = computePayloadHash(*payload);
+    const ObjectHash hash = payloadHashFunction(*payload);
 
     objectIDToHash[objectID] = hash;
 
