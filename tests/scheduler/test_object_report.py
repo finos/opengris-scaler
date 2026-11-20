@@ -1,14 +1,24 @@
 """What the scheduler reports about the objects it tracks."""
 
+import asyncio
 import unittest
+from unittest.mock import create_autospec, patch
 
 from scaler.config import defaults
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher, ObjectStorageTotals
 from scaler.protocol.capnp import ObjectMetadata
+from scaler.scheduler.controllers import object_controller
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
+from scaler.scheduler.controllers.mixins import ClientController, WorkerController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
 from scaler.utility.identifiers import ClientID, ObjectID
+
+# asyncio.wait_for on Python 3.10 drops a cancel landing 0 to 2 loop iterations after the answer
+LOOP_ITERATIONS_AFTER_THE_ANSWER = 5
+
+SHORT_TIMEOUT_SECONDS = 0.01
 
 
 def make_config_controller() -> VanillaConfigController:
@@ -75,6 +85,70 @@ class TestObjectReportLimit(unittest.TestCase):
 
         controller.update_config("object_report_limit", 25)
         self.assertEqual(controller.get_config("object_report_limit"), 25)
+
+
+class StorageServerStub:
+    """Stands in for the storage server: each request waits for the answer the test gives it."""
+
+    def __init__(self) -> None:
+        self.requested = asyncio.Event()
+        self.answer: asyncio.Future = asyncio.get_running_loop().create_future()  # the latest request's
+
+    async def info_get_total(self) -> ObjectStorageTotals:
+        self.answer = asyncio.get_running_loop().create_future()
+        self.requested.set()
+        return await self.answer
+
+
+def make_storage_controller(storage: StorageServerStub) -> VanillaObjectController:
+    connector = create_autospec(AsyncObjectStorageConnector, instance=True)
+    connector.info_get_total.side_effect = storage.info_get_total
+    controller = VanillaObjectController(config_controller=make_config_controller())
+    controller.register(
+        binder=create_autospec(AsyncBinder, instance=True),
+        binder_monitor=create_autospec(AsyncPublisher, instance=True),
+        connector_storage=connector,
+        client_manager=create_autospec(ClientController, instance=True),
+        worker_manager=create_autospec(WorkerController, instance=True),
+    )
+    return controller
+
+
+class TestStorageTotalsRoutine(unittest.IsolatedAsyncioTestCase):
+    async def test_a_cancel_landing_as_the_answer_arrives_stops_the_routine(self) -> None:
+        """A dropped cancel keeps the routine's loop asking forever, so the scheduler never exits on SIGTERM."""
+        for iterations in range(LOOP_ITERATIONS_AFTER_THE_ANSWER):
+            with self.subTest(iterations=iterations):
+                storage = StorageServerStub()
+                controller = make_storage_controller(storage)
+
+                routine = asyncio.create_task(controller.routine_storage_totals())
+                await storage.requested.wait()
+                storage.answer.set_result(ObjectStorageTotals())
+                for _ in range(iterations):
+                    await asyncio.sleep(0)
+
+                accepted = routine.cancel()
+                await asyncio.gather(routine, return_exceptions=True)
+
+                self.assertEqual(routine.cancelled(), accepted, "a cancel the routine accepted must end it")
+
+    async def test_an_unanswered_request_reports_nothing_and_is_withdrawn(self) -> None:
+        """A storage server that stops answering must not leave its last totals reported."""
+        storage = StorageServerStub()
+        controller = make_storage_controller(storage)
+
+        routine = asyncio.create_task(controller.routine_storage_totals())
+        await storage.requested.wait()
+        storage.answer.set_result(ObjectStorageTotals(object_count=3))
+        await routine
+        self.assertEqual(controller.get_status().storage.objectCount, 3)
+
+        with patch.object(object_controller, "STORAGE_TOTALS_TIMEOUT_SECONDS", SHORT_TIMEOUT_SECONDS):
+            await controller.routine_storage_totals()
+
+        self.assertEqual(controller.get_status().storage.objectCount, 0)
+        self.assertTrue(storage.answer.cancelled(), "the unanswered request must be withdrawn")
 
 
 if __name__ == "__main__":

@@ -108,12 +108,17 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
 
     async def routine_storage_totals(self) -> None:
         """Ask the storage server what it holds. Its own loop is the only place those numbers exist."""
+        # not wait_for: before Python 3.12 it drops a cancel landing as the answer arrives, and this loop never stops
+        request = asyncio.ensure_future(self._connector_storage.info_get_total())
         try:
-            self._storage_totals = await asyncio.wait_for(
-                self._connector_storage.info_get_total(), timeout=STORAGE_TOTALS_TIMEOUT_SECONDS
-            )
-        except (ObjectStorageException, asyncio.TimeoutError):
-            # A storage server that is gone or slow must not stop the scheduler reporting everything else.
+            done, _ = await asyncio.wait({request}, timeout=STORAGE_TOTALS_TIMEOUT_SECONDS)
+        finally:
+            request.cancel()  # a no-op once answered
+
+        # A storage server that is gone or slow must not stop the scheduler reporting everything else.
+        try:
+            self._storage_totals = request.result() if done else ObjectStorageTotals()
+        except ObjectStorageException:
             self._storage_totals = ObjectStorageTotals()
 
     def get_object_size(self, object_id: ObjectID) -> int:

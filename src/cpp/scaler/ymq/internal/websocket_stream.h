@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "scaler/logging/logging.h"
 #include "scaler/utility/move_only_function.h"
 #include "scaler/wrapper/openssl/secure_socket.h"
 #include "scaler/wrapper/openssl/ssl_context.h"
@@ -90,6 +91,8 @@ private:
         std::vector<uint8_t> _fragmentBuffer {};
         bool _readActive {false};
         scaler::wrapper::uv::ReadCallback _readCallback {};
+
+        Logger _logger {};
 
         explicit State(Transport transport) noexcept;
     };

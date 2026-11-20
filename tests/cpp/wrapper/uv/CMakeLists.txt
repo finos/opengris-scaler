@@ -6,6 +6,7 @@ if(WIN32)
 else()
     target_sources(test_wrapper_uv PRIVATE test_uv_unix.cpp)
     target_sources(test_wrapper_uv PRIVATE test_pipe_unix.cpp)
+    target_sources(test_wrapper_uv PRIVATE test_tcp_unix.cpp)
 endif()
 
 target_sources(test_wrapper_uv PRIVATE test_tcp.cpp)
