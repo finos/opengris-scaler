@@ -6,7 +6,7 @@ VANILLA_LOWER_TASK_RATIO = 1
 VANILLA_UPPER_TASK_RATIO = 10
 
 # a unit that stays active this long proves the unit recipe works, so the crash-loop backoff starts over
-UNIT_STABLE_SECONDS = 60
+WORKER_MANAGER_UNIT_STABLE_SECONDS = 60
 
 # the crash-loop backoff doubles on each consecutive loss, up to this many times
-MAX_RESTART_BACKOFF_DOUBLINGS = 5
+WORKER_MANAGER_MAX_RESTART_BACKOFF_DOUBLINGS = 5

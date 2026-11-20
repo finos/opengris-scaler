@@ -8,7 +8,7 @@ import time
 import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
-from scaler.config.constants import MAX_RESTART_BACKOFF_DOUBLINGS, UNIT_STABLE_SECONDS
+from scaler.config.constants import WORKER_MANAGER_MAX_RESTART_BACKOFF_DOUBLINGS, WORKER_MANAGER_UNIT_STABLE_SECONDS
 from scaler.utility.cooldown import Cooldown
 from scaler.utility.mixins import Looper, Reporter
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
@@ -90,7 +90,7 @@ class UnitController(Looper, Reporter):
         unit.active_task_concurrency = active_task_concurrency
         unit.assigned_tasks = assigned_tasks
 
-        if unit.state == UnitState.active and now - unit.state_since > UNIT_STABLE_SECONDS:
+        if unit.state == UnitState.active and now - unit.state_since > WORKER_MANAGER_UNIT_STABLE_SECONDS:
             self._consecutive_unit_losses = 0
 
         # A heartbeat that beats create_unit back waits for the next one: an active unit always has a handle.
@@ -146,7 +146,7 @@ class UnitController(Looper, Reporter):
 
     def _on_unit_lost(self) -> None:
         self._consecutive_unit_losses += 1
-        doublings = min(self._consecutive_unit_losses - 1, MAX_RESTART_BACKOFF_DOUBLINGS)
+        doublings = min(self._consecutive_unit_losses - 1, WORKER_MANAGER_MAX_RESTART_BACKOFF_DOUBLINGS)
         backoff_seconds = self._restart_backoff_seconds * 2**doublings
         self._create_not_before = time.monotonic() + backoff_seconds
         logger.warning(f"{self._consecutive_unit_losses} consecutive unit loss(es): no create for {backoff_seconds}s")

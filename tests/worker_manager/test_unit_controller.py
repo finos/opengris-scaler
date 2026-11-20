@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from typing import Dict, List, Set
 
-from scaler.config.constants import UNIT_STABLE_SECONDS
+from scaler.config.constants import WORKER_MANAGER_UNIT_STABLE_SECONDS
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController, UnitState
@@ -180,7 +180,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.__heartbeat_all(self.controller, self.provisioner)
         self.assertEqual(self.controller._consecutive_unit_losses, 3, "a unit just made active proves nothing yet")
 
-        self.controller._units[unit_id].state_since -= UNIT_STABLE_SECONDS + 1
+        self.controller._units[unit_id].state_since -= WORKER_MANAGER_UNIT_STABLE_SECONDS + 1
         self.__heartbeat_all(self.controller, self.provisioner)
         self.assertEqual(self.controller._consecutive_unit_losses, 0)
 
