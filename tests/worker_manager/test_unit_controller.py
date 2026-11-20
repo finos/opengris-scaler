@@ -333,6 +333,22 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.provisioner.destroy_calls, 1)
         self.assertEqual(self.controller._units, {})
 
+    async def test_a_finished_call_stays_in_flight_until_its_done_callback_ran(self) -> None:
+        """terminate() waits while a call is in flight, so it never misses a destroy that a create's callback starts."""
+        in_flight_during_callback: List[bool] = []
+
+        async def call() -> None:
+            return None
+
+        self.controller._start_task(
+            call(), lambda task: in_flight_during_callback.append(task in self.controller._tasks)
+        )
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+        self.assertEqual(in_flight_during_callback, [True])
+        self.assertEqual(self.controller._tasks, set())
+
     async def test_terminate_waits_for_a_destroy_in_flight_instead_of_repeating_it(self) -> None:
         (unit_id,) = await self.__active_units(1)
         self.provisioner.hold_destroys = True

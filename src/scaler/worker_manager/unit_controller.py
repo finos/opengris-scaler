@@ -68,7 +68,8 @@ class UnitController(Looper, Reporter):
         self._units: Dict[str, Unit] = {}  # in creation order
 
         # The event loop keeps only a weak reference to a task: without this set, a provisioner call could be
-        # collected mid-flight and leak the resource it was creating.
+        # collected mid-flight and leak the resource it was creating. A call leaves it only after its done
+        # callback ran, so terminate() never sees it empty while a follow-up call is about to start.
         self._tasks: Set[asyncio.Task] = set()
 
         self._consecutive_unit_losses = 0
@@ -248,8 +249,14 @@ class UnitController(Looper, Reporter):
     def _start_task(self, call: Awaitable[Any], on_done: Callable[[asyncio.Task], None]) -> None:
         task = asyncio.ensure_future(call)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
-        task.add_done_callback(on_done)
+        task.add_done_callback(functools.partial(self._on_task_done, on_done))
+
+    def _on_task_done(self, on_done: Callable[[asyncio.Task], None], task: asyncio.Task) -> None:
+        """Run `on_done` before forgetting `task`, so a call it starts is in flight before this one leaves."""
+        try:
+            on_done(task)
+        finally:
+            self._tasks.discard(task)
 
     def _select_units_to_shed(self, count: int) -> List[Unit]:
         """The `count` active units with the fewest assigned tasks.
