@@ -16,22 +16,23 @@ class UnitProvisioner(ABC):
     @abstractmethod
     async def create_unit(self, unit_id: str) -> UnitHandle:
         """Allocate one unit that identifies itself as `unit_id`, and return what destroy needs."""
-        ...
+        raise NotImplementedError()
 
     @abstractmethod
     async def destroy_unit(self, handle: UnitHandle) -> None:
         """Release the unit, and return once it is gone."""
-        ...
+        raise NotImplementedError()
 
     @abstractmethod
     def max_units(self) -> int:
         """The most units this provisioner may run, -1 for no limit."""
-        ...
+        raise NotImplementedError()
 
     @abstractmethod
-    def task_concurrency_per_unit(self) -> int: ...
+    def task_concurrency_per_unit(self) -> int:
+        raise NotImplementedError()
 
     @abstractmethod
     def startup_timeout_seconds(self) -> int:
         """How long a new unit may take to send its first heartbeat before it counts as lost."""
-        ...
+        raise NotImplementedError()
