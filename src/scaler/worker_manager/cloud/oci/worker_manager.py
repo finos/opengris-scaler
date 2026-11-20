@@ -23,9 +23,6 @@ from scaler.worker_manager.runner import WorkerManagerRunner
 
 logger = logging.getLogger(__name__)
 
-_OCI_POLL_INTERVAL_SECONDS = 10
-_OCI_MAX_POLL_ATTEMPTS = 30  # 5 minutes total
-
 
 class OCIInstancesWorkerProvisioner(UnitProvisioner):
     """One unit is one OCI Container Instance."""
@@ -53,7 +50,7 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
     async def create_unit(self, unit_id: str) -> UnitHandle:
         instance_id = await self._start_instance(unit_id)
         if instance_id is None:
-            raise RuntimeError("OCI Container Instance did not become ACTIVE")
+            raise RuntimeError("OCI Container Instance was not created")
         return instance_id
 
     async def destroy_unit(self, handle: UnitHandle) -> None:
@@ -154,41 +151,9 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
             return None
 
         instance_id = response.data.id
-        logger.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) created, waiting for ACTIVE...")
-
-        for _ in range(_OCI_MAX_POLL_ATTEMPTS):
-            await asyncio.sleep(_OCI_POLL_INTERVAL_SECONDS)
-            try:
-                poll_response = await loop.run_in_executor(
-                    None,
-                    functools.partial(
-                        self._container_instances_client.get_container_instance, container_instance_id=instance_id
-                    ),
-                )
-            except oci.exceptions.ServiceError as exc:
-                logger.error(f"OCI get_container_instance failed for {instance_id[-20:]}: {exc}")
-                await self._delete_instance(instance_id)
-                return None
-
-            instance = poll_response.data
-            if instance.lifecycle_state == "ACTIVE":
-                logger.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) is ACTIVE")
-                return instance_id
-            if instance.lifecycle_state == "FAILED":
-                details = instance.lifecycle_details or "no details provided"
-                logger.error(
-                    f"OCI Container Instance {instance_id[-20:]} ({display_name}) failed to provision: {details}"
-                )
-                await self._delete_instance(instance_id)
-                return None
-
-        timeout_seconds = _OCI_MAX_POLL_ATTEMPTS * _OCI_POLL_INTERVAL_SECONDS
-        logger.warning(
-            f"OCI Container Instance {instance_id[-20:]} ({display_name}) timed out after "
-            f"{timeout_seconds}s waiting for ACTIVE, deleting"
-        )
-        await self._delete_instance(instance_id)
-        return None
+        # The first heartbeat marks the unit active, so a handle now lets terminate destroy an instance still booting.
+        logger.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) created")
+        return instance_id
 
     async def _delete_instance(self, instance_id: str) -> bool:
         loop = asyncio.get_running_loop()
