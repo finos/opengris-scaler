@@ -102,6 +102,11 @@ std::shared_ptr<const ObjectPayload> ObjectManager::duplicateObject(
         return nullptr;
     }
 
+    if (originalObjectID == newObjectID) {
+        // Overriding the object with itself would delete it first.
+        return hashToObject.at(hashIt->second).payload;
+    }
+
     if (hasObject(newObjectID)) {
         // Overriding object: delete old first
         deleteObject(newObjectID);

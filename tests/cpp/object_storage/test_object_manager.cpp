@@ -124,3 +124,27 @@ TEST(ObjectManagerTestSuite, TestReferenceCountObject)
     EXPECT_EQ(objectManager.size(), 0);
     EXPECT_EQ(objectManager.sizeUnique(), 0);
 }
+
+// Duplicating an object onto its own ID leaves the object and the totals unchanged.
+TEST(ObjectManagerTestSuite, TestDuplicateObjectOntoItself)
+{
+    scaler::object_storage::ObjectManager objectManager;
+
+    scaler::object_storage::ObjectID objectID1 {41, 0, 0, 0};
+    objectManager.setObject(objectID1, makePayload());
+
+    auto duplicatedObject = objectManager.duplicateObject(objectID1, objectID1);
+
+    EXPECT_NE(duplicatedObject, nullptr);
+    EXPECT_EQ(duplicatedObject->asString(), payloadContent);
+    EXPECT_EQ(objectManager.getObject(objectID1)->asString(), payloadContent);
+    EXPECT_EQ(objectManager.size(), 1);
+    EXPECT_EQ(objectManager.sizeUnique(), 1);
+    EXPECT_EQ(objectManager.totalObjectsSize(), payloadContent.size());
+
+    objectManager.deleteObject(objectID1);
+
+    EXPECT_EQ(objectManager.size(), 0);
+    EXPECT_EQ(objectManager.sizeUnique(), 0);
+    EXPECT_EQ(objectManager.totalObjectsSize(), 0);
+}
