@@ -184,6 +184,19 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.__heartbeat_all(self.controller, self.provisioner)
         self.assertEqual(self.controller._consecutive_unit_losses, 0)
 
+    async def test_losing_stable_units_replaces_them_without_a_backoff(self) -> None:
+        """Stable units lost together, such as a spot reclaim, are not a crash loop."""
+        unit_ids = await self.__active_units(3)
+        for unit_id in unit_ids:
+            unit = self.controller._units[unit_id]
+            unit.state_since -= WORKER_MANAGER_UNIT_STABLE_SECONDS + 1
+            unit.last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
+
+        await self.__tick(self.controller)
+
+        self.assertEqual(len(self.provisioner.created), 6, "the replacements are created on the same routine")
+        self.assertEqual(self.controller._consecutive_unit_losses, 0)
+
     async def test_a_failed_create_leaves_no_unit_and_arms_the_backoff(self) -> None:
         self.provisioner.fail_creates = True
         self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)

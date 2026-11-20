@@ -90,7 +90,7 @@ class UnitController(Looper, Reporter):
         unit.active_task_concurrency = active_task_concurrency
         unit.assigned_tasks = assigned_tasks
 
-        if unit.state == UnitState.active and now - unit.state_since > WORKER_MANAGER_UNIT_STABLE_SECONDS:
+        if self._is_stable(unit, now):
             self._consecutive_unit_losses = 0
 
         # A heartbeat that beats create_unit back waits for the next one: an active unit always has a handle.
@@ -105,7 +105,7 @@ class UnitController(Looper, Reporter):
             return
 
         logger.warning(f"unit {unit_id!r} exited on its own from state {unit.state.name}")
-        self._on_unit_lost()
+        self._on_unit_lost(unit)
         self._set_state(unit, UnitState.stopping)
 
     def get_unit_desired_task_concurrency(self, unit_id: str) -> int:
@@ -144,7 +144,12 @@ class UnitController(Looper, Reporter):
                 logger.info(f"destroyed unit {unit.unit_id!r}")
         self._units.clear()
 
-    def _on_unit_lost(self) -> None:
+    def _on_unit_lost(self, unit: Unit) -> None:
+        """Count a unit lost before it was stable toward the crash-loop backoff; a stable unit's loss resets it."""
+        if self._is_stable(unit, time.monotonic()):
+            self._consecutive_unit_losses = 0
+            return
+
         self._consecutive_unit_losses += 1
         doublings = min(self._consecutive_unit_losses - 1, WORKER_MANAGER_MAX_RESTART_BACKOFF_DOUBLINGS)
         backoff_seconds = self._restart_backoff_seconds * 2**doublings
@@ -161,8 +166,11 @@ class UnitController(Looper, Reporter):
             logger.warning(
                 f"unit {unit.unit_id!r} sent no heartbeat in time from state {unit.state.name}, destroying it"
             )
-            self._on_unit_lost()
+            self._on_unit_lost(unit)
             self._set_state(unit, UnitState.stopping)
+
+    def _is_stable(self, unit: Unit, now: float) -> bool:
+        return unit.state == UnitState.active and now - unit.state_since > WORKER_MANAGER_UNIT_STABLE_SECONDS
 
     def _is_silent(self, unit: Unit, now: float) -> bool:
         if unit.last_heartbeat is None:
@@ -226,7 +234,7 @@ class UnitController(Looper, Reporter):
         if error is not None:
             logger.error(f"failed to create unit {unit.unit_id!r}: {error!r}")
             self._units.pop(unit.unit_id, None)
-            self._on_unit_lost()
+            self._on_unit_lost(unit)
             return
 
         unit.handle = task.result()
