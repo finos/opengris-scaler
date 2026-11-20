@@ -8,6 +8,12 @@ DEFAULT_MONITOR_PORT_OFFSET = 2
 VANILLA_LOWER_TASK_RATIO = 1
 VANILLA_UPPER_TASK_RATIO = 10
 
+# how often a worker manager's unit controller reconciles; it reads only state that messages wrote
+WORKER_MANAGER_UNIT_CONTROLLER_INTERVAL_SECONDS = 1
+
+# seconds a worker manager waits before it creates a unit after losing one; doubles on each consecutive loss
+WORKER_MANAGER_RESTART_BACKOFF_SECONDS = 1
+
 # a unit that stays active this long proves the unit recipe works, so the crash-loop backoff starts over
 WORKER_MANAGER_UNIT_STABLE_SECONDS = 60
 

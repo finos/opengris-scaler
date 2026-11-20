@@ -4,7 +4,10 @@ from typing import Callable, Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
-from scaler.config.defaults import DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS
+from scaler.config.constants import (
+    WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
+    WORKER_MANAGER_UNIT_CONTROLLER_INTERVAL_SECONDS,
+)
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.mixins import AsyncBinder, AsyncConnector, ConnectorRemoteType, NetworkBackend
@@ -27,9 +30,6 @@ from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController
 
 logger = logging.getLogger(__name__)
-
-# The unit routine reads only state that messages wrote, and runs provisioner calls in the background.
-UNIT_CONTROLLER_INTERVAL_SECONDS = 1
 
 
 class WorkerManagerRunner:
@@ -141,7 +141,9 @@ class WorkerManagerRunner:
             create_async_loop_routine(self._binder_children.routine, 0, swallow_routine_errors=True),
             create_async_loop_routine(self._send_heartbeat, self._heartbeat_interval_seconds),
             create_async_loop_routine(
-                self._unit_controller.routine, UNIT_CONTROLLER_INTERVAL_SECONDS, swallow_routine_errors=True
+                self._unit_controller.routine,
+                WORKER_MANAGER_UNIT_CONTROLLER_INTERVAL_SECONDS,
+                swallow_routine_errors=True,
             ),
         ]
 
@@ -165,7 +167,7 @@ class WorkerManagerRunner:
             self._provisioner,
             scale_down_cooldown_seconds=self._scale_down_cooldown_seconds,
             unit_timeout_seconds=self._unit_timeout_seconds,
-            restart_backoff_seconds=DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
+            restart_backoff_seconds=WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
         )
 
     async def _on_receive_parent(self, message: BaseMessage) -> None:
