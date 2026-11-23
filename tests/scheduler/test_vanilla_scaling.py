@@ -14,7 +14,6 @@ from scaler.scheduler.policies.utility import create_scaling_policy
 from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.snapshot import InformationSnapshot
 
 
 class TestVanillaScalingPolicy(unittest.TestCase):
@@ -24,10 +23,10 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         setup_logger()
         self.policy = VanillaScalingPolicy({})
 
-    def _single_request(self, snapshot, manager_id, managed, max_task_concurrency=10):
+    def _single_request(self, tasks, workers, manager_id, managed, max_task_concurrency=10):
         info = _create_worker_manager_info(manager_id, max_task_concurrency, worker_count=len(managed))
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, {manager_id: info})
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(tasks, workers, {manager_id: info})
         )
         self.assertEqual(len(commands), 1)
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
@@ -36,18 +35,14 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
     def test_idle_emits_desired_zero(self):
         """Empty state: ratio computes desired=0 -> policy unconditionally emits setDesired(0)."""
-        snapshot = InformationSnapshot(tasks={}, workers={})
-
-        request = self._single_request(snapshot, WorkerManagerID(b"mgr"), [])
+        request = self._single_request({}, {}, WorkerManagerID(b"mgr"), [])
 
         self.assertEqual(request.taskConcurrency, 0)
 
     def test_tasks_with_no_workers_targets_one(self):
         """Tasks present but no workers: desired = 1 to bootstrap."""
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
-        snapshot = InformationSnapshot(tasks=tasks, workers={})
-
-        request = self._single_request(snapshot, WorkerManagerID(b"mgr"), [])
+        request = self._single_request(tasks, {}, WorkerManagerID(b"mgr"), [])
 
         self.assertEqual(request.taskConcurrency, 1)
 
@@ -56,9 +51,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(20)}
         managed = [WorkerID(b"w0")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=5) for wid in managed}
-        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-
-        request = self._single_request(snapshot, WorkerManagerID(b"mgr"), managed, max_task_concurrency=10)
+        request = self._single_request(tasks, workers, WorkerManagerID(b"mgr"), managed, max_task_concurrency=10)
 
         self.assertEqual(request.taskConcurrency, 2)
 
@@ -70,9 +63,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
             WorkerID(b"w2"): _create_mock_worker_heartbeat({}, queued_tasks=2),
         }
         managed = list(workers.keys())
-        snapshot = InformationSnapshot(tasks={}, workers=workers)
-
-        request = self._single_request(snapshot, WorkerManagerID(b"mgr"), managed)
+        request = self._single_request({}, workers, WorkerManagerID(b"mgr"), managed)
 
         self.assertEqual(request.taskConcurrency, 0)
 
@@ -81,9 +72,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(10)}
         managed = list(workers.keys())
-        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-
-        request = self._single_request(snapshot, WorkerManagerID(b"mgr"), managed)
+        request = self._single_request(tasks, workers, WorkerManagerID(b"mgr"), managed)
 
         # ceil(5 / 10) = 1 minimum to keep
         self.assertEqual(request.taskConcurrency, 1)
@@ -93,9 +82,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(50)}
         managed = [WorkerID(b"w0"), WorkerID(b"w1")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=20) for wid in managed}
-        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-
-        request = self._single_request(snapshot, WorkerManagerID(b"mgr"), managed, max_task_concurrency=2)
+        request = self._single_request(tasks, workers, WorkerManagerID(b"mgr"), managed, max_task_concurrency=2)
 
         # Ratio would say desired=3, cap clamps to 2; emits setDesired(2).
         self.assertEqual(request.taskConcurrency, 2)
@@ -114,9 +101,9 @@ class TestVanillaScalingPolicy(unittest.TestCase):
                     TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {})
                     for _ in range(task_count)
                 }
-                snapshot = InformationSnapshot(tasks=tasks, workers=serving_workers)
-
-                request = self._single_request(snapshot, WorkerManagerID(b"mgr"), serving, max_task_concurrency=100)
+                request = self._single_request(
+                    tasks, serving_workers, WorkerManagerID(b"mgr"), serving, max_task_concurrency=100
+                )
 
                 self.assertEqual(request.taskConcurrency, 6)
 
@@ -221,7 +208,7 @@ class TestVanillaBounds(unittest.TestCase):
 
         commands = policy.get_scaling_commands(
             worker_manager_id=WorkerManagerID(b"cloud"),
-            cluster_state=build_cluster_state(InformationSnapshot(tasks=tasks, workers=native_workers), manager_infos),
+            cluster_state=build_cluster_state(tasks, native_workers, manager_infos),
         )
 
         self.assertEqual(commands[0].setDesiredTaskConcurrencyRequests[0].taskConcurrency, 0)
@@ -269,12 +256,11 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         setDesired(0) so the manager can drain its workers."""
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=0) for i in range(4)}
         managed = list(workers.keys())
-        snapshot = InformationSnapshot(tasks={}, workers=workers)
         manager_id = WorkerManagerID(b"mgr")
         info = _create_worker_manager_info(manager_id, worker_count=len(managed))
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, {manager_id: info})
+            worker_manager_id=manager_id, cluster_state=build_cluster_state({}, workers, {manager_id: info})
         )
 
         self.assertEqual(len(commands), 1)
@@ -288,12 +274,11 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(10)}
         managed = list(workers.keys())
-        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         manager_id = WorkerManagerID(b"mgr")
         info = _create_worker_manager_info(manager_id, worker_count=len(managed))
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, {manager_id: info})
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(tasks, workers, {manager_id: info})
         )
 
         self.assertEqual(len(commands), 1)
@@ -307,12 +292,11 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(15)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(5)}
         managed = list(workers.keys())
-        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         manager_id = WorkerManagerID(b"mgr")
         info = _create_worker_manager_info(manager_id, worker_count=len(managed))
 
         commands = self.policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, {manager_id: info})
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(tasks, workers, {manager_id: info})
         )
 
         self.assertEqual(len(commands), 1)

@@ -44,7 +44,6 @@ from scaler.scheduler.policies.utility import create_scaling_policy
 from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.snapshot import InformationSnapshot
 from tests.utility.utility import logging_test_name
 
 
@@ -238,7 +237,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
-        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         manager_infos = {
             manager_id: WorkerManagerInfo(
                 manager_id=manager_id, max_task_concurrency=10, worker_count=10, capabilities={}
@@ -246,7 +244,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(tasks, workers, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -260,7 +258,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(b"w0")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
-        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         manager_infos = {
             manager_id: WorkerManagerInfo(
                 manager_id=manager_id, max_task_concurrency=10, worker_count=1, capabilities={}
@@ -268,7 +265,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(tasks, workers, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -284,7 +281,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         for _ in range(50):
             tid = TaskID.generate_task_id()
             tasks[tid] = _create_mock_task(tid, {"gpu": 1})
-        snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_infos = {
             manager_id: WorkerManagerInfo(
                 manager_id=manager_id, max_task_concurrency=10, worker_count=10, capabilities={"gpu": -1}
@@ -292,7 +288,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(tasks, {}, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)
@@ -306,7 +302,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         manager_id = WorkerManagerID(b"mgr")
         policy = CapabilityScalingPolicy()
         task_id = TaskID.generate_task_id()
-        snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
         manager_infos = {
             manager_id: WorkerManagerInfo(
                 manager_id=manager_id, max_task_concurrency=10, worker_count=0, capabilities={}
@@ -314,7 +309,8 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
+            worker_manager_id=manager_id,
+            cluster_state=build_cluster_state({task_id: _create_mock_task(task_id, {"gpu": 1})}, {}, manager_infos),
         )
 
         self.assertEqual(len(commands), 1)
@@ -329,7 +325,6 @@ class TestAtCapacityEmission(unittest.TestCase):
         policy = WaterfallScalingPolicy(rules)
         # ceil(100/10) = 10; cap=10; desired=10 -> emits setDesired(10).
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
-        snapshot = InformationSnapshot(tasks=tasks, workers={})
         manager_infos = {
             manager_id: WorkerManagerInfo(
                 manager_id=manager_id, max_task_concurrency=10, worker_count=10, capabilities={}
@@ -337,7 +332,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         }
 
         commands = policy.get_scaling_commands(
-            worker_manager_id=manager_id, cluster_state=build_cluster_state(snapshot, manager_infos)
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(tasks, {}, manager_infos)
         )
 
         self.assertEqual(len(commands), 1)

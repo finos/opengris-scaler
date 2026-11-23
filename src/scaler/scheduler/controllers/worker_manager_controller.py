@@ -1,7 +1,7 @@
 import dataclasses
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
@@ -17,10 +17,9 @@ from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.controllers.worker_manager_utilities import build_scaling_manager_status
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.utility import build_cluster_state
-from scaler.scheduler.types import WorkerManagerInfo
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.mixins import Looper, Reporter
-from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +80,7 @@ class WorkerManagerController(Looper, Reporter):
 
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
-        information_snapshot = self._build_snapshot()
-        worker_manager_infos = self._build_worker_manager_infos()
-        cluster_state = build_cluster_state(information_snapshot, worker_manager_infos)
+        cluster_state = self._build_cluster_state()
 
         commands = self._scaling_policy.get_scaling_commands(worker_manager_id=manager_id, cluster_state=cluster_state)
 
@@ -127,7 +124,7 @@ class WorkerManagerController(Looper, Reporter):
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
         await self._binder.send(source, command, detached=True)
 
-    def _build_worker_manager_infos(self) -> Dict[WorkerManagerID, WorkerManagerInfo]:
+    def _build_worker_manager_infos(self, workers: Dict[WorkerID, Any]) -> Dict[WorkerManagerID, WorkerManagerInfo]:
         """Build immutable WorkerManagerInfo snapshots from mutable holders."""
         return {
             manager_id: WorkerManagerInfo(
@@ -139,13 +136,14 @@ class WorkerManagerController(Looper, Reporter):
             for manager_id, holder in self._managers.items()
         }
 
-    def _build_snapshot(self) -> InformationSnapshot:
+    def _build_cluster_state(self) -> ClusterState:
         tasks = self._task_controller._task_id_to_task  # type: ignore # noqa
         workers = {
             worker_id: worker_heartbeat
             for worker_id, (_, worker_heartbeat) in self._worker_controller._worker_alive_since.items()  # type: ignore # noqa
         }
-        return InformationSnapshot(tasks=tasks, workers=workers)
+        worker_manager_infos = self._build_worker_manager_infos(workers)
+        return build_cluster_state(tasks, workers, worker_manager_infos)
 
     async def _clean_managers(self):
         """Clean up dead worker managers that have not sent heartbeats."""

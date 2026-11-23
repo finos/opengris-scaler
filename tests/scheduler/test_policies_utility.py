@@ -5,7 +5,6 @@ from scaler.protocol.capnp import Task
 from scaler.scheduler.policies.scaling.utility import build_cluster_state
 from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
-from scaler.utility.snapshot import InformationSnapshot
 
 
 class TestBuildClusterState(unittest.TestCase):
@@ -16,7 +15,7 @@ class TestBuildClusterState(unittest.TestCase):
         manager_id = WorkerManagerID(b"mgr")
         managers = {manager_id: _create_worker_manager_info(manager_id)}
 
-        state = build_cluster_state(InformationSnapshot(tasks={}, workers={}), managers)
+        state = build_cluster_state({}, {}, managers)
 
         self.assertEqual(state.n_tasks, 0)
         self.assertEqual(state.n_workers, 0)
@@ -28,7 +27,7 @@ class TestBuildClusterState(unittest.TestCase):
         """Tasks with no capabilities are grouped under the empty frozenset."""
         tasks = {TaskID.generate_task_id(): _create_mock_task({}) for _ in range(3)}
 
-        state = build_cluster_state(InformationSnapshot(tasks=tasks, workers={}), {})
+        state = build_cluster_state(tasks, {}, {})
 
         self.assertEqual(state.n_tasks, 3)
         self.assertEqual(state.n_tasks_by_capset, {frozenset(): 3})
@@ -45,7 +44,7 @@ class TestBuildClusterState(unittest.TestCase):
             TaskID.generate_task_id(): tpu,
         }
 
-        state = build_cluster_state(InformationSnapshot(tasks=tasks, workers={}), {})
+        state = build_cluster_state(tasks, {}, {})
 
         self.assertEqual(state.n_tasks, 3)
         self.assertEqual(state.n_tasks_by_capset, {frozenset({"gpu"}): 2, frozenset({"tpu"}): 1})
@@ -56,7 +55,7 @@ class TestBuildClusterState(unittest.TestCase):
         """n_workers is the number of workers in the snapshot."""
         workers = {WorkerID(f"w{i}".encode()): None for i in range(4)}
 
-        state = build_cluster_state(InformationSnapshot(tasks={}, workers=workers), {})
+        state = build_cluster_state({}, workers, {})
 
         self.assertEqual(state.n_workers, 4)
 
@@ -65,7 +64,7 @@ class TestBuildClusterState(unittest.TestCase):
         manager_id = WorkerManagerID(b"mgr")
         managers = {manager_id: _create_worker_manager_info(manager_id, worker_count=7)}
 
-        state = build_cluster_state(InformationSnapshot(tasks={}, workers={}), managers)
+        state = build_cluster_state({}, {}, managers)
 
         self.assertIs(state.managers, managers)
         self.assertEqual(state.managers[manager_id].worker_count, 7)
