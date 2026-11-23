@@ -36,7 +36,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         rule = self._rule_by_manager_id.get(worker_manager_id)
 
         if rule is None:
-            logger.warning("Worker manager %r not found in waterfall rules, skipping scaling", worker_manager_id)
+            logger.warning(f"{worker_manager_id!r} not found in waterfall rules, skipping scaling")
             return []
 
         desired_per_capset = self._compute_desired_per_capset(rule, cluster_state)

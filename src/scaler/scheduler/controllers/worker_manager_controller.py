@@ -58,13 +58,14 @@ class WorkerManagerController(Looper, Reporter):
         max_task_concurrency = heartbeat.maxTaskConcurrency if heartbeat.maxTaskConcurrency != -1 else None
 
         if manager_id not in self._managers:
-            self._managers[manager_id] = _WorkerManagerHolder(
+            holder = _WorkerManagerHolder(
                 manager_id=manager_id,
                 source=source,
                 last_seen_at=time.time(),
                 capabilities=capabilities,
                 max_task_concurrency=max_task_concurrency,
             )
+            self._managers[manager_id] = holder
             logger.info(f"{manager_id!r} connected")
         else:
             holder = self._managers[manager_id]
@@ -87,7 +88,7 @@ class WorkerManagerController(Looper, Reporter):
         for command in commands:
             await self._send_command(source, command)
 
-        self._managers[manager_id].last_desired_total = _sum_desired_for_manager(commands, capabilities)
+        holder.last_desired_total = _sum_desired_for_manager(commands, capabilities)
 
     async def routine(self):
         await self._clean_managers()
