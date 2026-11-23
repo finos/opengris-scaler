@@ -101,12 +101,13 @@ class WorkerManagerController(Looper, Reporter):
             caps_str = " ".join(sorted(holder.capabilities.keys())) if holder.capabilities else ""
             connected = len(self._worker_controller.get_workers_by_manager_id(manager_id))
             pending = max(0, holder.last_desired_total - connected)
+            max_task_concurrency = holder.max_task_concurrency if holder.max_task_concurrency is not None else -1
             details.append(
                 {
                     "worker_manager_id": manager_id,
                     "identity": holder.source.decode(errors="replace"),
                     "last_seen_seconds": min(int(now - holder.last_seen_at), UINT16_MAX),
-                    "max_task_concurrency": holder.max_task_concurrency or -1,
+                    "max_task_concurrency": max_task_concurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
                 }

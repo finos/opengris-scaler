@@ -119,21 +119,18 @@ class WaterfallScalingPolicy(ScalingPolicy):
         """Return effective worker capacity for *rule*.
 
         When the rule specifies a cap, returns min(cap, info max). When omitted, returns the
-        info-reported max directly. Returns None if the manager is offline or has no limit.
+        info-reported max directly. Returns None if the manager is offline.
         """
         if rule.worker_manager_id == current_rule.worker_manager_id:
             reported = cluster_state.managers[current_rule.worker_manager_id].max_task_concurrency
             if reported is None:
-                return None
+                reported = -1
             return min(rule.max_task_concurrency, reported) if rule.max_task_concurrency is not None else reported
         info = cluster_state.managers.get(rule.worker_manager_id)
-        if info is None or info.max_task_concurrency is None:
+        if info is None:
             return None
-        return (
-            min(rule.max_task_concurrency, info.max_task_concurrency)
-            if rule.max_task_concurrency is not None
-            else info.max_task_concurrency
-        )
+        reported = info.max_task_concurrency if info.max_task_concurrency is not None else -1
+        return min(rule.max_task_concurrency, reported) if rule.max_task_concurrency is not None else reported
 
 
 def target_worker_count(task_count: int) -> int:

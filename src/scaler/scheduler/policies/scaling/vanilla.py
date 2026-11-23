@@ -44,7 +44,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         floor_held = floor_held_worker_count(manager_id, self._bounds, cluster_state.managers)
         desired = ratio_target(current, task_count, serving_workers, floor_held)
         bounds = self._bounds.get(manager_id, WorkerManagerBounds(max_task_concurrency=None))
-        advertised_max = info.max_task_concurrency or -1
+        advertised_max = info.max_task_concurrency if info.max_task_concurrency is not None else -1
         desired = clamp_to_bounds(desired, bounds, advertised_max)
         self.__log_decision(manager_id, task_count, serving_workers, current, desired)
         return desired

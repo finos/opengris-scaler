@@ -111,6 +111,45 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         # Higher-priority is offline (absent) so its capacity contributes 0; lower picks up all of it.
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 1)
 
+    def test_online_manager_without_advertised_limit_keeps_legacy_capacity(self):
+        """An online manager with no advertised limit is not excluded: it keeps the legacy -1 capacity."""
+        rules = [
+            WaterfallRule(priority=1, worker_manager_id=self.manager_id_a, max_task_concurrency=None),
+            WaterfallRule(priority=2, worker_manager_id=self.manager_id_b, max_task_concurrency=20),
+        ]
+        policy = WaterfallScalingPolicy(rules)
+        tasks = _create_tasks(100)  # target = ceil(100/10) = 10
+        manager_infos = {
+            self.manager_id_a: _create_worker_manager_info(self.manager_id_a, max_task_concurrency=None),
+            self.manager_id_b: _create_worker_manager_info(self.manager_id_b, max_task_concurrency=20),
+        }
+        cluster_state = build_cluster_state(tasks, {}, manager_infos)
+
+        commands_a = policy.get_scaling_commands(worker_manager_id=self.manager_id_a, cluster_state=cluster_state)
+        commands_b = policy.get_scaling_commands(worker_manager_id=self.manager_id_b, cluster_state=cluster_state)
+
+        # Legacy -1 arithmetic: A's tier is (max=-1, min=-1), so its -1 allocation clamps to 0 in the
+        # command and B absorbs target+1.
+        self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 0)
+        self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 11)
+
+    def test_absent_manager_remains_excluded(self):
+        """A manager missing from cluster_state.managers contributes no capacity, unlike an online unlimited one."""
+        rules = [
+            WaterfallRule(priority=1, worker_manager_id=self.manager_id_a, max_task_concurrency=None),
+            WaterfallRule(priority=2, worker_manager_id=self.manager_id_b, max_task_concurrency=20),
+        ]
+        policy = WaterfallScalingPolicy(rules)
+        tasks = _create_tasks(50)  # target = 5
+        manager_infos = {self.manager_id_b: _create_worker_manager_info(self.manager_id_b, max_task_concurrency=20)}
+
+        commands_b = policy.get_scaling_commands(
+            worker_manager_id=self.manager_id_b, cluster_state=build_cluster_state(tasks, {}, manager_infos)
+        )
+
+        # The absent manager is excluded, so B gets the whole target of 5.
+        self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 5)
+
     def test_no_tasks_emits_desired_zero(self):
         """No tasks: desired is 0 -> policy unconditionally emits setDesired(0)."""
         manager_infos = {self.manager_id_a: _create_worker_manager_info(self.manager_id_a)}

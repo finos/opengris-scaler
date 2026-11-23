@@ -414,6 +414,43 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         # 2 (empty wildcard) + 3 (cpu subset) - 0 connected = 5; gpu (4) is excluded.
         self.assertEqual(detail.pendingWorkers, 5)
 
+    async def test_heartbeat_capacity_reaches_commands_and_status(self) -> None:
+        """Zero capacity heart-beats prevent bootstrap, while positive and unlimited capacity allow it."""
+        manager_id = WorkerManagerID(b"mgr")
+        controller = WorkerManagerController(MagicMock(), VanillaScalingPolicy({}))
+        binder = AsyncMock()
+        task_controller = MagicMock()
+        task_ids = [TaskID.generate_task_id() for _ in range(5)]
+        task_controller._task_id_to_task = {task_id: _create_mock_task(task_id, {}) for task_id in task_ids}
+        self.worker_controller._worker_alive_since = {}
+        self.worker_controller.get_workers_by_manager_id.return_value = []
+        controller.register(binder, task_controller, self.worker_controller)
+
+        for advertised_max, snapshot_max, desired in ((0, 0, 0), (1, 1, 1), (-1, None, 1)):
+            with self.subTest(advertised_max=advertised_max):
+                binder.send.reset_mock()
+                await controller.on_heartbeat(
+                    b"mgr-src", _create_worker_manager_heartbeat(manager_id, max_task_concurrency=advertised_max)
+                )
+
+                cluster_state = controller._build_cluster_state()
+                self.assertEqual(cluster_state.n_tasks, len(task_ids))
+                self.assertEqual(cluster_state.n_workers, 0)
+                self.assertEqual(cluster_state.managers[manager_id].worker_count, 0)
+                self.assertEqual(cluster_state.managers[manager_id].max_task_concurrency, snapshot_max)
+                (command,) = [
+                    call.args[1]
+                    for call in binder.send.call_args_list
+                    if isinstance(call.args[1], WorkerManagerCommand)
+                ]
+                (request,) = command.setDesiredTaskConcurrencyRequests
+                (detail,) = controller.get_status().workerManagerDetails
+                self.assertEqual(detail.workerManagerID, manager_id)
+                self.assertEqual(
+                    (request.taskConcurrency, detail.maxTaskConcurrency, detail.pendingWorkers),
+                    (desired, advertised_max, desired),
+                )
+
 
 class TestManagerSnapshotsCountServingWorkers(unittest.IsolatedAsyncioTestCase):
     async def test_an_idle_waterfall_tier_does_not_replace_its_draining_workers(self):
