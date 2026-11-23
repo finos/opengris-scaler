@@ -355,7 +355,10 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         task_controller = MagicMock()
         task_controller._task_id_to_task = {}
         self.worker_controller = MagicMock()
-        self.worker_controller._worker_alive_since = {}
+        self.worker_controller._worker_alive_since = {
+            WorkerID(b"w0"): (0.0, _create_mock_worker_heartbeat({})),
+            WorkerID(b"w1"): (0.0, _create_mock_worker_heartbeat({})),
+        }
 
         self.controller.register(binder, task_controller, self.worker_controller)
 
@@ -436,7 +439,7 @@ class TestManagerSnapshotsCountServingWorkers(unittest.IsolatedAsyncioTestCase):
             for worker_id, draining in workers.items()
         }
         worker_controller.get_workers_by_manager_id.side_effect = lambda manager_id: [
-            WorkerID(worker_id) for worker_id, draining in workers_by_manager[manager_id].items() if not draining
+            WorkerID(worker_id) for worker_id in workers_by_manager[manager_id]
         ]
         task_controller = MagicMock()
         task_controller._task_id_to_task = {}

@@ -17,7 +17,7 @@ def _desired_task_concurrency(
     )
     commands = policy.get_scaling_commands(
         worker_manager_id=worker_manager_id,
-        cluster_state=ClusterState(n_tasks=0, n_workers=0, managers={worker_manager_id: info}),
+        cluster_state=ClusterState(n_tasks=0, n_workers=0, n_draining_workers=0, managers={worker_manager_id: info}),
     )
     (command,) = commands
     (request,) = command.setDesiredTaskConcurrencyRequests

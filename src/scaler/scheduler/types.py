@@ -20,6 +20,7 @@ class ClusterState:
 
     n_tasks: int
     n_workers: int
+    n_draining_workers: int
     n_tasks_by_capset: Dict[FrozenSet[str], int] = dataclasses.field(default_factory=dict)
     capset_representatives: Dict[FrozenSet[str], Dict[str, int]] = dataclasses.field(default_factory=dict)
     managers: Dict[WorkerManagerID, WorkerManagerInfo] = dataclasses.field(default_factory=dict)

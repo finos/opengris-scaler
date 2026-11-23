@@ -819,7 +819,7 @@ def _create_mock_task(task_id: TaskID, capabilities: Optional[Dict[str, int]] = 
 
 
 def _create_mock_worker_heartbeat(
-    queued_tasks: int = 0, capabilities: Optional[Dict[str, int]] = None
+    queued_tasks: int = 0, capabilities: Optional[Dict[str, int]] = None, draining: bool = False
 ) -> WorkerHeartbeat:
     return WorkerHeartbeat(
         agent=Resource(cpu=1, rss=1000000),
@@ -831,6 +831,7 @@ def _create_mock_worker_heartbeat(
         processors=[],
         capabilities=capabilities or {},
         workerManagerID=b"test",
+        draining=draining,
     )
 
 

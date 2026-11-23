@@ -130,7 +130,11 @@ class WorkerManagerController(Looper, Reporter):
             manager_id: WorkerManagerInfo(
                 manager_id=manager_id,
                 max_task_concurrency=holder.max_task_concurrency,
-                worker_count=len(self._worker_controller.get_workers_by_manager_id(manager_id)),
+                worker_count=sum(
+                    1
+                    for worker_id in self._worker_controller.get_workers_by_manager_id(manager_id)
+                    if not workers[worker_id].draining
+                ),
                 capabilities=holder.capabilities,
             )
             for manager_id, holder in self._managers.items()

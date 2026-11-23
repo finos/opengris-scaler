@@ -60,6 +60,7 @@ def build_cluster_state(
     return ClusterState(
         n_tasks=len(tasks),
         n_workers=len(workers),
+        n_draining_workers=sum(1 for w in workers.values() if w.draining),
         n_tasks_by_capset=n_tasks_by_capset,
         capset_representatives=capset_representatives,
         managers=worker_manager_infos,

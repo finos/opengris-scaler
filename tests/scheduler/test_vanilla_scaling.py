@@ -91,8 +91,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         """A draining worker takes no new task and the manager does not count it, so the ratio and the +1 skip it."""
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         workers = {wid: _create_mock_worker_heartbeat({}, draining=i >= 5) for i, wid in enumerate(managed)}
-        serving = [wid for wid, heartbeat in workers.items() if not heartbeat.draining]
-        serving_workers = {wid: workers[wid] for wid in serving}
+        serving = managed[:5]
 
         # 5 serving workers: 120 tasks is a ratio of 24 and 60 tasks one of 12, both above 10, so 5 + 1
         for task_count in (120, 60):
@@ -102,7 +101,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
                     for _ in range(task_count)
                 }
                 request = self._single_request(
-                    tasks, serving_workers, WorkerManagerID(b"mgr"), serving, max_task_concurrency=100
+                    tasks, workers, WorkerManagerID(b"mgr"), serving, max_task_concurrency=100
                 )
 
                 self.assertEqual(request.taskConcurrency, 6)

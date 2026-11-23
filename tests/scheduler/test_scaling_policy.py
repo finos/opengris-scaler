@@ -28,6 +28,7 @@ def _cluster_state(
     return ClusterState(
         n_tasks=task_count,
         n_workers=worker_count,
+        n_draining_workers=0,
         n_tasks_by_capset={capset: task_count} if task_count else {},
         capset_representatives={capset: capabilities or {}} if task_count else {},
         managers=managers,
