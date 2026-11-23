@@ -85,7 +85,7 @@ docs = [
 ]
 lint = [
     "mypy>=1.14.1",
-    "ruff==0.17.5",
+    "ruff==0.17.6",
 ]
 test = [
     "pytest>=9.1.1",
