@@ -6,52 +6,33 @@ import functools
 import logging
 import math
 import uuid
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import Any, Optional
 
 import oci
 
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.config.types.oci_auth_type import OCIAuthType
-from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.cloud.child_command import (
     child_link_arguments,
     format_capabilities,
     load_requirements_content,
 )
-from scaler.worker_manager.desired_concurrency import extract_desired_count
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
-
-if TYPE_CHECKING:
-    from scaler.protocol.capnp import WorkerManagerCommand
 
 logger = logging.getLogger(__name__)
 
-_OCI_POLL_INTERVAL_SECONDS = 10
-_OCI_MAX_POLL_ATTEMPTS = 30  # 5 minutes total
 
+class OCIInstancesWorkerProvisioner(UnitProvisioner):
+    """One unit is one OCI Container Instance."""
 
-@dataclass
-class _InstanceInfo:
-    instance_id: str
-
-
-class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: OCIRawWorkerManagerConfig, max_instances: int, children_address: AddressConfig) -> None:
         self._config = config
+        self._max_instances = max_instances
         self._children_address = children_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._instances: List[_InstanceInfo] = []
         self._container_instances_client: Any = None
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=max_instances,
-            scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
-        )
         self._initialize_oci_client()
 
     def _initialize_oci_client(self) -> None:
@@ -66,36 +47,26 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
             oci_config["region"] = container_instance_config.oci_region
             self._container_instances_client = oci.container_instances.ContainerInstanceClient(oci_config)
 
-    def active_unit_count(self) -> int:
-        return len(self._instances)
+    async def create_unit(self, unit_id: str) -> UnitHandle:
+        instance_id = await self._start_instance(unit_id)
+        if instance_id is None:
+            raise RuntimeError("OCI Container Instance was not created")
+        return instance_id
 
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        task_concurrency = extract_desired_count(requests, self._capabilities)
-        workers_per_instance = max(1, int(self._config.instance_ocpus))
-        new_desired = math.ceil(task_concurrency / workers_per_instance)
-        await self._capacity_coordinator.set_desired_unit_count(new_desired)
+    async def destroy_unit(self, handle: UnitHandle) -> None:
+        assert isinstance(handle, str)
+        if not await self._delete_instance(handle):
+            raise RuntimeError(f"failed to delete OCI Container Instance {handle[-20:]}")
+        logger.info(f"stopped OCI Container Instance {handle[-20:]}")
 
-    async def start_units(self, count: int) -> None:
-        for _ in range(count):
-            instance_id = await self._start_instance(uuid.uuid4().hex)
-            if instance_id is not None:
-                self._instances.append(_InstanceInfo(instance_id=instance_id))
+    def max_units(self) -> int:
+        return self._max_instances
 
-    async def stop_units(self, count: int) -> None:
-        to_stop = self._instances[:count]
-        self._instances = self._instances[count:]
-        if len(to_stop) < count:
-            logger.warning(f"Requested to stop {count} Container Instance(s) but only {len(to_stop)} available.")
-        for info in to_stop:
-            await self._stop_instance(info.instance_id)
+    def task_concurrency_per_unit(self) -> int:
+        return max(1, int(self._config.instance_ocpus))
 
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        for info in self._instances:
-            await self._stop_instance(info.instance_id)
-        self._instances.clear()
+    def startup_timeout_seconds(self) -> int:
+        return self._config.cloud_children_config.unit_startup_timeout_seconds
 
     async def _start_instance(self, unit_id: str) -> Optional[str]:
         config = self._config
@@ -180,41 +151,9 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
             return None
 
         instance_id = response.data.id
-        logger.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) created, waiting for ACTIVE...")
-
-        for _ in range(_OCI_MAX_POLL_ATTEMPTS):
-            await asyncio.sleep(_OCI_POLL_INTERVAL_SECONDS)
-            try:
-                poll_response = await loop.run_in_executor(
-                    None,
-                    functools.partial(
-                        self._container_instances_client.get_container_instance, container_instance_id=instance_id
-                    ),
-                )
-            except oci.exceptions.ServiceError as exc:
-                logger.error(f"OCI get_container_instance failed for {instance_id[-20:]}: {exc}")
-                await self._delete_instance(instance_id)
-                return None
-
-            instance = poll_response.data
-            if instance.lifecycle_state == "ACTIVE":
-                logger.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) is ACTIVE")
-                return instance_id
-            if instance.lifecycle_state == "FAILED":
-                details = instance.lifecycle_details or "no details provided"
-                logger.error(
-                    f"OCI Container Instance {instance_id[-20:]} ({display_name}) failed to provision: {details}"
-                )
-                await self._delete_instance(instance_id)
-                return None
-
-        timeout_seconds = _OCI_MAX_POLL_ATTEMPTS * _OCI_POLL_INTERVAL_SECONDS
-        logger.warning(
-            f"OCI Container Instance {instance_id[-20:]} ({display_name}) timed out after "
-            f"{timeout_seconds}s waiting for ACTIVE, deleting"
-        )
-        await self._delete_instance(instance_id)
-        return None
+        # The first heartbeat marks the unit active, so a handle now lets terminate destroy an instance still booting.
+        logger.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) created")
+        return instance_id
 
     async def _delete_instance(self, instance_id: str) -> bool:
         loop = asyncio.get_running_loop()
@@ -229,17 +168,12 @@ class OCIInstancesWorkerProvisioner(DeclarativeWorkerProvisioner):
         except oci.exceptions.ServiceError as exc:
             if exc.status == 404:
                 logger.warning(f"OCI Container Instance {instance_id[-20:]} not found during delete (already gone?)")
+                return True
             else:
                 logger.error(f"OCI delete_container_instance failed for {instance_id[-20:]}: {exc}")
         except Exception as exc:
             logger.error(f"Failed to delete OCI Container Instance {instance_id[-20:]}: {exc}")
         return False
-
-    async def _stop_instance(self, instance_id: str) -> None:
-        if await self._delete_instance(instance_id):
-            logger.info(f"Stopped OCI Container Instance {instance_id[-20:]}")
-        else:
-            logger.error(f"Failed to stop OCI Container Instance {instance_id[-20:]}")
 
 
 class OCIInstancesWorkerManager:
@@ -252,13 +186,11 @@ class OCIInstancesWorkerManager:
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=max_instances,
-            create_worker_provisioner=lambda children_address: OCIInstancesWorkerProvisioner(
+            create_provisioner=lambda children_address: OCIInstancesWorkerProvisioner(
                 config, max_instances, children_address
             ),
             children_address=config.worker_manager_config.children_address,
             io_threads=config.worker_config.io_threads,
-            workers_per_provisioner_unit=workers_per_instance,
         )
 
     def run(self) -> None:
