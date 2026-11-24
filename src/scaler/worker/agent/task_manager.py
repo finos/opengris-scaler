@@ -61,17 +61,14 @@ class VanillaTaskManager(Looper, TaskManager):
             )
             return
 
-        # A suspended task will be both processing AND queued
+        # A suspended task is both processing and queued: the cancel drops it from both, or it would start again.
+        if task_cancel.taskId in self._queued_task_id_to_task:
+            self._queued_task_ids.remove(task_cancel.taskId)
+            self._queued_task_id_to_task.pop(task_cancel.taskId)
 
         if task_cancel.taskId in self._processing_task_ids:
-            # if task is in processing
             self._processing_task_ids.remove(task_cancel.taskId)
-            _ = await self._processor_manager.on_cancel_task(task_cancel.taskId)
-        else:
-            # if task is queued
-            assert task_cancel.taskId in self._queued_task_id_to_task
-            self._queued_task_ids.remove(task_cancel.taskId)
-            _ = self._queued_task_id_to_task.pop(task_cancel.taskId)
+            await self._processor_manager.on_cancel_task(task_cancel.taskId)
 
         await self._connector_external.send(
             TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled),
