@@ -332,9 +332,6 @@ class VanillaProcessorManager(ProcessorManager):
     def processors(self) -> List[ProcessorHolder]:
         return list(self._holders_by_processor_id.values())
 
-    def num_suspended_processors(self) -> int:
-        return len(self._suspended_holders_by_task_id)
-
     def __start_new_processor(self):
         object_storage_address = self._heartbeat_manager.get_object_storage_address()
 

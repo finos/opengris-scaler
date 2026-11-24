@@ -102,13 +102,11 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 await self._processor_manager.on_failing_processor(processor_holder.processor_id(), status)
 
         processors = self._processor_manager.processors()  # refreshes for removed dead and zombie processors
-        num_suspended_processors = self._processor_manager.num_suspended_processors()
 
         mem_limit, mem_available = get_memory_limit_and_available()
         net_sent, net_recv = _host_network_counters()
 
-        queued_tasks = self._worker_task_manager.get_queued_size() - num_suspended_processors
-        assert queued_tasks >= 0, f"negative queued task count, {num_suspended_processors=}"
+        queued_tasks = self._worker_task_manager.get_queued_size()
 
         # TODO: add task queue size to WorkerHeartbeat
         heartbeat = WorkerHeartbeat(
