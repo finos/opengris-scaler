@@ -22,7 +22,7 @@ class StaticScalingPolicy(ScalingPolicy):
         self, worker_manager_id: WorkerManagerID, cluster_state: ClusterState
     ) -> List[WorkerManagerCommand]:
         info = cluster_state.managers[worker_manager_id]
-        desired = info.max_task_concurrency or -1
+        desired = info.max_task_concurrency if info.max_task_concurrency is not None else -1
         task_concurrency = self._task_concurrency_by_manager.get(worker_manager_id, self._task_concurrency)
         if task_concurrency is not None:
             desired = min(task_concurrency, desired)
