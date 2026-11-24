@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
