@@ -1,6 +1,6 @@
 import logging
 from math import ceil
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Dict, FrozenSet, List, Mapping, Optional, Tuple
 
 from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import WorkerManagerCommand
@@ -44,7 +44,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
 
     def _compute_desired_per_capset(
         self, current_rule: WaterfallRule, cluster_state: ClusterState
-    ) -> List[Tuple[Dict[str, int], int]]:
+    ) -> List[Tuple[Mapping[str, int], int]]:
         """Compute desired worker count per capability set for this manager only.
 
         Generic (empty-cap) tasks fill higher-priority managers first; this manager's share is
@@ -53,7 +53,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         Capability-specific requests are emitted only for capsets this manager owns: the
         highest-priority manager whose advertised capabilities are a superset of the capset.
         """
-        result: List[Tuple[Dict[str, int], int]] = []
+        result: List[Tuple[Mapping[str, int], int]] = []
 
         generic_desired = self._allocate_generic_desired(current_rule, cluster_state)
         result.append(({}, generic_desired))

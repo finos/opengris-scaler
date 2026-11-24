@@ -1,6 +1,6 @@
 import logging
 from math import ceil
-from typing import Dict, List, Tuple
+from typing import Dict, List, Mapping, Tuple
 
 from scaler.config.constants import VANILLA_LOWER_TASK_RATIO, VANILLA_UPPER_TASK_RATIO
 from scaler.protocol.capnp import WorkerManagerCommand
@@ -31,7 +31,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         forget_departed_managers(self._logged_desired_by_manager, set(cluster_state.managers))
 
         desired = self._compute_desired_worker_count(worker_manager_id, cluster_state)
-        desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
+        desired_per_capset: List[Tuple[Mapping[str, int], int]] = [({}, desired)]
         return [build_set_desired_command(desired_per_capset)]
 
     def _compute_desired_worker_count(self, manager_id: WorkerManagerID, cluster_state: ClusterState) -> int:
@@ -98,8 +98,8 @@ def clamp_to_bounds(desired: int, bounds: WorkerManagerBounds, advertised_max_ta
 
 def floor_held_worker_count(
     manager_id: WorkerManagerID,
-    bounds_by_manager: Dict[WorkerManagerID, WorkerManagerBounds],
-    worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
+    bounds_by_manager: Mapping[WorkerManagerID, WorkerManagerBounds],
+    worker_manager_infos: Mapping[WorkerManagerID, WorkerManagerInfo],
 ) -> int:
     """The connected workers that managers other than `manager_id` hold at their floors.
 

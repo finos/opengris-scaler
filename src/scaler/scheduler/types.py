@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Dict, FrozenSet, Optional
+from typing import FrozenSet, Mapping, Optional
 
 from scaler.utility.identifiers import WorkerManagerID
 
@@ -11,7 +11,7 @@ class WorkerManagerInfo:
     manager_id: WorkerManagerID
     max_task_concurrency: Optional[int]  # None = unlimited
     worker_count: int
-    capabilities: Dict[str, int]
+    capabilities: Mapping[str, int]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -21,6 +21,6 @@ class ClusterState:
     n_tasks: int
     n_workers: int
     n_draining_workers: int
-    n_tasks_by_capset: Dict[FrozenSet[str], int] = dataclasses.field(default_factory=dict)
-    capset_representatives: Dict[FrozenSet[str], Dict[str, int]] = dataclasses.field(default_factory=dict)
-    managers: Dict[WorkerManagerID, WorkerManagerInfo] = dataclasses.field(default_factory=dict)
+    n_tasks_by_capset: Mapping[FrozenSet[str], int] = dataclasses.field(default_factory=dict)
+    capset_representatives: Mapping[FrozenSet[str], Mapping[str, int]] = dataclasses.field(default_factory=dict)
+    managers: Mapping[WorkerManagerID, WorkerManagerInfo] = dataclasses.field(default_factory=dict)

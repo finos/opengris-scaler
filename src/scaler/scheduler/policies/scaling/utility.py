@@ -1,4 +1,5 @@
-from typing import Any, Dict, FrozenSet, Iterable, List, Tuple, TypeVar
+from types import MappingProxyType
+from typing import Any, Dict, FrozenSet, Iterable, Mapping, Sequence, Tuple, TypeVar
 
 from scaler.protocol.capnp import TaskCapability, WorkerManagerCommand
 from scaler.scheduler.types import ClusterState, WorkerManagerInfo
@@ -22,12 +23,11 @@ def forget_departed_managers(
         del state_by_manager[departed_id]
 
 
-def build_set_desired_command(desired_per_capset: List[Tuple[Dict[str, int], int]]) -> WorkerManagerCommand:
+def build_set_desired_command(desired_per_capset: Sequence[Tuple[Mapping[str, int], int]]) -> WorkerManagerCommand:
     """Build a declarative setDesiredTaskConcurrency command.
 
-    Each entry in desired_per_capset maps a capability set (as Dict[str, int]) to a
-    desired worker count. An empty list is valid and yields a command whose requests
-    list is empty (declarative "no opinion").
+    Each entry in desired_per_capset pairs a capability mapping with a desired worker count. An empty list is valid and
+    yields a command whose requests list is empty (declarative "no opinion").
     """
     requests = [
         WorkerManagerCommand.DesiredTaskConcurrencyRequest(
@@ -40,28 +40,28 @@ def build_set_desired_command(desired_per_capset: List[Tuple[Dict[str, int], int
 
 
 def build_cluster_state(
-    tasks: Dict[TaskID, Any],
-    workers: Dict[WorkerID, Any],
-    worker_manager_infos: Dict[WorkerManagerID, WorkerManagerInfo],
+    tasks: Mapping[TaskID, Any],
+    workers: Mapping[WorkerID, Any],
+    worker_manager_infos: Mapping[WorkerManagerID, WorkerManagerInfo],
 ) -> ClusterState:
     """Build an immutable ClusterState from live observations.
 
-    Each capset's representative is the first task's capabilities dict.
+    Each capset's representative views the first task's capabilities dictionary.
     """
 
     n_tasks_by_capset: Dict[FrozenSet[str], int] = {}
-    capset_representatives: Dict[FrozenSet[str], Dict[str, int]] = {}
+    capset_representatives: Dict[FrozenSet[str], Mapping[str, int]] = {}
     for task in tasks.values():
         capset = frozenset(task.capabilities.keys())
         n_tasks_by_capset[capset] = n_tasks_by_capset.get(capset, 0) + 1
         if capset not in capset_representatives:
-            capset_representatives[capset] = task.capabilities
+            capset_representatives[capset] = MappingProxyType(task.capabilities)
 
     return ClusterState(
         n_tasks=len(tasks),
         n_workers=len(workers),
         n_draining_workers=sum(1 for w in workers.values() if w.draining),
-        n_tasks_by_capset=n_tasks_by_capset,
-        capset_representatives=capset_representatives,
-        managers=worker_manager_infos,
+        n_tasks_by_capset=MappingProxyType(n_tasks_by_capset),
+        capset_representatives=MappingProxyType(capset_representatives),
+        managers=MappingProxyType(worker_manager_infos),
     )

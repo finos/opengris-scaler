@@ -1,6 +1,6 @@
 import logging
 from math import ceil
-from typing import Dict, FrozenSet, List, Tuple
+from typing import Dict, FrozenSet, List, Mapping, Tuple
 
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
@@ -41,7 +41,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
         self,
         manager_id: WorkerManagerID,
         cluster_state: ClusterState,
-        desired_per_capset: List[Tuple[Dict[str, int], int]],
+        desired_per_capset: List[Tuple[Mapping[str, int], int]],
     ) -> None:
         """Logs what is asked of a manager, once per run of the same request.
 
@@ -62,13 +62,13 @@ class CapabilityScalingPolicy(ScalingPolicy):
 
     def _compute_desired_per_capset(
         self, cluster_state: ClusterState, manager_info: WorkerManagerInfo
-    ) -> List[Tuple[Dict[str, int], int]]:
+    ) -> List[Tuple[Mapping[str, int], int]]:
         """Compute desired worker count per capability set from the cluster state.
 
         Capsets with zero tasks are omitted (declarative "no opinion" for that capset).
         Each desired count is clamped by the manager's max_task_concurrency.
         """
-        result: List[Tuple[Dict[str, int], int]] = []
+        result: List[Tuple[Mapping[str, int], int]] = []
         for capset, count in cluster_state.n_tasks_by_capset.items():
             if count == 0:
                 continue

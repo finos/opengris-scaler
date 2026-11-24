@@ -1,7 +1,8 @@
 import dataclasses
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from types import MappingProxyType
+from typing import Any, Dict, List, Mapping, Optional
 
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
@@ -126,8 +127,8 @@ class WorkerManagerController(Looper, Reporter):
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
         await self._binder.send(source, command, detached=True)
 
-    def _build_worker_manager_infos(self, workers: Dict[WorkerID, Any]) -> Dict[WorkerManagerID, WorkerManagerInfo]:
-        """Build immutable WorkerManagerInfo snapshots from mutable holders."""
+    def _build_worker_manager_infos(self, workers: Mapping[WorkerID, Any]) -> Dict[WorkerManagerID, WorkerManagerInfo]:
+        """Build frozen manager summaries with read-only views of the holders' shared capability dictionaries."""
         return {
             manager_id: WorkerManagerInfo(
                 manager_id=manager_id,
@@ -137,7 +138,7 @@ class WorkerManagerController(Looper, Reporter):
                     for worker_id in self._worker_controller.get_workers_by_manager_id(manager_id)
                     if not workers[worker_id].draining
                 ),
-                capabilities=holder.capabilities,
+                capabilities=MappingProxyType(holder.capabilities),
             )
             for manager_id, holder in self._managers.items()
         }
