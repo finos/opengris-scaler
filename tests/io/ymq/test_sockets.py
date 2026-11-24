@@ -2,7 +2,6 @@ import asyncio
 import pathlib
 import socket
 import struct
-import sys
 import unittest
 
 from scaler.config.types.address import AddressConfig
@@ -27,7 +26,11 @@ _PRIVATE_KEY = str(_OPENSSL_TEST_DIR / "sample_private_key.pem")
 _STALLED_SEND_BYTES = 16 * 1024 * 1024
 _SEND_SETTLE_SECONDS = 0.2
 _SEND_FAIL_TIMEOUT_SECONDS = 5.0
-_WRITE_ERROR_REPORTS_SUCCESS_ON_WINDOWS = "Windows may complete the write with the error, which reports success"
+
+# Peer bytes that make a YMQ socket abort the connection itself, so the abort cancels the in-flight write on every OS.
+# A reset is not enough: the OS can fail the write first, which reports success (see MessageConnection::onWriteDone).
+_INVALID_MAGIC_STRING = b"HTTP/1.1 200 OK\n"
+_UNALLOCATABLE_FRAME_HEADER = struct.pack("<Q", 2**64 - 1)  # no buffer holds a frame this long
 
 
 def _ymq_frame(payload: bytes) -> bytes:
@@ -52,7 +55,6 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(msg.address.data, b"connector")
         self.assertEqual(msg.payload.data, b"payload")
 
-    @unittest.skipIf(sys.platform == "win32", _WRITE_ERROR_REPORTS_SUCCESS_ON_WINDOWS)
     async def test_connector_send_under_an_aborted_connection_raises_connection_lost(self):
         """A connection lost under a send raises ConnectionLostError, and the connector can send again."""
         with socket.socket() as listener:
@@ -65,8 +67,9 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
             self.addCleanup(connector.shutdown)
             peer, _ = listener.accept()
 
-            send = asyncio.ensure_future(connector.send_message(Bytes(b"x" * _STALLED_SEND_BYTES)))
-            await self._assert_abort_raises_connection_lost(peer, send)
+            with peer:
+                send = asyncio.ensure_future(connector.send_message(Bytes(b"x" * _STALLED_SEND_BYTES)))
+                await self._assert_abort_raises_connection_lost(peer, _INVALID_MAGIC_STRING, send)
 
             # the connector was not stopped: it reconnects, and the next send arrives
             new_peer, _ = await asyncio.get_running_loop().run_in_executor(None, listener.accept)
@@ -79,27 +82,26 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
                     received += await asyncio.get_running_loop().run_in_executor(None, new_peer.recv, len(expected))
                 self.assertEqual(received, expected)
 
-    @unittest.skipIf(sys.platform == "win32", _WRITE_ERROR_REPORTS_SUCCESS_ON_WINDOWS)
     async def test_binder_send_under_an_aborted_connection_raises_connection_lost(self):
         """A connection lost under a binder's send raises ConnectionLostError, since nobody stopped the binder."""
         binder = BinderSocket(IOContext(), "binder")
         self.addCleanup(binder.shutdown)
         address = await binder.bind_to("tcp://127.0.0.1:0")
 
-        peer = socket.create_connection(("127.0.0.1", AddressConfig.from_string(repr(address)).port))
-        peer.sendall(MAGIC_STRING + _ymq_frame(b"peer"))
+        with socket.create_connection(("127.0.0.1", AddressConfig.from_string(repr(address)).port)) as peer:
+            peer.sendall(MAGIC_STRING + _ymq_frame(b"peer"))
 
-        # queued until the peer has identified itself, then in flight, as the peer never reads
-        send = asyncio.ensure_future(binder.send_message("peer", Bytes(b"x" * _STALLED_SEND_BYTES)))
-        await self._assert_abort_raises_connection_lost(peer, send)
+            # queued until the peer has identified itself, then in flight, as the peer never reads
+            send = asyncio.ensure_future(binder.send_message("peer", Bytes(b"x" * _STALLED_SEND_BYTES)))
+            await self._assert_abort_raises_connection_lost(peer, _UNALLOCATABLE_FRAME_HEADER, send)
 
-    async def _assert_abort_raises_connection_lost(self, peer: socket.socket, send: asyncio.Future) -> None:
+    async def _assert_abort_raises_connection_lost(
+        self, peer: socket.socket, abort_bytes: bytes, send: asyncio.Future
+    ) -> None:
         await asyncio.sleep(_SEND_SETTLE_SECONDS)
         self.assertFalse(send.done(), "the peer never reads, so the send should still be in flight")
 
-        # SO_LINGER 0 makes close() send RST rather than FIN.
-        peer.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
-        peer.close()
+        peer.sendall(abort_bytes)
 
         with self.assertRaises(ConnectionLostError) as exc:
             await asyncio.wait_for(send, _SEND_FAIL_TIMEOUT_SECONDS)
