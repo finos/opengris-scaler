@@ -26,7 +26,7 @@ The fastest way to get going is with ``SchedulerClusterCombo``, which starts a s
 
        cluster.shutdown()
 
-``cluster.shutdown()`` stops the workers at once, dropping their running tasks, then the worker manager, then the scheduler.
+``cluster.shutdown()`` drains the workers, then stops the worker manager, then the scheduler. ``drain_timeout_seconds`` takes the values of ``--drain-timeout-seconds`` (see :doc:`common_parameters`): ``-1`` (the default) waits for the running tasks to finish, ``0`` drops them at once.
 
 Quick Start (CLI — Static Scaling)
 -----------------------------------

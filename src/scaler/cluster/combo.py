@@ -28,12 +28,19 @@ from scaler.config.defaults import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
+    DEFAULT_WORKER_MANAGER_DRAIN_TIMEOUT_SECONDS,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
+    DRAIN_TIMEOUT_NONE,
 )
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.config.types.worker import WorkerCapabilities
+from scaler.io.mixins import ConnectorRemoteType, NetworkBackend, SyncConnector
+from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.utility import generate_identity_from_name
+from scaler.io.ymq import YMQException
+from scaler.protocol.capnp import UnitShutdown
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.utility.process_bootstrap import bootstrap_process
@@ -74,6 +81,7 @@ class SchedulerClusterCombo:
         trim_memory_threshold_bytes: int = DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
         per_worker_task_queue_size: int = DEFAULT_PER_WORKER_QUEUE_SIZE,
         hard_processor_suspend: bool = DEFAULT_HARD_PROCESSOR_SUSPEND,
+        drain_timeout_seconds: int = DEFAULT_WORKER_MANAGER_DRAIN_TIMEOUT_SECONDS,
         protected: bool = True,
         scaler_policy: PolicyConfig = PolicyConfig(policy_content="allocate=even_load; scaling=static"),
         event_loop: str = "builtin",
@@ -84,6 +92,7 @@ class SchedulerClusterCombo:
         security_config: Optional[SecurityConfig] = None,
     ):
         self._shutdown_called = False
+        self._drain_timeout_seconds = drain_timeout_seconds
         self._security_config = security_config if security_config is not None else SecurityConfig()
 
         # port 0 lets the OS pick each free port at bind time; the processes report back the ports they got
@@ -115,12 +124,11 @@ class SchedulerClusterCombo:
         # shutdown() skips what is still None, so each process is assigned only once start() returns
         self._scheduler: Optional[SchedulerProcess] = None
         self._worker_manager_process: Optional[multiprocessing.process.BaseProcess] = None
+        self._network_backend: Optional[NetworkBackend] = None
+        self._connector_scheduler: Optional[SyncConnector] = None
         try:
             # object storage should be ready before starting the cluster
             self._object_storage_address = self._object_storage.wait_until_ready()
-
-            # Setting this event starts a forced shutdown of the cluster through messages, the same on every platform.
-            self._scheduler_shutdown_event = multiprocessing.get_context("spawn").Event()
 
             scheduler = SchedulerProcess(
                 bind_address=self._address,
@@ -140,7 +148,6 @@ class SchedulerClusterCombo:
                 logging_config_file=logging_config_file,
                 logging_level=logging_level,
                 policy=scaler_policy,
-                shutdown_event=self._scheduler_shutdown_event,
                 security_config=self._security_config,
             )
 
@@ -149,6 +156,15 @@ class SchedulerClusterCombo:
             # the workers and a client connecting next need the address the scheduler bound
             self._address = self._scheduler.wait_until_ready().bind_address
 
+            # shutdown() asks the scheduler to drain the cluster over this connection
+            self._network_backend = get_network_backend_from_env()
+            self._connector_scheduler = self._network_backend.create_sync_connector(
+                identity=generate_identity_from_name(self.__class__.__name__),
+                connector_remote_type=ConnectorRemoteType.Binder,
+                address=self._address,
+                security_config=self._security_config,
+            )
+
             self._worker_manager = NativeWorkerManager(
                 NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
@@ -156,6 +172,7 @@ class SchedulerClusterCombo:
                         worker_manager_id=WorkerManagerID.from_string(worker_manager_id),
                         object_storage_address=self._object_storage_address,
                         max_task_concurrency=n_workers,
+                        drain_timeout_seconds=drain_timeout_seconds,
                     ),
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
@@ -196,24 +213,46 @@ class SchedulerClusterCombo:
 
         logger.info(f"{self.__get_prefix()} shutdown")
 
-        # The scheduler stops the worker manager, which stops its workers, and quits last.
-        # Skip the event.set() if the scheduler is already dead: multiprocessing.Event.set()
-        # internally calls Condition.notify_all(), which waits for the sleeper to release the
-        # woken_count counter. If the daemon waiter died with the scheduler (e.g. when the
-        # test_scheduler_crash test deliberately crashes the scheduler), set() hangs forever
-        # because no one is left to release that counter.
-        if self._scheduler is not None and self._scheduler.is_alive():
-            self._scheduler_shutdown_event.set()
-            self._scheduler.join(timeout=CLUSTER_SHUTDOWN_TIMEOUT_SECONDS)
+        # The scheduler drains the worker manager, which drains its workers, and quits last.
+        if self._scheduler is not None and self._scheduler.is_alive() and self.__request_shutdown():
+            shutdown_timeout_seconds = self.__shutdown_timeout_seconds()
+            self._scheduler.join(timeout=shutdown_timeout_seconds)
             if self._worker_manager_process is not None:
-                self._worker_manager_process.join(timeout=CLUSTER_SHUTDOWN_TIMEOUT_SECONDS)
+                self._worker_manager_process.join(timeout=shutdown_timeout_seconds)
 
         self._stop_worker_manager()
         self._stop_scheduler()
+        self.__close_scheduler_connection()
 
         # object storage should terminate after the cluster and scheduler.
         self._object_storage.terminate()
         self._object_storage.join()
+
+    def __shutdown_timeout_seconds(self) -> Optional[float]:
+        """How long each process may take to exit once asked to shut down: None waits for a drain with no deadline."""
+        if self._drain_timeout_seconds == DRAIN_TIMEOUT_NONE:
+            return None
+        return self._drain_timeout_seconds + CLUSTER_SHUTDOWN_TIMEOUT_SECONDS
+
+    def __request_shutdown(self) -> bool:
+        """Ask the scheduler to drain the cluster. False if it cannot be reached, so its processes are terminated."""
+        if self._connector_scheduler is None:
+            return False
+
+        try:
+            self._connector_scheduler.send(UnitShutdown(force=False))
+        except YMQException as e:
+            logger.warning(f"{self.__get_prefix()} cannot reach the scheduler, terminating the cluster: {e!r}")
+            return False
+        return True
+
+    def __close_scheduler_connection(self) -> None:
+        if self._connector_scheduler is not None:
+            self._connector_scheduler.destroy()
+            self._connector_scheduler = None
+        if self._network_backend is not None:
+            self._network_backend.destroy()
+            self._network_backend = None
 
     def _stop_worker_manager(self) -> None:
         if self._worker_manager_process is None:

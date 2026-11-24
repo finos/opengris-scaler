@@ -134,8 +134,8 @@ struct ObjectInstruction {
 struct WorkerDisconnectNotification {
 }
 
-# Parent -> unit (scheduler -> worker manager, worker manager -> worker or child manager): finish the running tasks,
-# take no new one, then exit. With force, drop the running tasks.
+# Parent -> unit (owner -> scheduler, scheduler -> worker manager, worker manager -> worker or child manager): finish
+# the running tasks, take no new one, then exit. With force, drop the running tasks.
 struct UnitShutdown {
     force @0 :Bool;
 }

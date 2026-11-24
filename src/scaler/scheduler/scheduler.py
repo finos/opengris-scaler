@@ -23,6 +23,7 @@ from scaler.protocol.capnp import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
+    UnitShutdown,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerManagerDisconnectNotification,
@@ -137,11 +138,6 @@ class Scheduler:
         assert self._address is not None
         return self._address
 
-    async def force_shutdown(self) -> None:
-        """Stop the cluster through its worker managers, the workers dropping their running tasks, then quit."""
-        logger.info(f"{self.__class__.__name__}: forced shutdown, stopping every worker manager")
-        await self._worker_manager_controller.begin_shutdown(force=True)
-
     async def __initialize_network(self) -> None:
         # Scheduler's binder
         assert self._address is not None
@@ -209,6 +205,12 @@ class Scheduler:
         # scheduler receives client shutdown request from upstream
         if isinstance(message, ClientDisconnect):
             await self._client_manager.on_client_disconnect(ClientID(source), message)
+            return
+
+        # the process that started the scheduler stops the cluster: protected mode guards only a client's shutdown
+        if isinstance(message, UnitShutdown):
+            logger.info(f"{self.__class__.__name__}: {source!r} requested a shutdown, force={message.force}")
+            await self._worker_manager_controller.begin_shutdown(force=message.force)
             return
 
         # =====================================================================================

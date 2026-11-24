@@ -1,7 +1,7 @@
 # how long a parent waits for a scheduler or object storage process it started to listen
 READINESS_TIMEOUT_SECONDS = 30
 
-# a forced shutdown stops the workers, then the worker manager, then the scheduler: past this, they are terminated
+# seconds a combo process may take to exit past its drain deadline before it is terminated
 CLUSTER_SHUTDOWN_TIMEOUT_SECONDS = 10
 
 # how often a draining worker checks whether its last task finished
