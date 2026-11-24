@@ -128,6 +128,7 @@ static PyMethodDef PyStablePriorityQueueMethods[] = {
      (PyCFunction)PyStablePriorityQueueMaxPriorityItem,
      METH_VARARGS,
      "Return priority-item list with the highest priority in the queue"},
+    {"__class_getitem__", (PyCFunction)Py_GenericAlias, METH_O | METH_CLASS, "See PEP 585"},
     {nullptr, nullptr, 0, nullptr},
 };
 
