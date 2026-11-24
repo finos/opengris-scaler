@@ -113,6 +113,7 @@ static PyMethodDef PyIndexedQueueMethods[] = {
     {"get", (PyCFunction)PyIndexedQueueGet, METH_VARARGS, "Pop and Return an item from IndexedQueue"},
     {"remove", (PyCFunction)PyIndexedQueueRemove, METH_VARARGS, "Remove an item from IndexedQueue"},
     {"to_list", (PyCFunction)PyIndexedQueueToList, METH_NOARGS, "Return the queue contents as a Python list"},
+    {"__class_getitem__", (PyCFunction)Py_GenericAlias, METH_O | METH_CLASS, "See PEP 585"},
     {nullptr, nullptr, 0, nullptr},
 };
 

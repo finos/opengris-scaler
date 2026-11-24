@@ -319,12 +319,6 @@ static PyObject* PyManyToManyDictRemoveRightKey(PyManyToManyDict* self, PyObject
     return leftKeysSet.take();
 }
 
-static PyObject* PyManyToManyDictClassGetItem([[maybe_unused]] PyObject* cls, [[maybe_unused]] PyObject* args)
-{
-    Py_INCREF(cls);
-    return cls;
-}
-
 // Define the methods for the ManyToManyDict Python class
 static PyMethodDef PyManyToManyDictMethods[] = {
     {"left_keys", (PyCFunction)PyManyToManyDictLeftKeys, METH_VARARGS, "Get left keys from the dictionary"},
@@ -361,7 +355,7 @@ static PyMethodDef PyManyToManyDictMethods[] = {
      (PyCFunction)PyManyToManyDictRemoveRightKey,
      METH_VARARGS,
      "Remove a right key from the dictionary and return all associated left keys"},
-    {"__class_getitem__", (PyCFunction)PyManyToManyDictClassGetItem, METH_CLASS | METH_VARARGS, "__class_getitem__"},
+    {"__class_getitem__", (PyCFunction)Py_GenericAlias, METH_O | METH_CLASS, "See PEP 585"},
     {nullptr, nullptr, 0, nullptr},
 };
 

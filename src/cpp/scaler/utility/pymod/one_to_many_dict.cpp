@@ -279,6 +279,7 @@ static PyMethodDef PyOneToManyDictMethods[] = {
      (PyCFunction)PyOneToManyDictRemoveValue,
      METH_VARARGS,
      "Remove value from the dictionary and return the associated key"},
+    {"__class_getitem__", (PyCFunction)Py_GenericAlias, METH_O | METH_CLASS, "See PEP 585"},
     {nullptr, nullptr, 0, nullptr},
 };
 
