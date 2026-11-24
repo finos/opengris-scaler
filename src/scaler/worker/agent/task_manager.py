@@ -1,33 +1,116 @@
-from typing import Dict, Optional, Set
+import asyncio
+import dataclasses
+import enum
+from typing import Dict, Optional
 
 from scaler.io.mixins import AsyncConnector
 from scaler.protocol.capnp import Task, TaskCancel, TaskCancelConfirm, TaskCancelConfirmType, TaskResult
 from scaler.utility.identifiers import TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
-from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
+from scaler.utility.queues.stable_priority_queue import StablePriorityQueue
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager
+
+
+class _TaskState(enum.Enum):
+    WAITING = enum.auto()  # received, never started
+    RUNNING = enum.auto()  # on the current processor
+    SUSPENDED = enum.auto()  # paused on its own processor for a higher-priority task
+
+
+@dataclasses.dataclass
+class _TaskEntry:
+    task: Task
+    priority: int  # higher runs first
+    state: _TaskState
+
+
+class _TaskTable:
+    """Every task on the worker with its state: the only place that holds them.
+
+    Keeps the waiting and suspended tasks in priority queues, so picking the next one costs O(log n). Only this class
+    writes the queues, so they always agree with the entries.
+    """
+
+    def __init__(self) -> None:
+        self._entries: Dict[TaskID, _TaskEntry] = {}
+
+        # StablePriorityQueue hands out the lowest key first, the oldest among equal keys: keys are negated priorities.
+        self._waiting_task_ids: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
+        self._suspended_task_ids: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
+        self._runnable_added = asyncio.Event()
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def get(self, task_id: TaskID) -> Optional[_TaskEntry]:
+        return self._entries.get(task_id)
+
+    def waiting_count(self) -> int:
+        return len(self._waiting_task_ids)
+
+    def add(self, task: Task, priority: int) -> _TaskEntry:
+        entry = _TaskEntry(task=task, priority=priority, state=_TaskState.WAITING)
+        self._entries[task.taskId] = entry
+        self.__add_to_queue(entry)
+        return entry
+
+    def set_state(self, entry: _TaskEntry, state: _TaskState) -> None:
+        self.__remove_from_queue(entry)
+        entry.state = state
+        self.__add_to_queue(entry)
+
+    def remove(self, entry: _TaskEntry) -> None:
+        self.__remove_from_queue(entry)
+        self._entries.pop(entry.task.taskId)
+
+    async def wait_for_next(self) -> _TaskEntry:
+        """The highest priority first, a suspended task before a waiting one of equal priority, then the oldest."""
+        while (entry := self.__next()) is None:
+            self._runnable_added.clear()
+            await self._runnable_added.wait()
+        return entry
+
+    def __next(self) -> Optional[_TaskEntry]:
+        suspended = self.__head(self._suspended_task_ids)
+        waiting = self.__head(self._waiting_task_ids)
+        if waiting is None or (suspended is not None and suspended.priority >= waiting.priority):
+            return suspended
+        return waiting
+
+    def __head(self, task_ids: StablePriorityQueue[int, TaskID]) -> Optional[_TaskEntry]:
+        if not task_ids:
+            return None
+        _, task_id = task_ids.max_priority_item()
+        return self._entries[task_id]
+
+    def __add_to_queue(self, entry: _TaskEntry) -> None:
+        task_ids = self.__queue_for(entry.state)
+        if task_ids is None:
+            return
+        task_ids.put(-entry.priority, entry.task.taskId)
+        self._runnable_added.set()
+
+    def __remove_from_queue(self, entry: _TaskEntry) -> None:
+        task_ids = self.__queue_for(entry.state)
+        if task_ids is not None:
+            task_ids.remove(entry.task.taskId)
+
+    def __queue_for(self, state: _TaskState) -> Optional[StablePriorityQueue[int, TaskID]]:
+        match state:
+            case _TaskState.WAITING:
+                return self._waiting_task_ids
+            case _TaskState.SUSPENDED:
+                return self._suspended_task_ids
+            case _TaskState.RUNNING:
+                return None
 
 
 class VanillaTaskManager(Looper, TaskManager):
     def __init__(self, task_timeout_seconds: int):
         self._task_timeout_seconds = task_timeout_seconds
 
-        self._queued_task_id_to_task: Dict[TaskID, Task] = dict()
-
-        # Queued tasks are sorted first by task's priorities, then suspended tasks are prioritized over non yet started
-        # tasks, finally the sorted queue ensure we execute the oldest tasks first.
-        #
-        # For example, if we receive these tasks in this order:
-        #   1. Task(priority=0) [suspended]
-        #   2. Task(priority=3) [suspended]
-        #   3. Task(priority=3)
-        #   4. Task(priority=0)
-        #
-        # We want to execute the tasks in this order: 2-3-1-4.
-        self._queued_task_ids = AsyncPriorityQueue()
-
-        self._processing_task_ids: Set[TaskID] = set()  # Tasks associated with a processor, including suspended tasks
+        self._tasks = _TaskTable()
 
         self._connector_external: Optional[AsyncConnector] = None
         self._processor_manager: Optional[ProcessorManager] = None
@@ -37,51 +120,34 @@ class VanillaTaskManager(Looper, TaskManager):
         self._processor_manager = processor_manager
 
     async def on_task_new(self, task: Task):
-        self.__enqueue_task(task, is_suspended=False)
+        entry = self._tasks.add(task, self.__get_task_priority(task))
 
-        await self.__suspend_if_priority_is_higher(task)
+        await self.__suspend_if_priority_is_higher(entry)
 
     async def on_cancel_task(self, task_cancel: TaskCancel):
-        task_not_found = (
-            task_cancel.taskId not in self._processing_task_ids
-            and task_cancel.taskId not in self._queued_task_id_to_task
-        )
-        if task_not_found:
-            await self._connector_external.send(
-                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound),
-                detached=True,
-            )
+        task_id = task_cancel.taskId
+        entry = self._tasks.get(task_id)
+
+        if entry is None:
+            await self.__send_cancel_confirm(task_id, TaskCancelConfirmType.cancelNotFound)
             return
 
-        if task_cancel.taskId in self._processing_task_ids and not task_cancel.flags.force:
-            # ignore cancel task while in processing if is not force cancel
-            await self._connector_external.send(
-                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelFailed),
-                detached=True,
-            )
+        if entry.state != _TaskState.WAITING and not task_cancel.flags.force:
+            # a task on a processor, running or suspended, is cancelled only by force
+            await self.__send_cancel_confirm(task_id, TaskCancelConfirmType.cancelFailed)
             return
 
-        # A suspended task is both processing and queued: the cancel drops it from both, or it would start again.
-        if task_cancel.taskId in self._queued_task_id_to_task:
-            self._queued_task_ids.remove(task_cancel.taskId)
-            self._queued_task_id_to_task.pop(task_cancel.taskId)
+        self._tasks.remove(entry)
+        if entry.state != _TaskState.WAITING:
+            await self._processor_manager.on_cancel_task(task_id)
 
-        if task_cancel.taskId in self._processing_task_ids:
-            self._processing_task_ids.remove(task_cancel.taskId)
-            await self._processor_manager.on_cancel_task(task_cancel.taskId)
-
-        await self._connector_external.send(
-            TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled),
-            detached=True,
-        )
+        await self.__send_cancel_confirm(task_id, TaskCancelConfirmType.canceled)
 
     async def on_task_result(self, result: TaskResult):
-        if result.taskId in self._queued_task_id_to_task:
-            # Finishing a queued task might happen if a task ended during the suspension process.
-            self._queued_task_id_to_task.pop(result.taskId)
-            self._queued_task_ids.remove(result.taskId)
-
-        self._processing_task_ids.remove(result.taskId)
+        # A task can finish while it is being suspended, so the entry is running or suspended.
+        entry = self._tasks.get(result.taskId)
+        assert entry is not None, f"result for a task this worker does not hold: {result.taskId!r}"
+        self._tasks.remove(entry)
 
         await self._connector_external.send(result, detached=True)
 
@@ -89,56 +155,40 @@ class VanillaTaskManager(Looper, TaskManager):
         await self.__processing_task()
 
     def get_queued_size(self):
-        return self._queued_task_ids.qsize()
+        return self._tasks.waiting_count()
 
     async def __processing_task(self):
         await self._processor_manager.wait_until_can_accept_task()
 
-        _, task_id = await self._queued_task_ids.get()
-        task = self._queued_task_id_to_task.pop(task_id)
+        entry = await self._tasks.wait_for_next()
+        resume = entry.state == _TaskState.SUSPENDED
+        self._tasks.set_state(entry, _TaskState.RUNNING)
 
-        if task_id not in self._processing_task_ids:
-            self._processing_task_ids.add(task_id)
-            await self._processor_manager.on_task(task)
+        if resume:
+            await self._processor_manager.on_resume_task(entry.task.taskId)
         else:
-            await self._processor_manager.on_resume_task(task_id)
+            await self._processor_manager.on_task(entry.task)
 
-    async def __suspend_if_priority_is_higher(self, new_task: Task):
+    async def __suspend_if_priority_is_higher(self, new_entry: _TaskEntry):
         current_task = self._processor_manager.current_task()
 
         if current_task is None:
             return
 
-        new_task_priority = self.__get_task_priority(new_task)
-        current_task_priority = self.__get_task_priority(current_task)
+        running = self._tasks.get(current_task.taskId)
+        assert running is not None, f"the current task is not on this worker: {current_task.taskId!r}"
 
-        if new_task_priority <= current_task_priority:
+        if new_entry.priority <= running.priority:
             return
 
-        self.__enqueue_task(current_task, is_suspended=True)
+        self._tasks.set_state(running, _TaskState.SUSPENDED)
 
         await self._processor_manager.on_suspend_task(current_task.taskId)
 
-    def __enqueue_task(self, task: Task, is_suspended: bool):
-        task_priority = self.__get_task_priority(task)
-
-        # Higher-priority tasks have a higher priority value. But as the queue is sorted by increasing order, we negate
-        # the inserted value that it will be at the head of the queue.
-        # The order of insertion is preserved and unique because f(x) = 10*x is a bijection.
-        #   1. Task(priority=0) [suspended] = -(0 * 10 + 1) = -1
-        #   2. Task(priority=3) [suspended] = -(3 * 10 + 1) = -31
-        #   3. Task(priority=3)             = -(3 * 10 + 0) = -30
-        #   4. Task(priority=0)             = -(3 *  0 + 0) = -3
-        # We want to execute the tasks in this order: 2-3-1-4.
-        # As you can see -31 < -30 < -3 < -1 and the task will be executed in order 2-3-1-4.
-        # `queue_priority` used to be a tuple of the form (-task_priority, !is_suspended).
-        # Because it is difficult to implement the semantics in C++ implementation, the two
-        # items are combined together, extending the last digit of task_priority to determine
-        # whether a task is suspended.
-        queue_priority = -(task_priority * 10 + int(is_suspended))
-
-        self._queued_task_ids.put_nowait((queue_priority, task.taskId))
-        self._queued_task_id_to_task[task.taskId] = task
+    async def __send_cancel_confirm(self, task_id: TaskID, cancel_confirm_type: TaskCancelConfirmType) -> None:
+        await self._connector_external.send(
+            TaskCancelConfirm(taskId=task_id, cancelConfirmType=cancel_confirm_type), detached=True
+        )
 
     @staticmethod
     def __get_task_priority(task: Task) -> int:

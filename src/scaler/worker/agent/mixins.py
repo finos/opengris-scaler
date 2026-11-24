@@ -114,10 +114,6 @@ class ProcessorManager(metaclass=abc.ABCMeta):
     def processors(self) -> List[ProcessorHolder]:
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def num_suspended_processors(self) -> int:
-        raise NotImplementedError()
-
 
 class ProfilingManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
