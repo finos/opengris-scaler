@@ -3,6 +3,7 @@ import unittest
 from scaler.protocol.capnp import ScalingManagerStatus, StateTask, StateWorker, TaskCapability, TaskState, WorkerState
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.worker_manager_utilities import build_scaling_manager_status
+from scaler.utility.identifiers import WorkerID, WorkerManagerID
 
 
 def _roundtrip_state_task(**kwargs) -> StateTask:
@@ -110,7 +111,10 @@ class TestScalingManagerStatusRoundTrip(unittest.TestCase):
     and expose data via attribute access (not dict access)."""
 
     def test_managed_workers_round_trip(self):
-        managed = {b"mgr_a": [b"w1", b"w2"], b"mgr_b": [b"w3"]}
+        managed = {
+            WorkerManagerID(b"mgr_a"): [WorkerID(b"w1"), WorkerID(b"w2")],
+            WorkerManagerID(b"mgr_b"): [WorkerID(b"w3")],
+        }
         sms = ScalingManagerStatus.from_bytes(build_scaling_manager_status(managed).to_bytes())
 
         result = {}
@@ -122,7 +126,7 @@ class TestScalingManagerStatusRoundTrip(unittest.TestCase):
     def test_worker_manager_details_round_trip(self):
         details = [
             {
-                "worker_manager_id": b"mgr_a",
+                "worker_manager_id": WorkerManagerID(b"mgr_a"),
                 "identity": "host1",
                 "last_seen_seconds": 5,
                 "max_task_concurrency": 4,
@@ -130,7 +134,9 @@ class TestScalingManagerStatusRoundTrip(unittest.TestCase):
                 "pending_workers": 2,
             }
         ]
-        sms = ScalingManagerStatus.from_bytes(build_scaling_manager_status({b"mgr_a": [b"w1"]}, details).to_bytes())
+        sms = ScalingManagerStatus.from_bytes(
+            build_scaling_manager_status({WorkerManagerID(b"mgr_a"): [WorkerID(b"w1")]}, details).to_bytes()
+        )
 
         detail_list = list(sms.workerManagerDetails)
         self.assertEqual(len(detail_list), 1)
@@ -148,10 +154,10 @@ class TestScalingManagerStatusRoundTrip(unittest.TestCase):
         """Worker manager ID must not be empty bytes after round-trip."""
         sms = ScalingManagerStatus.from_bytes(
             build_scaling_manager_status(
-                {b"local_a": [b"w1"]},
+                {WorkerManagerID(b"local_a"): [WorkerID(b"w1")]},
                 [
                     {
-                        "worker_manager_id": b"local_a",
+                        "worker_manager_id": WorkerManagerID(b"local_a"),
                         "identity": "id",
                         "last_seen_seconds": 1,
                         "max_task_concurrency": 2,

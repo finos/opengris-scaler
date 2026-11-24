@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import WorkerHeartbeat, WorkerHeartbeatEcho
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager, TimeoutManager
@@ -18,7 +19,7 @@ class TestVanillaHeartbeatManager(unittest.IsolatedAsyncioTestCase):
             object_storage_address=AddressConfig.from_string("tcp://127.0.0.1:2346"),
             capabilities={},
             task_queue_size=10,
-            worker_manager_id=b"test_manager",
+            worker_manager_id=WorkerManagerID(b"test_manager"),
         )
         self.connector_external = AsyncMock(spec=AsyncConnector)
         self.connector_manager = AsyncMock(spec=AsyncConnector)
@@ -26,7 +27,6 @@ class TestVanillaHeartbeatManager(unittest.IsolatedAsyncioTestCase):
         task_manager.get_queued_size.return_value = 0
         processor_manager = MagicMock(spec=ProcessorManager)
         processor_manager.processors.return_value = []
-        processor_manager.num_suspended_processors.return_value = 0
         processor_manager.can_accept_task.return_value = True
         self.heartbeat_manager.register(
             self.connector_external,

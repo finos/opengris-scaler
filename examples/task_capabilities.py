@@ -11,6 +11,7 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 
 
@@ -34,7 +35,7 @@ def main():
         NativeWorkerManagerConfig(
             worker_manager_config=WorkerManagerConfig(
                 scheduler_address=base_config.worker_manager_config.scheduler_address,
-                worker_manager_id="test_manager",
+                worker_manager_id=WorkerManagerID.from_string("test_manager"),
                 object_storage_address=base_config.worker_manager_config.object_storage_address,
                 max_task_concurrency=1,
             ),

@@ -32,7 +32,7 @@ from scaler.protocol.capnp import (
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
-from scaler.utility.identifiers import ProcessorID, WorkerID
+from scaler.utility.identifiers import ProcessorID, WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
@@ -68,7 +68,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         hard_processor_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
-        worker_manager_id: bytes,
+        worker_manager_id: WorkerManagerID,
         worker_manager_address: AddressConfig,
         unit_id: str,
         deterministic_worker_ids: bool = False,

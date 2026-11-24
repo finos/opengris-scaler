@@ -8,6 +8,7 @@ from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import ProcessorStatus, Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.helpers import dict_to_capabilities
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.memory import get_memory_limit_and_available, get_process_memory
 from scaler.utility.mixins import Looper
 from scaler.utility.network_util import get_hostname
@@ -36,7 +37,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         object_storage_address: Optional[AddressConfig],
         capabilities: Dict[str, int],
         task_queue_size: int,
-        worker_manager_id: bytes,
+        worker_manager_id: WorkerManagerID,
         security_config: Optional[SecurityConfig] = None,
     ):
         self._agent_process = psutil.Process()
@@ -101,13 +102,11 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 await self._processor_manager.on_failing_processor(processor_holder.processor_id(), status)
 
         processors = self._processor_manager.processors()  # refreshes for removed dead and zombie processors
-        num_suspended_processors = self._processor_manager.num_suspended_processors()
 
         mem_limit, mem_available = get_memory_limit_and_available()
         net_sent, net_recv = _host_network_counters()
 
-        queued_tasks = self._worker_task_manager.get_queued_size() - num_suspended_processors
-        assert queued_tasks >= 0, f"negative queued task count, {num_suspended_processors=}"
+        queued_tasks = self._worker_task_manager.get_queued_size()
 
         # TODO: add task queue size to WorkerHeartbeat
         heartbeat = WorkerHeartbeat(

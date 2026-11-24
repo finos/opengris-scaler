@@ -14,6 +14,7 @@ from scaler.config.defaults import DEFAULT_LOGGING_PATHS
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.exceptions import DisconnectedError
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
@@ -42,7 +43,7 @@ def _build_worker_manager(combo: SchedulerClusterCombo, manager_id: str) -> Nati
         NativeWorkerManagerConfig(
             worker_manager_config=WorkerManagerConfig(
                 scheduler_address=combo._address,
-                worker_manager_id=manager_id,
+                worker_manager_id=WorkerManagerID.from_string(manager_id),
                 object_storage_address=combo._object_storage_address,
                 max_task_concurrency=1,
             ),

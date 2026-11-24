@@ -10,6 +10,7 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import BaseMessage, WorkerManagerCommand, WorkerManagerHeartbeat, WorkerManagerHeartbeatEcho
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
@@ -69,7 +70,7 @@ def _child_manager_process(combo: SchedulerClusterCombo, parent: _FakeParent) ->
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=AddressConfig.from_string(combo.get_address()),
-                    worker_manager_id="nesting-test",
+                    worker_manager_id=WorkerManagerID.from_string("nesting-test"),
                     max_task_concurrency=1,
                 ),
                 worker_config=WorkerConfig(heartbeat_interval_seconds=1),

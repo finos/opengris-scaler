@@ -21,6 +21,7 @@ from scaler.config.defaults import (
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
@@ -76,7 +77,9 @@ class TestAdvertisedObjectStorageAddress(unittest.TestCase):
         worker_manager = NativeWorkerManager(
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
-                    scheduler_address=scheduler_address, worker_manager_id="advertised", max_task_concurrency=1
+                    scheduler_address=scheduler_address,
+                    worker_manager_id=WorkerManagerID.from_string("advertised"),
+                    max_task_concurrency=1,
                 ),
                 worker_config=WorkerConfig(),
                 logging_config=LoggingConfig(),

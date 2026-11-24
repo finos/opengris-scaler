@@ -15,6 +15,7 @@ import psutil
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
 from scaler.config.section.scheduler import PolicyConfig
+from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
@@ -82,7 +83,7 @@ class TestBalance(unittest.TestCase):
                 base_config,
                 worker_manager_config=dataclasses.replace(
                     base_config.worker_manager_config,
-                    worker_manager_id="test_manager",
+                    worker_manager_id=WorkerManagerID.from_string("test_manager"),
                     object_storage_address=None,
                     max_task_concurrency=N_WORKERS - 1,
                 ),
@@ -154,7 +155,7 @@ class TestBalance(unittest.TestCase):
                     base_config,
                     worker_manager_config=dataclasses.replace(
                         base_config.worker_manager_config,
-                        worker_manager_id="test_manager",
+                        worker_manager_id=WorkerManagerID.from_string("test_manager"),
                         object_storage_address=None,
                         max_task_concurrency=2,  # both tasks can run concurrently once rerouted
                     ),
@@ -267,7 +268,7 @@ class TestBalance(unittest.TestCase):
                     base_config,
                     worker_manager_config=dataclasses.replace(
                         base_config.worker_manager_config,
-                        worker_manager_id="test_manager",
+                        worker_manager_id=WorkerManagerID.from_string("test_manager"),
                         object_storage_address=None,
                         max_task_concurrency=2,  # both tasks can run concurrently once rerouted
                     ),

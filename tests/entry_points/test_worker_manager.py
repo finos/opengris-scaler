@@ -5,6 +5,7 @@ from typing import Optional
 from unittest.mock import mock_open, patch
 
 from scaler.config import defaults
+from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
@@ -12,6 +13,7 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
+from scaler.utility.identifiers import WorkerManagerID
 
 
 @dataclasses.dataclass
@@ -840,6 +842,16 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
         )
         self.assertEqual(str(config.cloud_children_config.advertised_children_address), "tcp://1.2.3.4:1")
 
+    def test_orb_aws_ec2_unit_startup_timeout_parsed(self) -> None:
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager", {}, argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--unit-startup-timeout-seconds", "1800"]
+        )
+        self.assertEqual(config.cloud_children_config.unit_startup_timeout_seconds, 1800)
+
+    def test_unit_startup_timeout_must_be_positive(self) -> None:
+        with self.assertRaises(ValueError):
+            CloudChildrenConfig(unit_startup_timeout_seconds=0)
+
     def test_orb_aws_ec2_rejects_parent_address(self) -> None:
         """Only a native worker manager runs as a child, so a cloud one refuses the flag instead of ignoring it."""
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
@@ -1027,7 +1039,7 @@ def _make_orb_config(
 ):
     wmc = WorkerManagerConfig(
         scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"),
-        worker_manager_id="wm-test",
+        worker_manager_id=WorkerManagerID.from_string("wm-test"),
         children_address=AddressConfig.from_string(ORB_CHILDREN_ADDRESS),
     )
     return ORBAWSEC2WorkerManagerConfig(
