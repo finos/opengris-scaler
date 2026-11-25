@@ -156,6 +156,8 @@ def configure_telemetry(service: TelemetryService, logging_level: str) -> None:
     if _installed_sdk is None:
         _relay_buffer = TelemetryRelayBuffer() if service.relay else None
         _installed_sdk = telemetry_sdk.install_sdk(service.name.value, service.attributes, _relay_buffer)
+        if service.name == ServiceName.WORKER_MANAGER:
+            telemetry_sdk.instrument_aws_api_calls()
         destination = "the scheduler" if service.relay else repr(os.environ[OTLP_ENDPOINT_ENV])
         logger.info(f"exporting telemetry as {service.name.value!r} to {destination}")
 

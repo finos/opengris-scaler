@@ -1,6 +1,7 @@
 """The OpenTelemetry SDK setup, imported only when export is configured: it needs the `otel` extra."""
 
 import dataclasses
+import importlib.util
 import logging
 import os
 import socket
@@ -135,6 +136,16 @@ def install_sdk(
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
     set_logger_provider(logger_provider)
     return InstalledSDK(tracer_provider, meter_provider, logger_provider)
+
+
+def instrument_aws_api_calls() -> None:
+    """Span each boto3 API call, so a worker manager's cloud calls nest under its create_unit and destroy_unit spans."""
+    if importlib.util.find_spec("botocore") is None:
+        return  # the aws and orb extras install it
+
+    from opentelemetry.instrumentation.botocore import BotocoreInstrumentor  # imports botocore
+
+    BotocoreInstrumentor().instrument()
 
 
 def attach_log_handler(logger_provider: LoggerProvider, logging_level: int) -> None:

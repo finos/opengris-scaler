@@ -57,6 +57,7 @@ oci = [
 otel = [
     "opentelemetry-sdk>=1.45",
     "opentelemetry-exporter-otlp-proto-http>=1.45",
+    "opentelemetry-instrumentation-botocore>=0.66b0",
 ]
 all = [
     "opengris-scaler[aws]",

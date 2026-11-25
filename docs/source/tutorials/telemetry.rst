@@ -95,6 +95,9 @@ Each change of a worker manager's desired concurrency is one trace, with a span 
 - Each call that destroys a unit is a ``scaler.worker_manager.destroy_unit`` span, carrying ``scaler.unit.id`` and ending with an error status when the call raised; a retried destroy gets another.
 - A unit shed to scale down is destroyed under the ``scaler.scheduler.scaling_decision`` that lowered the desired concurrency, after ``--scale-down-cooldown-seconds``.
 - A unit destroyed because it was lost, because it exited, or because its manager is stopping starts a trace of its own.
+- A worker manager spans each AWS API call boto3 makes (ECS, ORB AWS EC2), such as ``EC2.DescribeInstances``, under the ``create_unit`` or ``destroy_unit`` span that made it, with ``rpc.service``, ``rpc.method``, ``aws.region``, and ``aws.request_id``.
+- Those calls carry the span's context to AWS in the ``X-Amzn-Trace-Id`` header.
+- OCI API calls have no spans: the OCI SDK has no OpenTelemetry support.
 
 Baggage
 -------
