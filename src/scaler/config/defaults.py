@@ -51,6 +51,14 @@ DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 # to avoid flapping under intermittent load. 0 disables the cooldown.
 DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS = 30
 
+# drain_timeout_seconds values with a meaning of their own: shed a unit without a drain, or drain it for as long as it
+# takes to finish its running tasks
+DRAIN_TIMEOUT_DESTROY_AT_ONCE = 0
+DRAIN_TIMEOUT_NONE = -1
+
+# seconds a unit may take to finish its running tasks once told to drain, before its worker manager destroys it
+DEFAULT_WORKER_MANAGER_DRAIN_TIMEOUT_SECONDS = DRAIN_TIMEOUT_NONE
+
 # a unit that sent no heartbeat for this long is lost: its worker manager destroys and replaces it
 DEFAULT_WORKER_MANAGER_UNIT_TIMEOUT_SECONDS = 60
 

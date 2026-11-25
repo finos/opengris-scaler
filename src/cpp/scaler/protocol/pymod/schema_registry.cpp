@@ -92,6 +92,8 @@ bool SchemaRegistry::init()
     REG_STRUCT(kModMessage, InformationRequest);
     REG_STRUCT(kModMessage, InformationResponse);
     REG_STRUCT(kModMessage, WorkerDisconnectNotification);
+    REG_STRUCT(kModMessage, UnitShutdown);
+    REG_STRUCT(kModMessage, WorkerManagerDisconnectNotification);
     REG_STRUCT(kModMessage, Message);
 
     REG_STRUCT(kModObjectStorage, ObjectRequestHeader);

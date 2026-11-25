@@ -96,6 +96,9 @@ class TaskActor:
         self._queued_task_id_queue: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
         self._permit_holder_queue: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
 
+        # a draining worker starts no task: the scheduler cancels the queued ones
+        self._draining = False
+
     def post_task_new(self, task: Task) -> None:
         self._events.put_nowait(_TaskNew(task))
 
@@ -104,6 +107,17 @@ class TaskActor:
 
     def post_result_sent(self, task_id: TaskID) -> None:
         self._events.put_nowait(_ResultSent(task_id))
+
+    def drain(self) -> None:
+        self._draining = True
+
+    @property
+    def is_draining(self) -> bool:
+        return self._draining
+
+    @property
+    def is_idle(self) -> bool:
+        return not self._task_id_to_entry
 
     @property
     def queued_task_count(self) -> int:
@@ -142,7 +156,7 @@ class TaskActor:
         entry = _TaskEntry(task=task, state=_TaskState.QUEUED)
         self._task_id_to_entry[task.taskId] = entry
 
-        if len(self._permit_holder_queue) == self._base_concurrency:
+        if not self._draining and len(self._permit_holder_queue) == self._base_concurrency:
             negated_highest_held_priority, _ = self._permit_holder_queue.max_priority_item()
             if task_priority > -negated_highest_held_priority:
                 # Bypass tasks intentionally exceed base_concurrency to service higher-priority requests immediately.
@@ -217,7 +231,7 @@ class TaskActor:
         await self._send_cancel_confirm(task_id, TaskCancelConfirmType.cancelFailed)
 
     def _start_queued_tasks(self) -> None:
-        while self.has_free_permit and len(self._queued_task_id_queue) > 0:
+        while not self._draining and self.has_free_permit and len(self._queued_task_id_queue) > 0:
             _, task_id = self._queued_task_id_queue.get()
             self._start_task(self._task_id_to_entry[task_id], holds_permit=True)
 

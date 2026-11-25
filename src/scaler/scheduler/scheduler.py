@@ -23,8 +23,10 @@ from scaler.protocol.capnp import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
+    UnitShutdown,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
+    WorkerManagerDisconnectNotification,
     WorkerManagerHeartbeat,
 )
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
@@ -91,7 +93,11 @@ class Scheduler:
         )
 
         self._client_manager.register(
-            self._binder, self._binder_monitor, self._object_controller, self._task_controller, self._worker_controller
+            self._binder,
+            self._binder_monitor,
+            self._object_controller,
+            self._task_controller,
+            self._worker_manager_controller,
         )
         self._object_controller.register(
             self._binder, self._binder_monitor, self._connector_storage, self._client_manager, self._worker_controller
@@ -201,6 +207,12 @@ class Scheduler:
             await self._client_manager.on_client_disconnect(ClientID(source), message)
             return
 
+        # the process that started the scheduler stops the cluster: protected mode guards only a client's shutdown
+        if isinstance(message, UnitShutdown):
+            logger.info(f"{self.__class__.__name__}: {source!r} requested a shutdown, force={message.force}")
+            await self._worker_manager_controller.begin_shutdown(force=message.force)
+            return
+
         # =====================================================================================
         # graph manager
         if isinstance(message, GraphTask):
@@ -259,6 +271,10 @@ class Scheduler:
         # worker manager controller
         if isinstance(message, WorkerManagerHeartbeat):
             await self._worker_manager_controller.on_heartbeat(source, message)
+            return
+
+        if isinstance(message, WorkerManagerDisconnectNotification):
+            await self._worker_manager_controller.on_disconnect_notification(source)
             return
 
         logger.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")

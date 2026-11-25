@@ -101,6 +101,7 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
             processors=self._processor_status_provider.get_processor_statuses(),
             capabilities=dict_to_capabilities(self._capabilities),
             workerManagerID=self._worker_manager_id,
+            draining=self._task_manager.is_draining(),
         )
         # The manager judges liveness by these heartbeats, so they never wait on the scheduler's echo.
         await self._connector_manager.send(heartbeat, detached=True)

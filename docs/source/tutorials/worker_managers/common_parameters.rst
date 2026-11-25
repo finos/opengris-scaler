@@ -25,12 +25,17 @@ Networking
 * ``--object-storage-address`` (``-osa``): Optional object storage server address override (e.g., ``tcp://127.0.0.1:8517``). If omitted, workers use the address advertised by scheduler heartbeats.
 * ``--config`` (``-c``): Path to a TOML configuration file.
 
-Supervision and Nesting
------------------------
+Draining and Nesting
+--------------------
 
-A worker manager supervises each unit by its messages: a worker, or a child worker manager in a provisioned resource.
+A worker manager retires a unit by draining it: the unit takes no new task, finishes its running tasks, then exits.
 A cloud worker manager runs a native worker manager in each resource it provisions. That child takes its desired task concurrency from its parent instead of the scheduler (see ``--parent-address`` in :doc:`baremetal_native`).
 
+* ``--drain-timeout-seconds`` (``-drt``): Seconds a unit may take to finish its running tasks after it is told to drain, before the worker manager destroys it by force (default: ``-1``).
+
+  * ``-1``: no deadline. The drain runs until the running tasks finish, however long they take. A cloud resource keeps running, and billing, until then.
+  * ``0``: no drain. The worker manager destroys a shed unit at once, and its running tasks run again elsewhere.
+  * A positive number: the drain runs for at most that many seconds. A cloud worker manager gives its child 30 seconds less, at least 1, so the child finishes its own drain first.
 * ``--unit-timeout-seconds`` (``-uts``): Seconds a unit may go without a heartbeat before the worker manager counts it as lost, destroys it by force, and replaces it (default: ``60``). A worker or a child worker manager that sends no heartbeat, such as a worker that was killed or is deadlocked, is caught this way. A new unit has longer to send its first heartbeat: 60 seconds for a local process, ``--unit-startup-timeout-seconds`` for a cloud resource.
 * ``--unit-startup-timeout-seconds`` (``-usts``): Seconds a cloud unit (ORB AWS EC2 instance, AWS Raw ECS task, OCI Raw container instance) may take to send its first heartbeat before the worker manager counts it as lost (default: ``600``). Raise it when the units install scaler from source, which builds its C++ dependencies on each unit.
 * ``--children-address`` (``-ca``): Address the worker manager binds for its units to dial. Local worker processes default to ``127.0.0.1`` on port 0. On port 0, the units dial the port the OS picked at bind time. ORB AWS EC2, AWS Raw ECS, and OCI Raw require it: each provisioned resource runs a native worker manager that dials this address, so it must be reachable from those resources.

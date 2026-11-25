@@ -35,6 +35,7 @@ class TestHeartbeatManagerTaskLock(unittest.IsolatedAsyncioTestCase):
         self.task_manager = MagicMock(spec=TaskManager)
         self.task_manager.get_queued_size.return_value = 0
         self.timeout_manager = MagicMock(spec=TimeoutManager)
+        self.task_manager.is_draining.return_value = False
         self.hm.register(
             self.connector_external,
             self.connector_manager,

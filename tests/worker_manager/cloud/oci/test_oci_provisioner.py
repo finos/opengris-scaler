@@ -21,6 +21,7 @@ class TestOCIInstancesWorkerProvisionerCreate(unittest.IsolatedAsyncioTestCase):
         config.worker_config.per_worker_capabilities.capabilities = {}
         config.python_worker_environment.requirements_txt = ""
         config.container_instance_config.image_pull_username = None
+        config.worker_manager_config.drain_timeout_seconds = 300
         with patch.object(OCIInstancesWorkerProvisioner, "_initialize_oci_client"):
             provisioner = OCIInstancesWorkerProvisioner(config, max_instances=-1, children_address=MagicMock())
         client = MagicMock()

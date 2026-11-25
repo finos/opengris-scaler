@@ -252,6 +252,7 @@ class WorkerManagerHeartbeat(BaseMessage):
     assignedTasks: int
     activeUnits: int
     pendingUnits: int
+    drainingUnits: int
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 
@@ -273,6 +274,11 @@ class ObjectInstruction(BaseMessage):
         clear = 2
 
 class WorkerDisconnectNotification(BaseMessage): ...
+
+class UnitShutdown(BaseMessage):
+    force: bool
+
+class WorkerManagerDisconnectNotification(BaseMessage): ...
 
 class ClientDisconnect(BaseMessage):
     disconnectType: "ClientDisconnect.DisconnectType"
@@ -374,6 +380,8 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
     workerDisconnectNotification: WorkerDisconnectNotification
+    unitShutdown: UnitShutdown
+    workerManagerDisconnectNotification: WorkerManagerDisconnectNotification
 
 class ObjectRequestHeader(CapnpStruct):
     MESSAGE_LENGTH: ClassVar[int]

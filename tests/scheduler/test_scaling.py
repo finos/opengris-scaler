@@ -58,12 +58,10 @@ class TestScaling(unittest.TestCase):
 
     @unittest.skipIf(
         sys.platform == "win32",
-        "Declarative scale-down calls stop_units mid-test, which on POSIX uses os.kill(pid, SIGINT) "
-        "so the worker sends WorkerDisconnectNotification on shutdown. Windows has no equivalent "
-        "for delivering SIGINT to a multiprocessing.spawn child (Python's os.kill on Windows maps SIGINT "
-        "to TerminateProcess, and CTRL_C_EVENT requires CREATE_NEW_PROCESS_GROUP), so any scaled-down "
-        "worker is killed without notice and the scheduler waits ~60s for heartbeat timeout. The scaling "
-        "policy logic itself is covered by test_vanilla_scaling.py.",
+        "Declarative scale-down destroys workers mid-test with Process.terminate(), which on POSIX sends "
+        "SIGTERM so the worker sends WorkerDisconnectNotification on shutdown. On Windows terminate() is "
+        "TerminateProcess, so any scaled-down worker is killed without notice and the scheduler waits ~60s "
+        "for heartbeat timeout. The scaling policy logic itself is covered by test_vanilla_scaling.py.",
     )
     def test_scaling_basic(self):
         object_storage = ObjectStorageServerProcess(

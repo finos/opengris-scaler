@@ -1,5 +1,8 @@
 import asyncio
 import multiprocessing
+import os
+import tempfile
+import time
 import unittest
 from typing import List
 
@@ -9,7 +12,14 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.network_backends import get_network_backend_from_env
-from scaler.protocol.capnp import BaseMessage, WorkerManagerCommand, WorkerManagerHeartbeat, WorkerManagerHeartbeatEcho
+from scaler.protocol.capnp import (
+    BaseMessage,
+    UnitShutdown,
+    WorkerManagerCommand,
+    WorkerManagerDisconnectNotification,
+    WorkerManagerHeartbeat,
+    WorkerManagerHeartbeatEcho,
+)
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
@@ -17,6 +27,7 @@ from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 UNIT_ID = "unit-under-test"
+TASK_SECONDS = 5
 TIMEOUT_SECONDS = 60
 
 # Long enough for the child to start a worker and run the task, had it been asked for one.
@@ -27,12 +38,22 @@ def _add(a: int, b: int) -> int:
     return a + b
 
 
+def _record_start_then_sleep(start_log_path: str, seconds: int) -> int:
+    with open(start_log_path, "a") as start_log:
+        start_log.write(f"{os.getpid()}\n")
+    time.sleep(seconds)
+    return seconds
+
+
 class _FakeParent:
-    """Plays a cloud worker manager: asks its one child for `task_concurrency` workers on every heartbeat."""
+    """Plays a cloud worker manager: asks its one child for `task_concurrency` workers on every heartbeat, until
+    `shutdown_requested` tells it to shut the child down instead."""
 
     def __init__(self, address: AddressConfig) -> None:
         self.address = address
         self.task_concurrency = 0
+        self.shutdown_requested = False
+        self.child_gone = asyncio.Event()
         self.received: List[str] = []
         self._backend = get_network_backend_from_env(io_threads=1)
         self._binder = self._backend.create_async_binder(identity=b"fake-parent", callback=self._on_receive)
@@ -53,8 +74,15 @@ class _FakeParent:
         assert source == UNIT_ID.encode(), "the child dials with its unit id as identity"
         self.received.append(type(message).__name__)
 
+        if isinstance(message, WorkerManagerDisconnectNotification):
+            self.child_gone.set()
+            return
+
         assert isinstance(message, WorkerManagerHeartbeat)
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
+        if self.shutdown_requested:
+            await self._binder.send(source, UnitShutdown(), detached=True)
+            return
 
         request = WorkerManagerCommand.DesiredTaskConcurrencyRequest(
             taskConcurrency=self.task_concurrency, capabilities=[]
@@ -114,3 +142,41 @@ class TestChildManager(unittest.IsolatedAsyncioTestCase):
             parent_task.cancel()
             parent.destroy()
             combo.shutdown()
+
+    async def test_a_child_manager_drains_its_running_task_before_it_exits(self) -> None:
+        """UnitShutdown lets the running task finish once, then the child reports its fleet gone."""
+        parent = _FakeParent(AddressConfig(SocketType.tcp, "127.0.0.1", OS_PICKED_PORT))
+        await parent.bind()  # the child dials the address the parent bound
+        parent.task_concurrency = 1
+        combo = SchedulerClusterCombo(n_workers=0)
+        parent_task = asyncio.ensure_future(parent.run())
+        child_process = _child_manager_process(combo, parent)
+        start_log_fd, start_log_path = tempfile.mkstemp(prefix="scaler_drain_", suffix=".log")
+        os.close(start_log_fd)
+        loop = asyncio.get_running_loop()
+        try:
+            child_process.start()
+
+            with Client(address=combo.get_address()) as client:
+                future = client.submit(_record_start_then_sleep, start_log_path, TASK_SECONDS)
+                while os.path.getsize(start_log_path) == 0:
+                    await asyncio.sleep(0.1)
+
+                parent.shutdown_requested = True
+                result = await loop.run_in_executor(None, future.result, TIMEOUT_SECONDS)
+
+            self.assertEqual(result, TASK_SECONDS)
+            with open(start_log_path) as start_log:
+                self.assertEqual(len(start_log.readlines()), 1, "the drained task must run once, not restart")
+
+            await asyncio.wait_for(parent.child_gone.wait(), TIMEOUT_SECONDS)
+            await loop.run_in_executor(None, child_process.join, TIMEOUT_SECONDS)
+            self.assertEqual(child_process.exitcode, 0)
+        finally:
+            if child_process.is_alive():
+                child_process.kill()
+                child_process.join()
+            parent_task.cancel()
+            parent.destroy()
+            combo.shutdown()
+            os.unlink(start_log_path)

@@ -1,6 +1,5 @@
 import asyncio
 import multiprocessing
-from multiprocessing.synchronize import Event as EventType
 from typing import Callable, Optional, Tuple
 
 from scaler.cluster.readiness import wait_for_ready_report
@@ -18,11 +17,10 @@ def run_scheduler(
     logging_paths: Tuple[str, ...],
     logging_config_file: Optional[str],
     logging_level: str,
-    shutdown_event: Optional[EventType] = None,
     on_ready: Optional[Callable[[BoundSchedulerAddresses], None]] = None,
 ) -> None:
-    """Run the scheduler in the current process until SIGINT/SIGTERM (or the optional
-    `shutdown_event`) triggers a graceful shutdown. Blocks until the scheduler exited.
+    """Run the scheduler in the current process until SIGINT/SIGTERM stops it at once, or a UnitShutdown message
+    shuts the cluster down through its worker managers. Blocks until the scheduler exited.
     Calls the optional `on_ready` with the bound addresses once the scheduler listens."""
 
     loop = asyncio.new_event_loop()
@@ -37,7 +35,7 @@ def run_scheduler(
         def _cancel_scheduler_task() -> None:
             loop.call_soon_threadsafe(task.cancel)
 
-        install_async_shutdown_handler(loop, _cancel_scheduler_task, shutdown_event)
+        install_async_shutdown_handler(loop, _cancel_scheduler_task)
         await task
 
     run_task_forever(loop, _run())
@@ -63,7 +61,6 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         logging_paths: Tuple[str, ...],
         logging_config_file: Optional[str],
         logging_level: str,
-        shutdown_event: Optional[EventType] = None,
         security_config: Optional[SecurityConfig] = None,
     ):
         super().__init__(name="Scheduler")
@@ -92,7 +89,6 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         self._logging_config_file = logging_config_file
         self._logging_level = logging_level
 
-        self._shutdown_event = shutdown_event
         self._ready_receiver, self._ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
         # the process reports once, so later waits return this first report
         self._bound_addresses: Optional[BoundSchedulerAddresses] = None
@@ -111,6 +107,5 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             self._logging_paths,
             self._logging_config_file,
             self._logging_level,
-            self._shutdown_event,
             self._ready_sender.send,
         )

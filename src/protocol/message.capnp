@@ -103,6 +103,7 @@ struct WorkerManagerHeartbeat {
     assignedTasks @4 :UInt32;          # queued and running tasks across the fleet
     activeUnits @5 :UInt32;
     pendingUnits @6 :UInt32;
+    drainingUnits @7 :UInt32;
 }
 
 struct WorkerManagerHeartbeatEcho {
@@ -131,6 +132,16 @@ struct ObjectInstruction {
 
 # Carries no payload: the worker it refers to is the sender, which the binder already identifies.
 struct WorkerDisconnectNotification {
+}
+
+# Parent -> unit (owner -> scheduler, scheduler -> worker manager, worker manager -> worker or child manager): finish
+# the running tasks, take no new one, then exit. With force, drop the running tasks.
+struct UnitShutdown {
+    force @0 :Bool;
+}
+
+# Child manager -> scheduler or parent manager: the fleet is gone and the child is about to exit.
+struct WorkerManagerDisconnectNotification {
 }
 
 struct ClientDisconnect {
@@ -259,5 +270,8 @@ struct Message {
         workerManagerCommand @25 :WorkerManagerCommand;
 
         workerDisconnectNotification @26 :WorkerDisconnectNotification;
+
+        unitShutdown @27 :UnitShutdown;
+        workerManagerDisconnectNotification @28 :WorkerManagerDisconnectNotification;
     }
 }

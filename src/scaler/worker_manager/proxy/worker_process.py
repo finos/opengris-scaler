@@ -7,6 +7,7 @@ from collections import deque
 from typing import Callable, Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
+from scaler.config.constants import DRAIN_CHECK_INTERVAL_SECONDS
 from scaler.config.defaults import WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
@@ -14,15 +15,15 @@ from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector, Connec
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import (
     BaseMessage,
-    ClientDisconnect,
     ObjectInstruction,
     Task,
     TaskCancel,
+    UnitShutdown,
     WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
-from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
+from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
@@ -139,8 +140,6 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             else:
                 logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
                 exit_code = 1
-        except ClientShutdownException as e:
-            logger.info(f"{self.identity!r}: {str(e)}")
         except TimeoutError as e:
             # The worker decided on its own that it is orphaned (no heartbeat from the scheduler
             # within death_timeout_seconds), not that anyone asked it to stop: an anomaly worth a
@@ -202,7 +201,12 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._task_manager = TaskManager(
             base_concurrency=self._base_concurrency, execution_backend=self._execution_backend
         )
-        self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
+        self._timeout_manager = VanillaTimeoutManager(
+            death_timeout_seconds=self._death_timeout_seconds, on_timeout=self.__on_scheduler_timeout
+        )
+        self._manager_timeout_manager = VanillaTimeoutManager(
+            death_timeout_seconds=self._death_timeout_seconds, on_timeout=self.__on_manager_timeout
+        )
 
         self._heartbeat_manager.register(
             connector_external=self._connector_external,
@@ -244,19 +248,46 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             await self._task_manager.on_object_instruction(message)
             return
 
-        if isinstance(message, ClientDisconnect):
-            if message.disconnectType == ClientDisconnect.DisconnectType.shutdown:
-                raise ClientShutdownException("received client shutdown, quitting")
-            logger.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
-            return
-
         raise TypeError(f"Unknown {message=}")
 
     async def __on_receive_manager(self, message: BaseMessage) -> None:
         if isinstance(message, WorkerHeartbeatEcho):
+            self._manager_timeout_manager.update_last_seen_time()
+            return
+
+        if isinstance(message, UnitShutdown):
+            self.__on_shutdown(message)
             return
 
         logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
+
+    def __on_shutdown(self, message: UnitShutdown) -> None:
+        if not message.force:
+            self.__drain("the worker manager asked")
+            return
+
+        logger.info(f"{self.identity!r}: the worker manager forced a shutdown, dropping the running task")
+        self.__destroy()
+
+    def __on_scheduler_timeout(self) -> None:
+        raise TimeoutError("timeout when connect to scheduler, quitting")
+
+    def __on_manager_timeout(self) -> None:
+        self.__drain("no heartbeat echo from the worker manager")
+
+    def __drain(self, reason: str) -> None:
+        if self._task_manager.is_draining():
+            return
+
+        logger.info(f"{self.identity!r}: draining: {reason}")
+        self._task_manager.drain()
+
+    async def __quit_when_drained(self) -> None:
+        if not self._task_manager.is_draining() or not self._task_manager.is_idle():
+            return
+
+        logger.info(f"{self.identity!r}: drained, quitting")
+        self._task.cancel()
 
     async def __main_loop(self) -> None:
         await self._connector_external.connect(
@@ -276,6 +307,8 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             create_async_loop_routine(self._connector_storage.routine, 0),
             create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
             create_async_loop_routine(self._timeout_manager.routine, 1),
+            create_async_loop_routine(self._manager_timeout_manager.routine, 1),
+            create_async_loop_routine(self.__quit_when_drained, DRAIN_CHECK_INTERVAL_SECONDS),
             create_async_loop_routine(self._execution_backend.routine, 0),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._task_manager.upload_results, 0),

@@ -73,9 +73,16 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
         worker_config = config.worker_config
         scheduler_address = str(config.worker_manager_config.effective_worker_scheduler_address)
         requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
+        link_arguments = child_link_arguments(
+            self._children_address,
+            config.cloud_children_config,
+            unit_id,
+            num_workers,
+            config.worker_manager_config.drain_timeout_seconds,
+        )
 
         command = f"""scaler_worker_manager baremetal_native {scheduler_address!r} \
-{child_link_arguments(self._children_address, config.cloud_children_config, unit_id, num_workers)} \
+{link_arguments} \
 --worker-type OCI_RAW \
 --worker-manager-id {config.worker_manager_config.worker_manager_id} \
 --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \

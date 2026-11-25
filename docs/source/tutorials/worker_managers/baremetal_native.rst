@@ -26,6 +26,8 @@ The fastest way to get going is with ``SchedulerClusterCombo``, which starts a s
 
        cluster.shutdown()
 
+``cluster.shutdown()`` drains the workers, then stops the worker manager, then the scheduler. ``drain_timeout_seconds`` takes the values of ``--drain-timeout-seconds`` (see :doc:`common_parameters`): ``-1`` (the default) waits for the running tasks to finish, ``0`` drops them at once.
+
 Quick Start (CLI — Static Scaling)
 -----------------------------------
 
@@ -135,9 +137,11 @@ Or use a TOML configuration file:
 How It Works
 ------------
 
-The worker manager connects to the scheduler and waits for scaling commands. On every heartbeat the scheduler sends a ``setDesiredTaskConcurrency`` command that declares the desired worker count per capability set. The worker manager spawns or terminates worker subprocesses to converge toward that target, and replaces a worker that dies on its own.
+The worker manager connects to the scheduler and waits for scaling commands. On every heartbeat the scheduler sends a ``setDesiredTaskConcurrency`` command that declares the desired worker count per capability set. The worker manager spawns worker subprocesses to converge toward that target, and replaces a worker that dies on its own.
 
 A worker that exits tells its manager, which replaces it at once. A worker that is killed or hangs sends nothing, and is replaced once it misses heartbeats for ``--unit-timeout-seconds``.
+
+To shed a worker, the manager drains it: the worker takes no new task, the scheduler takes back its queued tasks, and the worker exits once its running task finishes. With ``--drain-timeout-seconds``, a worker that has not finished in time is terminated, and its task runs again elsewhere; ``0`` terminates a shed worker at once.
 
 Configuration Reference
 ------------------------

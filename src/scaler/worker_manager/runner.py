@@ -5,9 +5,11 @@ from typing import Callable, Dict, Optional
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.constants import (
+    WORKER_MANAGER_PARENT_TIMEOUT_SECONDS,
     WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
     WORKER_MANAGER_UNIT_CONTROLLER_INTERVAL_SECONDS,
 )
+from scaler.config.defaults import WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.mixins import AsyncBinder, AsyncConnector, ConnectorRemoteType, NetworkBackend
@@ -15,16 +17,19 @@ from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
+    UnitShutdown,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
+    WorkerManagerDisconnectNotification,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
 )
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.signal_handler import install_async_shutdown_handler
+from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController
@@ -37,6 +42,7 @@ class WorkerManagerRunner:
 
     Every link is a heartbeat and an echo. The runner answers each child manager heartbeat with the task concurrency
     of one whole unit: a cloud unit is billed whole, so it runs full until it is shed.
+    A unit that must drain is told so again on every heartbeat, so a lost message costs one heartbeat.
     The provisioner is created once the children address is bound, so its units dial the port the binder got.
     """
 
@@ -67,6 +73,10 @@ class WorkerManagerRunner:
         self._security_config = security_config
         self._scale_down_cooldown_seconds = worker_manager_config.scale_down_cooldown_seconds
         self._unit_timeout_seconds = worker_manager_config.unit_timeout_seconds
+        self._drain_timeout_seconds = worker_manager_config.drain_timeout_seconds
+        self._parent_timeout_manager = VanillaTimeoutManager(
+            death_timeout_seconds=WORKER_MANAGER_PARENT_TIMEOUT_SECONDS, on_timeout=self._on_parent_timeout
+        )
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_parent: Optional[AsyncConnector] = None
@@ -120,6 +130,7 @@ class WorkerManagerRunner:
                 assignedTasks=status.assigned_tasks,
                 activeUnits=status.active_units,
                 pendingUnits=status.pending_units,
+                drainingUnits=status.draining_units,
             ),
             detached=True,
         )
@@ -137,14 +148,16 @@ class WorkerManagerRunner:
         # swallow_routine_errors=True: a manager serves many units, and a defect in one routine must not take the
         # whole fleet down with it.
         loops = [
-            create_async_loop_routine(self._connector_parent.routine, 0),
+            self._receive_from_parent(),
             create_async_loop_routine(self._binder_children.routine, 0, swallow_routine_errors=True),
             create_async_loop_routine(self._send_heartbeat, self._heartbeat_interval_seconds),
+            create_async_loop_routine(self._parent_timeout_manager.routine, 1),
             create_async_loop_routine(
                 self._unit_controller.routine,
                 WORKER_MANAGER_UNIT_CONTROLLER_INTERVAL_SECONDS,
                 swallow_routine_errors=True,
             ),
+            self._quit_when_shut_down(),
         ]
 
         try:
@@ -152,13 +165,11 @@ class WorkerManagerRunner:
         except asyncio.CancelledError:
             pass
         except ymq.YMQException as e:
-            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                pass
-            else:
-                logger.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")
+            logger.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")
         except Exception:
             logger.exception(f"{self._ident!r}: failed with unhandled exception")
 
+        # Nothing is left after a drain. After a signal, whatever still runs is destroyed without one.
         await self._unit_controller.terminate()
 
     def _create_unit_controller(self, children_address: AddressConfig) -> None:
@@ -167,15 +178,61 @@ class WorkerManagerRunner:
             self._provisioner,
             scale_down_cooldown_seconds=self._scale_down_cooldown_seconds,
             unit_timeout_seconds=self._unit_timeout_seconds,
+            drain_timeout_seconds=self._drain_timeout_seconds,
             restart_backoff_seconds=WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
         )
+
+    async def _receive_from_parent(self) -> None:
+        """Receive from the parent until it closes the link, then drain the fleet."""
+        try:
+            while True:
+                await self._connector_parent.routine()
+        except ymq.YMQException as e:
+            if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                raise
+            logger.warning(f"{self._ident!r}: the parent closed the link, draining the fleet")
+            await self._begin_shutdown(force=False)
+
+    def _on_parent_timeout(self) -> None:
+        logger.warning(f"{self._ident!r}: no heartbeat echo from the parent, draining the fleet")
+        self._unit_controller.begin_shutdown(force=False)
+
+    async def _begin_shutdown(self, force: bool) -> None:
+        """Drain the fleet, telling each reachable unit at once rather than on its next heartbeat."""
+        self._unit_controller.begin_shutdown(force)
+        await self._unit_controller.routine()
+
+        for unit_id in self._unit_controller.get_connected_unit_ids():
+            if self._unit_controller.is_unit_serving(unit_id):
+                continue
+
+            await self._binder_children.send(unit_id.encode(), self._unit_shutdown(), detached=True)
+
+    async def _quit_when_shut_down(self) -> None:
+        await self._unit_controller.wait_until_shut_down()
+
+        logger.info(f"{self._ident!r}: the fleet is gone, quitting")
+        await self._notify_parent_of_exit()
+        self._task.cancel()
+
+    async def _notify_parent_of_exit(self) -> None:
+        """Send the notification, but never let a parent that is gone block the exit."""
+        try:
+            await asyncio.wait_for(
+                self._connector_parent.send(WorkerManagerDisconnectNotification(), detached=False),
+                WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS,
+            )
+        except (ymq.YMQException, asyncio.TimeoutError) as e:
+            logger.warning(f"{self._ident!r}: could not notify the parent of exit, quitting anyway: {e!r}")
 
     async def _on_receive_parent(self, message: BaseMessage) -> None:
         try:
             if isinstance(message, WorkerManagerCommand):
                 await self._handle_command(message)
             elif isinstance(message, WorkerManagerHeartbeatEcho):
-                pass
+                self._parent_timeout_manager.update_last_seen_time()
+            elif isinstance(message, UnitShutdown):
+                await self._begin_shutdown(force=message.force)
             else:
                 logger.warning(f"Unknown action: received unrecognized message type {type(message).__name__!r}")
         except Exception:
@@ -198,22 +255,30 @@ class WorkerManagerRunner:
                 unit_id, self._provisioner.task_concurrency_per_unit(), message.queuedTasks + busy_processors
             )
             await self._binder_children.send(source, WorkerHeartbeatEcho(), detached=True)
+            if not self._unit_controller.is_unit_serving(unit_id):
+                await self._binder_children.send(source, self._unit_shutdown(), detached=True)
             return
 
         if isinstance(message, WorkerManagerHeartbeat):
             self._unit_controller.on_unit_heartbeat(unit_id, message.activeTaskConcurrency, message.assignedTasks)
             await self._binder_children.send(source, WorkerManagerHeartbeatEcho(), detached=True)
-            await self._binder_children.send(source, self._unit_command(), detached=True)
+            await self._binder_children.send(source, self._instruction_for(unit_id), detached=True)
             return
 
-        if isinstance(message, WorkerDisconnectNotification):
+        if isinstance(message, (WorkerDisconnectNotification, WorkerManagerDisconnectNotification)):
             self._unit_controller.on_unit_disconnect(unit_id)
             await self._unit_controller.routine()  # reap the unit now, not on the next routine
             return
 
         logger.error(f"unknown message from unit {unit_id!r}: {message}")
 
-    def _unit_command(self) -> WorkerManagerCommand:
+    def _unit_shutdown(self) -> UnitShutdown:
+        return UnitShutdown(force=self._unit_controller.is_force_shutdown())
+
+    def _instruction_for(self, unit_id: str) -> BaseMessage:
+        if not self._unit_controller.is_unit_serving(unit_id):
+            return self._unit_shutdown()
+
         return WorkerManagerCommand(
             setDesiredTaskConcurrencyRequests=[
                 WorkerManagerCommand.DesiredTaskConcurrencyRequest(

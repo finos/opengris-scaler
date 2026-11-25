@@ -459,6 +459,10 @@ Arguments (shared by all subcommands)
      - No
      - ``os.cpu_count() - 1``
      - Max workers/jobs (``-1`` means no limit where supported).
+   * - ``-drt``, ``--drain-timeout-seconds``
+     - No
+     - ``-1``
+     - Seconds a unit may take to finish its running tasks after it is told to drain, before it is destroyed by force. ``0`` destroys a shed unit without a drain; ``-1`` lets a drain run until the running tasks finish.
    * - ``-uts``, ``--unit-timeout-seconds``
      - No
      - ``60``
