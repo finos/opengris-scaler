@@ -4,6 +4,7 @@ import time
 from types import MappingProxyType
 from typing import Dict, List, Mapping, Optional
 
+from scaler.config.constants import NO_LIMIT
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
 from scaler.protocol.capnp import (
@@ -65,7 +66,7 @@ class WorkerManagerController(Looper, Reporter):
             return
 
         capabilities = capabilities_to_dict(heartbeat.capabilities)
-        max_task_concurrency = heartbeat.maxTaskConcurrency if heartbeat.maxTaskConcurrency != -1 else None
+        max_task_concurrency = heartbeat.maxTaskConcurrency if heartbeat.maxTaskConcurrency != NO_LIMIT else None
 
         if holder is None:
             holder = _WorkerManagerHolder(
@@ -105,7 +106,7 @@ class WorkerManagerController(Looper, Reporter):
             caps_str = " ".join(sorted(holder.capabilities.keys())) if holder.capabilities else ""
             connected = len(self._worker_controller.get_workers_by_manager_id(manager_id))
             pending = max(0, holder.last_desired_total - connected)
-            max_task_concurrency = holder.max_task_concurrency if holder.max_task_concurrency is not None else -1
+            max_task_concurrency = holder.max_task_concurrency if holder.max_task_concurrency is not None else NO_LIMIT
             details.append(
                 {
                     "worker_manager_id": manager_id,

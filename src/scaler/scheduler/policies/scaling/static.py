@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional
 
+from scaler.config.constants import NO_LIMIT
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
@@ -22,7 +23,7 @@ class StaticScalingPolicy(ScalingPolicy):
         self, worker_manager_id: WorkerManagerID, cluster_state: ClusterState
     ) -> List[WorkerManagerCommand]:
         info = cluster_state.managers[worker_manager_id]
-        desired = info.max_task_concurrency if info.max_task_concurrency is not None else -1
+        desired = info.max_task_concurrency if info.max_task_concurrency is not None else NO_LIMIT
         task_concurrency = self._task_concurrency_by_manager.get(worker_manager_id, self._task_concurrency)
         if task_concurrency is not None:
             desired = min(task_concurrency, desired)

@@ -2,7 +2,7 @@ import logging
 from math import ceil
 from typing import Dict, List, Mapping, Tuple
 
-from scaler.config.constants import VANILLA_LOWER_TASK_RATIO, VANILLA_UPPER_TASK_RATIO
+from scaler.config.constants import NO_LIMIT, VANILLA_LOWER_TASK_RATIO, VANILLA_UPPER_TASK_RATIO
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
@@ -44,7 +44,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         floor_held = floor_held_worker_count(manager_id, self._bounds, cluster_state.managers)
         desired = ratio_target(current, task_count, serving_workers, floor_held)
         bounds = self._bounds.get(manager_id, WorkerManagerBounds(max_task_concurrency=None))
-        advertised_max = info.max_task_concurrency if info.max_task_concurrency is not None else -1
+        advertised_max = info.max_task_concurrency if info.max_task_concurrency is not None else NO_LIMIT
         desired = clamp_to_bounds(desired, bounds, advertised_max)
         self.__log_decision(manager_id, task_count, serving_workers, current, desired)
         return desired
@@ -87,8 +87,10 @@ def ratio_target(current: int, task_count: int, worker_count: int, floor_held: i
 
 
 def clamp_to_bounds(desired: int, bounds: WorkerManagerBounds, advertised_max_task_concurrency: int) -> int:
-    """Keep `desired` within `bounds`, whose cap never exceeds the manager's advertised maximum (-1: none)."""
-    caps = [cap for cap in (bounds.max_task_concurrency, advertised_max_task_concurrency) if cap not in (None, -1)]
+    """Keep `desired` within `bounds`, whose cap never exceeds the manager's advertised maximum (NO_LIMIT: none)."""
+    caps = [
+        cap for cap in (bounds.max_task_concurrency, advertised_max_task_concurrency) if cap not in (None, NO_LIMIT)
+    ]
     if not caps:
         return max(bounds.min_task_concurrency, desired)
 

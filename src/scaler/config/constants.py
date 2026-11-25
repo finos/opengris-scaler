@@ -1,3 +1,6 @@
+# sentinel for a quantity or count with no upper limit
+NO_LIMIT = -1
+
 # how long a parent waits for a scheduler or object storage process it started to listen
 READINESS_TIMEOUT_SECONDS = 30
 
