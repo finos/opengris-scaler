@@ -56,10 +56,18 @@ class WorkerManagerController(Looper, Reporter):
 
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
         manager_id = heartbeat.workerManagerID
+        holder = self._managers.get(manager_id)
+
+        if holder is not None and holder.source != source:
+            logger.warning(
+                f"Duplicate {manager_id!r}: source {source!r} rejected, already registered by source {holder.source!r}"
+            )
+            return
+
         capabilities = capabilities_to_dict(heartbeat.capabilities)
         max_task_concurrency = heartbeat.maxTaskConcurrency if heartbeat.maxTaskConcurrency != -1 else None
 
-        if manager_id not in self._managers:
+        if holder is None:
             holder = _WorkerManagerHolder(
                 manager_id=manager_id,
                 source=source,
@@ -70,13 +78,6 @@ class WorkerManagerController(Looper, Reporter):
             self._managers[manager_id] = holder
             logger.info(f"{manager_id!r} connected")
         else:
-            holder = self._managers[manager_id]
-            if holder.source != source:
-                logger.warning(
-                    f"Duplicate {manager_id!r}: source {source!r} rejected, "
-                    f"already registered by source {holder.source!r}"
-                )
-                return
             holder.last_seen_at = time.monotonic()
             holder.capabilities = capabilities
             holder.max_task_concurrency = max_task_concurrency
