@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Callable, Dict, Optional
 
+from opentelemetry.context import attach, detach
+
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.constants import (
@@ -25,6 +27,7 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.signal_handler import install_async_shutdown_handler
+from scaler.utility.telemetry import extract_trace_context
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController
@@ -187,7 +190,14 @@ class WorkerManagerRunner:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
         assert self._unit_controller is not None
-        self._unit_controller.set_desired_task_concurrency(extract_desired_count(list(requests), self._capabilities))
+        # the scaling decision's context is current while the unit controller takes the new desired concurrency
+        token = attach(extract_trace_context(command.traceContext))
+        try:
+            self._unit_controller.set_desired_task_concurrency(
+                extract_desired_count(list(requests), self._capabilities)
+            )
+        finally:
+            detach(token)
 
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:
         unit_id = source.decode()  # each unit dials with the unit id it was created with as its identity

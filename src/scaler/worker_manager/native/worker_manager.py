@@ -2,6 +2,7 @@ import logging
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig
+from scaler.utility.telemetry import inject_trace_context
 from scaler.worker.worker import Worker
 from scaler.worker_manager.local_process import (
     LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS,
@@ -59,6 +60,7 @@ class NativeWorkerProvisioner(UnitProvisioner):
             worker_manager_id=self._worker_manager_id,
             worker_manager_address=self._children_address,
             unit_id=unit_id,
+            trace_context=inject_trace_context(),  # the create_unit span, current while create_unit runs
             security_config=self._security_config,
         )
 

@@ -116,6 +116,7 @@ struct WorkerManagerCommand {
     }
 
     setDesiredTaskConcurrencyRequests @0 :List(DesiredTaskConcurrencyRequest);
+    traceContext @1 :Text;  # the scaling decision that changed the desired concurrency, as Task.traceContext
 }
 
 struct ObjectInstruction {

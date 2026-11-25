@@ -8,12 +8,19 @@ import time
 import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
+from opentelemetry import context, trace
+from opentelemetry.context import Context
+from opentelemetry.trace import Span, Status, StatusCode
+
 from scaler.config.constants import WORKER_MANAGER_MAX_RESTART_BACKOFF_DOUBLINGS, WORKER_MANAGER_UNIT_STABLE_SECONDS
 from scaler.utility.cooldown import Cooldown
 from scaler.utility.mixins import Looper, Reporter
+from scaler.utility.semantic_conventions import UNIT_ID_ATTRIBUTE, WORKER_MANAGER_CREATE_UNIT_SPAN
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 
 logger = logging.getLogger(__name__)
+
+tracer = trace.get_tracer(__name__)
 
 
 class UnitState(enum.Enum):
@@ -65,6 +72,8 @@ class UnitController(Looper, Reporter):
         self._restart_backoff_seconds = restart_backoff_seconds
 
         self._desired_task_concurrency = 0
+        # the context of the call that last changed the desired concurrency, so the creates it causes nest under it
+        self._desired_change_context: Context = context.get_current()
         self._units: Dict[str, Unit] = {}  # in creation order
 
         # The event loop keeps only a weak reference to a task: without this set, a provisioner call could be
@@ -79,6 +88,7 @@ class UnitController(Looper, Reporter):
     def set_desired_task_concurrency(self, task_concurrency: int) -> None:
         if task_concurrency != self._desired_task_concurrency:
             logger.info(f"desired task concurrency changed: {self._desired_task_concurrency} -> {task_concurrency}")
+            self._desired_change_context = context.get_current()
         self._desired_task_concurrency = task_concurrency
 
     def on_unit_heartbeat(self, unit_id: str, active_task_concurrency: int, assigned_tasks: int) -> None:
@@ -208,10 +218,24 @@ class UnitController(Looper, Reporter):
         unit = Unit(unit_id=uuid.uuid4().hex, handle=None, state=UnitState.pending, state_since=time.monotonic())
         self._units[unit.unit_id] = unit
         logger.info(f"creating unit {unit.unit_id!r}")
-        self._start_task(self._provisioner.create_unit(unit.unit_id), functools.partial(self._on_create_done, unit))
+        span = tracer.start_span(
+            WORKER_MANAGER_CREATE_UNIT_SPAN,
+            context=self._desired_change_context,
+            attributes={UNIT_ID_ATTRIBUTE: unit.unit_id},
+        )
+        # the task copies the current context, so create_unit runs under the span and passes it to the unit
+        with trace.use_span(span, end_on_exit=False):
+            self._start_task(
+                self._provisioner.create_unit(unit.unit_id), functools.partial(self._on_create_done, unit, span)
+            )
 
-    def _on_create_done(self, unit: Unit, task: asyncio.Task) -> None:
+    def _on_create_done(self, unit: Unit, span: Span, task: asyncio.Task) -> None:
         error = _failure_of(task)
+        if error is not None:
+            span.record_exception(error)
+            span.set_status(Status(StatusCode.ERROR, type(error).__name__))
+        span.end()
+
         if error is not None:
             logger.error(f"failed to create unit {unit.unit_id!r}: {error!r}")
             self._units.pop(unit.unit_id, None)
