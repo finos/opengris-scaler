@@ -1,7 +1,7 @@
 from types import MappingProxyType
-from typing import Any, Dict, FrozenSet, Iterable, Mapping, Sequence, Tuple, TypeVar
+from typing import Dict, FrozenSet, Iterable, Mapping, Sequence, Tuple, TypeVar
 
-from scaler.protocol.capnp import TaskCapability, WorkerManagerCommand
+from scaler.protocol.capnp import Task, TaskCapability, WorkerHeartbeat, WorkerManagerCommand
 from scaler.scheduler.types import ClusterState, WorkerManagerInfo
 from scaler.utility.identifiers import TaskID, WorkerID, WorkerManagerID
 
@@ -40,8 +40,8 @@ def build_set_desired_command(desired_per_capset: Sequence[Tuple[Mapping[str, in
 
 
 def build_cluster_state(
-    tasks: Mapping[TaskID, Any],
-    workers: Mapping[WorkerID, Any],
+    tasks: Mapping[TaskID, Task],
+    workers: Mapping[WorkerID, WorkerHeartbeat],
     worker_manager_infos: Mapping[WorkerManagerID, WorkerManagerInfo],
 ) -> ClusterState:
     """Build an immutable ClusterState from live observations.
