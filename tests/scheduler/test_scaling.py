@@ -5,7 +5,7 @@ import sys
 import time
 import unittest
 from typing import Dict, Optional
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
@@ -361,6 +361,25 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         }
 
         self.controller.register(binder, task_controller, self.worker_controller)
+
+    async def test_heartbeat_age_ignores_wall_clock_jumps(self) -> None:
+        """Heartbeat timestamps and reported durations use monotonic seconds despite wall-clock jumps."""
+        manager_id = WorkerManagerID(b"mgr-id")
+        self.scaling_policy.get_scaling_commands.return_value = []
+        self.worker_controller.get_workers_by_manager_id.return_value = []
+
+        with patch("scaler.scheduler.controllers.worker_manager_controller.time") as clock:
+            clock.monotonic.return_value = 1000.0
+            clock.time.return_value = 1_700_000_000.0
+            await self.controller.on_heartbeat(b"mgr-src", _create_worker_manager_heartbeat(manager_id))
+            self.assertEqual(self.controller._managers[manager_id].last_seen_at, 1000.0)
+
+            for monotonic_now, wall_now, age in ((1003.75, 1_700_003_600.0, 3), (1008.25, 1_699_996_400.0, 8)):
+                with self.subTest(wall_now=wall_now):
+                    clock.monotonic.return_value = monotonic_now
+                    clock.time.return_value = wall_now
+                    (detail,) = self.controller.get_status().workerManagerDetails
+                    self.assertEqual(detail.lastSeenSeconds, age)
 
     async def test_pending_equals_desired_minus_connected(self):
         """pendingWorkers = max(0, last_desired_total - connected_count)."""

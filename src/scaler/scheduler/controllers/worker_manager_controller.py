@@ -31,7 +31,7 @@ UINT16_MAX = 2**16 - 1
 class _WorkerManagerHolder:
     manager_id: WorkerManagerID
     source: bytes  # network identity (ZMQ/YMQ socket address)
-    last_seen_at: float  # time.time() of last heartbeat
+    last_seen_at: float  # time.monotonic() of last heartbeat
     capabilities: Dict[str, int]
     max_task_concurrency: Optional[int]  # None = unlimited
     last_desired_total: int = 0
@@ -62,7 +62,7 @@ class WorkerManagerController(Looper, Reporter):
             holder = _WorkerManagerHolder(
                 manager_id=manager_id,
                 source=source,
-                last_seen_at=time.time(),
+                last_seen_at=time.monotonic(),
                 capabilities=capabilities,
                 max_task_concurrency=max_task_concurrency,
             )
@@ -76,7 +76,7 @@ class WorkerManagerController(Looper, Reporter):
                     f"already registered by source {holder.source!r}"
                 )
                 return
-            holder.last_seen_at = time.time()
+            holder.last_seen_at = time.monotonic()
             holder.capabilities = capabilities
             holder.max_task_concurrency = max_task_concurrency
 
@@ -97,7 +97,7 @@ class WorkerManagerController(Looper, Reporter):
     def get_status(self) -> ScalingManagerStatus:
         managed_workers = self.get_managed_workers()
 
-        now = time.time()
+        now = time.monotonic()
         details = []
         for manager_id, holder in self._managers.items():
             caps_str = " ".join(sorted(holder.capabilities.keys())) if holder.capabilities else ""
@@ -154,7 +154,7 @@ class WorkerManagerController(Looper, Reporter):
 
     async def _clean_managers(self):
         """Clean up dead worker managers that have not sent heartbeats."""
-        now = time.time()
+        now = time.monotonic()
         timeout_seconds = DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
         dead_managers = [
             manager_id for manager_id, holder in self._managers.items() if now - holder.last_seen_at > timeout_seconds
