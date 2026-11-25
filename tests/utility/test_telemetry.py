@@ -302,6 +302,59 @@ class TestTelemetryRelay(unittest.TestCase):
         )
 
 
+class TestConfiguredEndpoints(unittest.TestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+        self.manager_receiver = OTLPReceiver()
+        self.manager_receiver.start()
+        self.addCleanup(self.manager_receiver.stop)
+        self.worker_receiver = OTLPReceiver()
+        self.worker_receiver.start()
+        self.addCleanup(self.worker_receiver.stop)
+
+    def test_a_manager_and_its_workers_export_to_their_configured_endpoints(self) -> None:
+        """otlp_endpoint and worker_otlp_endpoint route a manager and its workers apart, with no OTEL_* variable."""
+        environment = mock.patch.dict(os.environ, FAST_EXPORT_ENVIRONMENT)
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+
+        combo = SchedulerClusterCombo(n_workers=0)
+        self.addCleanup(combo.shutdown)
+        manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
+                worker_manager_config=WorkerManagerConfig(
+                    scheduler_address=AddressConfig.from_string(combo.get_address()),
+                    worker_manager_id=WorkerManagerID.from_string("endpoint-test"),
+                    max_task_concurrency=1,
+                    otlp_endpoint=self.manager_receiver.endpoint,
+                ),
+                worker_config=WorkerConfig(
+                    heartbeat_interval_seconds=1, worker_otlp_endpoint=self.worker_receiver.endpoint
+                ),
+            )
+        )
+        manager_process = multiprocessing.get_context("spawn").Process(
+            target=_run_native_worker_manager, args=(manager,)
+        )
+        manager_process.start()
+        self.addCleanup(manager_process.join)
+        self.addCleanup(manager_process.terminate)
+
+        with Client(address=combo.get_address()) as client:
+            self.assertEqual(client.submit(traced_work, 1).result(), 2)
+
+        wait_for(lambda: bool(self.manager_receiver.spans_named("scaler.worker_manager.create_unit")), "create_unit")
+        wait_for(lambda: bool(self.worker_receiver.spans_named("user.work")), "the task's user span")
+
+        worker_spans = self.worker_receiver.spans_named("scaler.worker.task")
+        self.assertEqual({span.service_name for span in worker_spans}, {"scaler-worker"})
+        self.assertFalse(self.worker_receiver.spans_named("scaler.worker_manager.create_unit"))
+        self.assertFalse(self.manager_receiver.spans_named("scaler.worker.task"))
+
+
 class TestTelemetryOfAUnit(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         setup_logger()

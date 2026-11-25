@@ -59,6 +59,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         worker_manager_address: AddressConfig,
         unit_id: str,
         telemetry_relay: bool,
+        otlp_endpoint: Optional[str],
         processor_status_provider_factory: Callable[[], ProcessorStatusProvider],
         execution_backend_factory: Callable[[], ExecutionBackend],
         security_config: Optional[SecurityConfig] = None,
@@ -84,6 +85,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._worker_manager_address = worker_manager_address
         self._unit_id = unit_id
         self._telemetry_relay = telemetry_relay
+        self._otlp_endpoint = otlp_endpoint
 
         self._processor_status_provider_factory = processor_status_provider_factory
         self._execution_backend_factory = execution_backend_factory
@@ -185,6 +187,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
                     UNIT_ID_ATTRIBUTE: self._unit_id,
                 },
                 relay=self._telemetry_relay,
+                otlp_endpoint=self._otlp_endpoint,
             )
         )
         register_event_loop(self._event_loop)

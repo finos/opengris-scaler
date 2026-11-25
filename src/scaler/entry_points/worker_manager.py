@@ -97,7 +97,7 @@ def main() -> None:
         wm_config.logging_config.level,
         process_name=wm_type,
         telemetry_service=worker_manager_service(
-            wm_config.worker_manager_config.worker_manager_id,
+            wm_config.worker_manager_config,
             wm_config.unit_id if isinstance(wm_config, NativeWorkerManagerConfig) else None,
         ),
     )

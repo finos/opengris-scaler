@@ -75,6 +75,17 @@ class WorkerManagerConfig(ConfigClass):
         ),
     )
 
+    otlp_endpoint: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-oe",
+            help=(
+                "OTLP/HTTP endpoint this worker manager exports telemetry to, in place of OTEL_EXPORTER_OTLP_ENDPOINT; "
+                "its workers use it too, unless worker_otlp_endpoint is set"
+            ),
+        ),
+    )
+
     @property
     def effective_worker_scheduler_address(self) -> AddressConfig:
         if self.worker_scheduler_address is None:

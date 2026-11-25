@@ -298,6 +298,10 @@ Scheduler arguments
      - No
      - ``1``
      - I/O backend thread count.
+   * - ``-oe``, ``--otlp-endpoint``
+     - No
+     - ``OTEL_EXPORTER_OTLP_ENDPOINT``
+     - OTLP/HTTP endpoint the scheduler exports telemetry to, and forwards relayed telemetry to (see :doc:`telemetry`).
    * - ``-sri``, ``--status-report-interval-seconds``
      - No
      - ``1``
@@ -477,11 +481,11 @@ Arguments (shared by all subcommands)
      - ``--children-address``
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: address the units dial, when they reach the worker
        manager through NAT (e.g. an EC2 public IP). On port 0, the units dial the port ``--children-address`` bound.
-   * - ``-aoe``, ``--advertised-otlp-endpoint``
+   * - ``-oe``, ``--otlp-endpoint``
      - No
      - ``OTEL_EXPORTER_OTLP_ENDPOINT``
-     - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: OTLP/HTTP endpoint the units export telemetry to,
-       when they reach the collector at another address (see :doc:`telemetry`).
+     - OTLP/HTTP endpoint the worker manager exports telemetry to, and its workers too unless
+       ``--worker-otlp-endpoint`` is set (see :doc:`telemetry`).
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty
@@ -518,7 +522,13 @@ Arguments (shared by all subcommands)
    * - ``-tr``, ``--telemetry-relay``
      - No
      - ``False``
-     - Send worker and processor telemetry through the scheduler (see :doc:`telemetry`).
+     - Send worker and processor telemetry through the scheduler (see :doc:`telemetry`). Mutually exclusive with
+       ``--worker-otlp-endpoint``.
+   * - ``-woe``, ``--worker-otlp-endpoint``
+     - No
+     - ``--otlp-endpoint``
+     - OTLP/HTTP endpoint the workers and processors this worker manager starts export telemetry to, local or in cloud
+       units, e.g. the collector's address as the units reach it through NAT (see :doc:`telemetry`).
    * - ``-it``, ``--io-threads``
      - No
      - ``1``

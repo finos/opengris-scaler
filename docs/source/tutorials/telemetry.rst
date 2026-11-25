@@ -21,9 +21,11 @@ Enable export
 - A process exports only when ``OTEL_EXPORTER_OTLP_ENDPOINT`` is set, and ``OTEL_SDK_DISABLED=true`` turns export off.
 - Workers and processors inherit the environment of the worker manager that starts them.
 - A cloud worker manager (ECS, ORB AWS EC2, OCI) passes every ``OTEL_*`` variable it has to the units it starts, so a unit's manager, workers, and processors export the same way.
-- Units that reach the collector at another address, such as through NAT, export to ``--advertised-otlp-endpoint`` (``advertised_otlp_endpoint`` in the ``[[worker_manager]]`` section) instead; it replaces ``OTEL_EXPORTER_OTLP_ENDPOINT`` only, so a signal-specific endpoint such as ``OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`` reaches the units unchanged.
+- ``otlp_endpoint`` in the ``[scheduler]`` or a ``[[worker_manager]]`` section (``--otlp-endpoint``) sets the endpoint for that process in place of ``OTEL_EXPORTER_OTLP_ENDPOINT``, so one configuration file can send each component to the collector address it reaches.
+- Workers that reach the collector at another address, such as cloud units behind NAT, export to ``worker_otlp_endpoint`` (``--worker-otlp-endpoint``) of their worker manager instead; it applies to local workers and to units alike.
+- Both replace ``OTEL_EXPORTER_OTLP_ENDPOINT`` only, so a signal-specific endpoint such as ``OTEL_EXPORTER_OTLP_TRACES_ENDPOINT``, headers, and certificates still come from the environment.
 - The cloud provider stores those variables with the unit (the ECS task overrides, the EC2 user data, the OCI container): put a secret such as an ``OTEL_EXPORTER_OTLP_HEADERS`` token there only if those places may hold it.
-- A cloud worker manager whose units install from ``requirements_txt`` refuses to start when its units would export (an endpoint, an advertised endpoint, or ``--telemetry-relay``) but the requirements install ``opengris-scaler`` without the ``otel`` or ``all`` extra.
+- A cloud worker manager whose units install from ``requirements_txt`` refuses to start when its units would export (an endpoint, ``--worker-otlp-endpoint``, or ``--telemetry-relay``) but the requirements install ``opengris-scaler`` without the ``otel`` or ``all`` extra.
 - On Windows, a worker or processor that is stopped loses the telemetry it has not exported yet, up to ``OTEL_BSP_SCHEDULE_DELAY`` of spans: Windows stops them without letting them flush.
 - The SDK reads every other setting from the standard `OTEL_* variables <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/>`_, for example ``OTEL_EXPORTER_OTLP_HEADERS`` and ``OTEL_METRIC_EXPORT_INTERVAL``.
 
@@ -37,7 +39,7 @@ Workers that cannot reach a collector, such as workers in cloud units, send thei
 
 - Its workers and processors then export into a buffer, and send it to the scheduler every second; a processor also sends after each task.
 - The scheduler forwards each batch unparsed to ``<OTEL_EXPORTER_OTLP_ENDPOINT>/v1/traces``, ``/v1/metrics``, or ``/v1/logs`` with ``OTEL_EXPORTER_OTLP_HEADERS``, from a thread.
-- A relaying worker ignores ``OTEL_EXPORTER_OTLP_ENDPOINT``, and needs the ``otel`` extra installed.
+- A relaying worker ignores ``OTEL_EXPORTER_OTLP_ENDPOINT``, and needs the ``otel`` extra installed; ``telemetry_relay`` and ``worker_otlp_endpoint`` are mutually exclusive.
 - A full buffer, on a worker or in the scheduler, drops new batches and logs a warning with the count.
 - A scheduler without ``OTEL_EXPORTER_OTLP_ENDPOINT`` drops relayed telemetry, and logs a warning once.
 

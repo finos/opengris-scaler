@@ -51,3 +51,19 @@ class TestAWSAPICallSpans(unittest.TestCase):
             ):
                 telemetry.configure_telemetry(TelemetryService(service_name), "INFO")
             self.assertEqual(instrument.call_count, expected_calls, service_name)
+
+
+class TestOTLPEndpointOverride(unittest.TestCase):
+    def test_a_configured_endpoint_replaces_the_environment_for_the_process_and_its_children(self) -> None:
+        """otlp_endpoint turns export on without the variable, and sets it for the processes this one starts."""
+        with (
+            mock.patch.dict(os.environ),
+            mock.patch.object(telemetry, "_installed_sdk", None),
+            mock.patch.object(telemetry_sdk, "install_sdk") as install_sdk,
+            mock.patch.object(telemetry_sdk, "attach_log_handler"),
+        ):
+            os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+            service = TelemetryService(ServiceName.SCHEDULER, otlp_endpoint="http://collector:4318")
+            telemetry.configure_telemetry(service, "INFO")
+            self.assertEqual(os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"], "http://collector:4318")
+        install_sdk.assert_called_once()

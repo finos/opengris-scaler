@@ -63,6 +63,16 @@ class WorkerConfig(ConfigClass):
             ),
         ),
     )
+    worker_otlp_endpoint: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-woe",
+            help=(
+                "OTLP/HTTP endpoint the workers and processors this worker manager starts export telemetry to, local "
+                "or in cloud units, in place of the worker manager's own; e.g. the collector's address seen through NAT"
+            ),
+        ),
+    )
     io_threads: int = dataclasses.field(
         default=defaults.DEFAULT_IO_THREADS,
         metadata=dict(short="-it", help="set the number of io threads for io backend per worker"),
@@ -90,3 +100,5 @@ class WorkerConfig(ConfigClass):
             raise ValueError("trim_memory_threshold_bytes cannot be negative.")
         if self.io_threads <= 0:
             raise ValueError("io_threads must be a positive integer.")
+        if self.telemetry_relay and self.worker_otlp_endpoint is not None:
+            raise ValueError("telemetry_relay and worker_otlp_endpoint are mutually exclusive.")

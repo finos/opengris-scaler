@@ -174,9 +174,7 @@ class ORBAWSEC2WorkerManager:
         if config.image_id is None:
             requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
             self._validate_requirements(requirements_content)
-            check_unit_requirements_support_telemetry(
-                requirements_content, config.worker_config.telemetry_relay, config.cloud_children_config
-            )
+            check_unit_requirements_support_telemetry(requirements_content, config.worker_config)
 
     def _build_app_config(self) -> dict:
         region = self._config.aws_region
@@ -296,7 +294,7 @@ class ORBAWSEC2WorkerManager:
                 self._logging_paths,
                 self._logging_config_file,
                 self._logging_level,
-                telemetry_service=worker_manager_service(self._config.worker_manager_config.worker_manager_id, None),
+                telemetry_service=worker_manager_service(self._config.worker_manager_config, None),
             )
             await self._setup(sdk)
             try:
@@ -421,7 +419,7 @@ set +e
 
         environment = {
             "SCALER_NETWORK_BACKEND": self._config.network_backend.name,
-            **unit_environment(self._config.cloud_children_config),
+            **unit_environment(self._config.worker_config),
         }
         backend_prefix = "".join(f"{name}={shlex.quote(value)} " for name, value in environment.items())
         wm_id = shlex.quote(str(worker_manager_config.worker_manager_id))

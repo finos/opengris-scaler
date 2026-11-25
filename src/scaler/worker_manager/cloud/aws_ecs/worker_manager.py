@@ -45,9 +45,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         self._ecs_cluster = config.ecs_cluster
         self._ecs_task_image = config.ecs_task_image
         self._ecs_python_requirements = config.ecs_python_requirements
-        check_unit_requirements_support_telemetry(
-            self._ecs_python_requirements, self._telemetry_relay, config.cloud_children_config
-        )
+        check_unit_requirements_support_telemetry(self._ecs_python_requirements, config.worker_config)
         self._ecs_python_version = config.ecs_python_version
         self._ecs_task_definition = config.ecs_task_definition
         self._ecs_task_cpu = config.ecs_task_cpu
@@ -55,6 +53,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id
         self._cloud_children_config = config.cloud_children_config
+        self._worker_config = config.worker_config
 
         aws_session = boto3.Session(
             aws_access_key_id=config.aws_access_key_id,
@@ -157,7 +156,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
                             *(
                                 {"name": name, "value": value}
-                                for name, value in unit_environment(self._cloud_children_config).items()
+                                for name, value in unit_environment(self._worker_config).items()
                             ),
                         ],
                     }

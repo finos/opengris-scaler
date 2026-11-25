@@ -62,8 +62,7 @@ def _run_worker_manager(config: WorkerManagerUnion) -> None:
         config.logging_config.level,
         process_name=config._tag,
         telemetry_service=worker_manager_service(
-            config.worker_manager_config.worker_manager_id,
-            config.unit_id if isinstance(config, NativeWorkerManagerConfig) else None,
+            config.worker_manager_config, config.unit_id if isinstance(config, NativeWorkerManagerConfig) else None
         ),
     )
     register_event_loop(config.worker_config.event_loop)

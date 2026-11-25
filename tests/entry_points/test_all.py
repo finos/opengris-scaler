@@ -379,7 +379,7 @@ class TestRunWorkerManager(unittest.TestCase):
             config.logging_config.config_file,
             "WARNING",
             process_name=config._tag,
-            telemetry_service=worker_manager_service(config.worker_manager_config.worker_manager_id, None),
+            telemetry_service=worker_manager_service(config.worker_manager_config, None),
         )
 
     def _make_orb_aws_ec2_config(self, event_loop="builtin", logging_level="INFO"):

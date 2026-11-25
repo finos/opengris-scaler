@@ -26,6 +26,7 @@ def create_aws_batch_worker(
     worker_manager_address: AddressConfig,
     unit_id: str,
     telemetry_relay: bool,
+    otlp_endpoint: Optional[str],
     name: Optional[str] = None,
     s3_prefix: str = "scaler-tasks",
     capabilities: Optional[Dict[str, int]] = None,
@@ -52,6 +53,7 @@ def create_aws_batch_worker(
         worker_manager_address=worker_manager_address,
         unit_id=unit_id,
         telemetry_relay=telemetry_relay,
+        otlp_endpoint=otlp_endpoint,
         processor_status_provider_factory=AWSBatchProcessorStatusProvider,
         execution_backend_factory=partial(
             AWSBatchExecutionBackend,

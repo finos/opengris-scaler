@@ -53,7 +53,7 @@ def _run_native_worker_manager(worker_manager: NativeWorkerManager) -> None:
         logging_config.config_file,
         logging_config.level,
         process_name="worker_manager_native",
-        telemetry_service=worker_manager_service(config.worker_manager_config.worker_manager_id, config.unit_id),
+        telemetry_service=worker_manager_service(config.worker_manager_config, config.unit_id),
     )
     worker_manager.run()
 

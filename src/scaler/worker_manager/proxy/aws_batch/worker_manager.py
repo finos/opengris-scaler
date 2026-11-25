@@ -47,6 +47,7 @@ class AWSBatchWorkerProvisioner(UnitProvisioner):
             worker_manager_address=self._children_address,
             unit_id=unit_id,
             telemetry_relay=config.worker_config.telemetry_relay,
+            otlp_endpoint=config.worker_config.worker_otlp_endpoint,
         )
         worker.start()
         logger.info(f"started Batch worker process {worker.name!r}")

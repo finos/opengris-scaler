@@ -30,7 +30,10 @@ def run_scheduler(
 
     async def _run() -> None:
         bootstrap_process(
-            logging_paths, logging_config_file, logging_level, telemetry_service=TelemetryService(ServiceName.SCHEDULER)
+            logging_paths,
+            logging_config_file,
+            logging_level,
+            telemetry_service=TelemetryService(ServiceName.SCHEDULER, otlp_endpoint=scheduler_config.otlp_endpoint),
         )
         register_event_loop(scheduler_config.event_loop)
 

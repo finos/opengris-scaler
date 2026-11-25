@@ -10,7 +10,7 @@ class TestOCIInstancesWorkerProvisioner(unittest.TestCase):
         config = MagicMock()
         config.cloud_children_config.unit_startup_timeout_seconds = 1800
         config.worker_config.telemetry_relay = False
-        config.cloud_children_config.advertised_otlp_endpoint = None
+        config.worker_config.worker_otlp_endpoint = None
         with patch.object(OCIInstancesWorkerProvisioner, "_initialize_oci_client"):
             provisioner = OCIInstancesWorkerProvisioner(config, max_instances=-1, children_address=MagicMock())
         self.assertEqual(provisioner.startup_timeout_seconds(), 1800)
@@ -23,7 +23,7 @@ class TestOCIInstancesWorkerProvisionerCreate(unittest.IsolatedAsyncioTestCase):
         config.worker_config.per_worker_capabilities.capabilities = {}
         config.python_worker_environment.requirements_txt = ""
         config.worker_config.telemetry_relay = False
-        config.cloud_children_config.advertised_otlp_endpoint = None
+        config.worker_config.worker_otlp_endpoint = None
         config.container_instance_config.image_pull_username = None
         with patch.object(OCIInstancesWorkerProvisioner, "_initialize_oci_client"):
             provisioner = OCIInstancesWorkerProvisioner(config, max_instances=-1, children_address=MagicMock())

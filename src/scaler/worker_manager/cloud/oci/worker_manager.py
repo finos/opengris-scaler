@@ -33,9 +33,7 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
         self._children_address = children_address
         requirements_txt = config.python_worker_environment.requirements_txt
         check_unit_requirements_support_telemetry(
-            load_requirements_content(requirements_txt) if requirements_txt is not None else None,
-            config.worker_config.telemetry_relay,
-            config.cloud_children_config,
+            load_requirements_content(requirements_txt) if requirements_txt is not None else None, config.worker_config
         )
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._container_instances_client: Any = None
@@ -136,7 +134,7 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
                         "COMMAND": command,
                         "PYTHON_REQUIREMENTS": requirements_content,
                         "PYTHON_VERSION": config.python_worker_environment.python_version,
-                        **unit_environment(config.cloud_children_config),
+                        **unit_environment(config.worker_config),
                     },
                 )
             ],

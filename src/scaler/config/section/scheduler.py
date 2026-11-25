@@ -114,6 +114,16 @@ class SchedulerConfig(ConfigClass):
         default=defaults.DEFAULT_IO_THREADS,
         metadata=dict(short="-it", help="set the number of io threads for io backend"),
     )
+    otlp_endpoint: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-oe",
+            help=(
+                "OTLP/HTTP endpoint the scheduler exports telemetry to, and forwards relayed telemetry to, in place of "
+                "OTEL_EXPORTER_OTLP_ENDPOINT"
+            ),
+        ),
+    )
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
 
     policy: PolicyConfig = dataclasses.field(default_factory=PolicyConfig)

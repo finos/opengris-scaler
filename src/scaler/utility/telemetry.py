@@ -12,6 +12,7 @@ from typing import Any, Awaitable, Dict, List, Optional
 from opentelemetry import propagate, trace
 from opentelemetry.context import Context
 
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.constants import (
     BAGGAGE_ENV,
     BAGGAGE_HEADER,
@@ -26,7 +27,6 @@ from scaler.config.constants import (
 )
 from scaler.io.mixins import AsyncConnector
 from scaler.utility.event_loop import create_async_loop_routine
-from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import LoggingLevel
 from scaler.utility.semantic_conventions import UNIT_ID_ATTRIBUTE, WORKER_MANAGER_ID_ATTRIBUTE
 from scaler.utility.telemetry_relay import TelemetryRelayBuffer, TelemetryRelaySender
@@ -66,13 +66,15 @@ class TelemetryService:
     name: ServiceName
     attributes: Dict[str, str] = dataclasses.field(default_factory=dict)
     relay: bool = False  # send telemetry through the scheduler instead of to OTEL_EXPORTER_OTLP_ENDPOINT
+    # replaces OTEL_EXPORTER_OTLP_ENDPOINT for this process, and so for the processes it starts
+    otlp_endpoint: Optional[str] = None
 
 
-def worker_manager_service(worker_manager_id: WorkerManagerID, unit_id: Optional[str]) -> TelemetryService:
-    attributes = {WORKER_MANAGER_ID_ATTRIBUTE: str(worker_manager_id)}
+def worker_manager_service(worker_manager_config: WorkerManagerConfig, unit_id: Optional[str]) -> TelemetryService:
+    attributes = {WORKER_MANAGER_ID_ATTRIBUTE: str(worker_manager_config.worker_manager_id)}
     if unit_id is not None:
         attributes[UNIT_ID_ATTRIBUTE] = unit_id
-    return TelemetryService(ServiceName.WORKER_MANAGER, attributes)
+    return TelemetryService(ServiceName.WORKER_MANAGER, attributes, otlp_endpoint=worker_manager_config.otlp_endpoint)
 
 
 def empty_trace_context() -> str:
@@ -142,6 +144,9 @@ def configure_telemetry(service: TelemetryService, logging_level: str) -> None:
     handler is re-attached. The SDK reads every other setting (sampler, headers, intervals) from `OTEL_*` variables.
     """
     global _installed_sdk, _relay_buffer
+
+    if service.otlp_endpoint is not None:
+        os.environ[OTLP_ENDPOINT_ENV] = service.otlp_endpoint
 
     if not service.relay and not is_export_configured():
         return

@@ -3,6 +3,7 @@ import re
 from typing import Dict, Optional
 
 from scaler.config.common.cloud_children import CloudChildrenConfig
+from scaler.config.common.worker import WorkerConfig
 from scaler.config.constants import OTLP_ENDPOINT_ENV
 from scaler.config.types.address import AddressConfig
 from scaler.utility.network_util import resolve_port_zero
@@ -50,23 +51,21 @@ def child_link_arguments(
     return f"--parent-address {parent_address} --unit-id {unit_id} --max-task-concurrency {task_concurrency}"
 
 
-def unit_environment(cloud_children_config: CloudChildrenConfig) -> Dict[str, str]:
+def unit_environment(worker_config: WorkerConfig) -> Dict[str, str]:
     """The environment a unit starts with: this manager's OpenTelemetry settings, and the trace of the unit create
     starting it, so the unit's manager and workers export the same way and join the scale-up trace."""
     environment = {**otel_environment(), **trace_context_environment()}
-    if cloud_children_config.advertised_otlp_endpoint is not None:
-        environment[OTLP_ENDPOINT_ENV] = cloud_children_config.advertised_otlp_endpoint
+    if worker_config.worker_otlp_endpoint is not None:
+        environment[OTLP_ENDPOINT_ENV] = worker_config.worker_otlp_endpoint
     return environment
 
 
-def check_unit_requirements_support_telemetry(
-    requirements_content: Optional[str], telemetry_relay: bool, cloud_children_config: CloudChildrenConfig
-) -> None:
+def check_unit_requirements_support_telemetry(requirements_content: Optional[str], worker_config: WorkerConfig) -> None:
     """Fail at start when units would export telemetry but their requirements leave out the OpenTelemetry SDK.
 
     A unit given an endpoint or the relay flag without the SDK exits at start, so every unit would fail."""
     units_export = (
-        telemetry_relay or is_export_configured() or cloud_children_config.advertised_otlp_endpoint is not None
+        worker_config.telemetry_relay or is_export_configured() or worker_config.worker_otlp_endpoint is not None
     )
     if requirements_content is None or not units_export:
         return
@@ -80,7 +79,7 @@ def check_unit_requirements_support_telemetry(
             return
 
     raise ValueError(
-        "units export telemetry (OTEL_EXPORTER_OTLP_ENDPOINT, --advertised-otlp-endpoint, or --telemetry-relay "
+        "units export telemetry (OTEL_EXPORTER_OTLP_ENDPOINT, --worker-otlp-endpoint, or --telemetry-relay "
         "is set), but their requirements install opengris-scaler without the otel extra: "
         "require opengris-scaler[otel]"
     )

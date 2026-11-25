@@ -86,6 +86,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         death_timeout_seconds: int,
         hard_processor_suspend: bool,
         telemetry_relay: bool,
+        otlp_endpoint: Optional[str],
         logging_paths: Tuple[str, ...],
         logging_level: str,
         worker_manager_id: WorkerManagerID,
@@ -122,6 +123,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._death_timeout_seconds = death_timeout_seconds
         self._hard_processor_suspend = hard_processor_suspend
         self._telemetry_relay = telemetry_relay
+        self._otlp_endpoint = otlp_endpoint
 
         self._logging_paths = logging_paths
         self._logging_level = logging_level
@@ -229,6 +231,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
                     UNIT_ID_ATTRIBUTE: self._unit_id,
                 },
                 relay=self._telemetry_relay,
+                otlp_endpoint=self._otlp_endpoint,
             )
         )
         register_event_loop(self._event_loop)
