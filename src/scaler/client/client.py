@@ -7,7 +7,8 @@ from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
-from opentelemetry import trace
+from opentelemetry import baggage, trace
+from opentelemetry.context import Context
 from opentelemetry.trace import SpanKind
 
 from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
@@ -31,7 +32,7 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.utility.semantic_conventions import CLIENT_SUBMIT_SPAN, TASK_ID_ATTRIBUTE
+from scaler.utility.semantic_conventions import CLIENT_SUBMIT_SPAN, ROOT_CLIENT_ID_BAGGAGE, TASK_ID_ATTRIBUTE
 from scaler.utility.telemetry import is_tracing, trace_context_field
 
 if sys.platform != "emscripten":
@@ -137,6 +138,8 @@ class Client:
         self._profiling = profiling
         self._stream_output = stream_output
         self._identity = ClientID.generate_client_id()
+        # a client created inside a task inherits the root client of that task's tree from its baggage
+        self._root_client_id = str(baggage.get_baggage(ROOT_CLIENT_ID_BAGGAGE) or self._identity.decode())
         self._security_config = security_config
         self._capabilities = self.__resolve_capabilities(capabilities)
 
@@ -619,13 +622,17 @@ class Client:
         task_flags_bytes = self.__get_task_flags().serialize()
 
         # the submit span ends at once: it marks where the task left the caller and parents the scheduler's span
+        submit_context = self.__submit_context()
         if is_tracing():
             with tracer.start_as_current_span(
-                CLIENT_SUBMIT_SPAN, kind=SpanKind.PRODUCER, attributes={TASK_ID_ATTRIBUTE: task_id.hex()}
+                CLIENT_SUBMIT_SPAN,
+                context=submit_context,
+                kind=SpanKind.PRODUCER,
+                attributes={TASK_ID_ATTRIBUTE: task_id.hex()},
             ):
                 trace_context_fields = trace_context_field()
         else:
-            trace_context_fields = trace_context_field()  # a context the caller made current still propagates
+            trace_context_fields = trace_context_field(submit_context)  # the caller's context still propagates
 
         task = Task(
             taskId=task_id,
@@ -731,6 +738,7 @@ class Client:
         task_flags_bytes = self.__get_task_flags().serialize()
 
         task_id_to_tasks = dict()
+        submit_context = self.__submit_context()
 
         for node_name, node in call_graph.items():
             task_id = node_name_to_task_id[node_name]
@@ -765,7 +773,7 @@ class Client:
                     for argument in arguments
                 ],
                 capabilities=dict_to_capabilities(capabilities),
-                **trace_context_field(),
+                **trace_context_field(submit_context),
             )
 
         result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]
@@ -802,6 +810,10 @@ class Client:
                 raise ValueError(f"cannot find {key=} in graph")
 
         return graph_task, compute_futures, ready_futures
+
+    def __submit_context(self) -> Context:
+        """The current context with this client's root client ID in its baggage, for every span and nested client."""
+        return baggage.set_baggage(ROOT_CLIENT_ID_BAGGAGE, self._root_client_id)
 
     def __get_task_flags(self) -> TaskFlags:
         parent_task_priority = self.__get_parent_task_priority()

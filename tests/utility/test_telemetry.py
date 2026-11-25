@@ -56,6 +56,13 @@ def traced_work(value: int) -> int:
         return value + 1
 
 
+def nested_submit(address: str) -> str:
+    """Submit a task from a client nested in this one, and return that client's ID."""
+    with Client(address=address) as nested_client:
+        nested_client.submit(traced_work, 1).result()
+        return nested_client.identity.decode()
+
+
 def failing_work() -> None:
     raise ValueError("task failed on purpose")
 
@@ -110,6 +117,7 @@ class TestTelemetry(unittest.TestCase):
         try:
             with Client(address=self.cluster.get_address()) as client:
                 self.assertEqual(client.submit(traced_work, 1).result(), 2)
+                client_id = client.identity.decode()
         finally:
             context.detach(token)
 
@@ -120,13 +128,30 @@ class TestTelemetry(unittest.TestCase):
         for span in spans:
             self.assertEqual(int.from_bytes(span.span.trace_id, "big"), CLIENT_TRACE_ID, span.name)
             self.assertEqual(span.attributes.get("job"), "backtest-42", span.name)
+            self.assertEqual(span.attributes.get("scaler.client.root_id"), client_id, span.name)
 
         self.assertEqual(int.from_bytes(spans[0].span.parent_span_id, "big"), CLIENT_SPAN_ID)
         for parent, child in zip(spans, spans[1:]):
             self.assertEqual(child.span.parent_span_id, parent.span.span_id, f"{child.name} under {parent.name}")
 
         self.assertEqual(spans[0].attributes["scaler.task.function"], "traced_work")
+        self.assertEqual(spans[0].attributes["scaler.client.id"], client_id)
         self.assertEqual(spans[0].attributes["scaler.task.state"], "success")
+
+    def test_a_nested_clients_spans_carry_the_root_client_and_their_own(self) -> None:
+        """A nested client's task spans carry the outer client as root, and its scheduler span the nested client."""
+        with Client(address=self.cluster.get_address()) as client:
+            nested_client_id = client.submit(nested_submit, self.cluster.get_address()).result()
+            client_id = client.identity.decode()
+
+        wait_for(lambda: len(self.receiver.spans_named("scaler.scheduler.task")) == 2, "both scheduler task spans")
+        wait_for(lambda: bool(self.receiver.spans_named("user.work")), "the nested task's user span")
+
+        scheduler_spans = self.receiver.spans_named("scaler.scheduler.task")
+        submitters = {span.attributes["scaler.client.id"] for span in scheduler_spans}
+        self.assertEqual(submitters, {client_id, nested_client_id})
+        for span in [*scheduler_spans, *self.receiver.spans_named("user.work")]:
+            self.assertEqual(span.attributes.get("scaler.client.root_id"), client_id, span.name)
 
     def test_queue_waits_are_spans_under_the_scheduler_and_worker_spans(self) -> None:
         """Each wait for a worker or a processor is a queued span that ends before the next stage starts."""

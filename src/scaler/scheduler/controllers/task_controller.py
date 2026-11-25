@@ -155,6 +155,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         # the first entry into inactive takes no transition, the machine starts there by construction
         self._task_state_manager.add_state_machine(
             task.taskId,
+            task.source,
             task.traceContext,
             lambda: self._object_controller.get_object_name(task.funcObjectId).decode(errors="replace"),
         )
