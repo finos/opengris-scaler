@@ -1,6 +1,7 @@
 import asyncio
 import multiprocessing
 import os
+import sys
 import time
 import unittest
 from typing import Callable
@@ -30,6 +31,9 @@ CLIENT_TRACE_ID = 0x0123456789ABCDEF0123456789ABCDEF
 CLIENT_SPAN_ID = 0x0123456789ABCDEF
 
 TASK_COUNT = 20
+
+# Windows stops a worker or processor with TerminateProcess, which drops the telemetry it has not exported yet
+WINDOWS_STOP_LOSES_TELEMETRY = "Windows stops workers and processors without letting them flush"
 
 # the parent's create_unit span, as a cloud worker manager passes it to a unit in TRACEPARENT
 PARENT_CREATE_UNIT_TRACE_ID = 0x00112233445566778899AABBCCDDEEFF
@@ -138,6 +142,7 @@ class TestTelemetry(unittest.TestCase):
         self.assertEqual(spans[0].attributes["scaler.client.id"], client_id)
         self.assertEqual(spans[0].attributes["scaler.task.state"], "success")
 
+    @unittest.skipIf(sys.platform == "win32", WINDOWS_STOP_LOSES_TELEMETRY)
     def test_a_nested_clients_spans_carry_the_root_client_and_their_own(self) -> None:
         """A nested client's task spans carry the outer client as root, and its scheduler span the nested client."""
         with Client(address=self.cluster.get_address()) as client:
@@ -244,6 +249,7 @@ class TestTelemetryRelay(unittest.TestCase):
         self.assertEqual(user_work.span.parent_span_id, execute.span.span_id)
         self.assertEqual(execute.service_name, "scaler-processor")
 
+    @unittest.skipIf(sys.platform == "win32", WINDOWS_STOP_LOSES_TELEMETRY)
     def test_a_relaying_worker_sends_its_buffered_spans_before_it_exits(self) -> None:
         """Worker spans still in the SDK's batch when the cluster stops reach the collector."""
         # the default 5s batch delay holds the worker spans in its SDK until the worker exits
