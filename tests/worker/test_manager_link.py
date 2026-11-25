@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from typing import List
+from typing import List, Optional
 
 from scaler import SchedulerClusterCombo
 from scaler.config.defaults import (
@@ -22,6 +22,7 @@ from scaler.worker.worker import Worker
 from tests.utility.utility import logging_test_name
 
 UNIT_ID = "unit-under-test"
+FAILING_PRELOAD = "tests.utility.utility:failing_preload()"
 TIMEOUT_SECONDS = 60
 
 
@@ -59,13 +60,13 @@ class _FakeManager:
             self.disconnected.set()
 
 
-def _worker(combo: SchedulerClusterCombo, manager: _FakeManager) -> Worker:
+def _worker(combo: SchedulerClusterCombo, manager: _FakeManager, preload: Optional[str] = None) -> Worker:
     return Worker(
         event_loop="builtin",
         name="manager_link",
         address=AddressConfig.from_string(combo.get_address()),
         object_storage_address=None,
-        preload=None,
+        preload=preload,
         capabilities={},
         io_threads=DEFAULT_IO_THREADS,
         task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
@@ -104,6 +105,27 @@ class TestWorkerManagerLink(unittest.IsolatedAsyncioTestCase):
             await loop.run_in_executor(None, combo.shutdown)
             await asyncio.wait_for(manager.disconnected.wait(), TIMEOUT_SECONDS)
             await loop.run_in_executor(None, worker.join, TIMEOUT_SECONDS)
+        finally:
+            if worker.is_alive():
+                worker.kill()
+                worker.join()
+            manager_task.cancel()
+            manager.destroy()
+            combo.shutdown()
+
+    async def test_a_worker_exits_when_its_processor_dies_before_initializing(self) -> None:
+        """A processor that dies at startup ends its worker with exit code 1, instead of leaving it idle forever."""
+        combo = SchedulerClusterCombo(n_workers=0)
+        manager = _FakeManager(AddressConfig(SocketType.tcp, "127.0.0.1", OS_PICKED_PORT))
+        await manager.bind()
+        manager_task = asyncio.ensure_future(manager.run())
+        worker = _worker(combo, manager, preload=FAILING_PRELOAD)
+        loop = asyncio.get_running_loop()
+        try:
+            worker.start()
+            await asyncio.wait_for(manager.disconnected.wait(), TIMEOUT_SECONDS)
+            await loop.run_in_executor(None, worker.join, TIMEOUT_SECONDS)
+            self.assertEqual(worker.exitcode, 1)
         finally:
             if worker.is_alive():
                 worker.kill()
