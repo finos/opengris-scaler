@@ -1,4 +1,5 @@
 import contextlib
+import ctypes
 import logging
 import multiprocessing
 import os
@@ -46,6 +47,8 @@ SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger 
 # Attempts at handing a finished task's result off, and the wait before the second one, doubling from
 # there. The connectors reconnect on their own, so the delays only have to outlast a reconnect.
 RESULT_HAND_OFF_MAX_ATTEMPTS = 4
+# how often the stop listener checks whether the agent asked the processor to stop
+STOP_POLL_SECONDS = 0.05
 RESULT_HAND_OFF_RETRY_DELAY_SECONDS = 1.0
 
 _current_processor: ContextVar[Optional["Processor"]] = ContextVar("_current_processor", default=None)
@@ -64,6 +67,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
         suspend_trigger: Optional[EventType],
+        stop_requested: Optional[ctypes.c_bool],
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         logging_paths: Tuple[str, ...],
@@ -85,10 +89,12 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._resume_event = resume_event
         self._resumed_event = resumed_event
         self._suspend_trigger = suspend_trigger
+        self._stop_requested = stop_requested
 
         # _listener_shutdown is created in __initialize (the child process) because threading.Event
         # cannot be pickled across the spawn boundary on Windows.
         self._suspend_listener: Optional[threading.Thread] = None
+        self._stop_listener: Optional[threading.Thread] = None
         self._listener_shutdown: Optional[threading.Event] = None
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
@@ -170,6 +176,12 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             # so the handler would never run. Skip registration to keep the Windows code path honest.
             self.__register_signal("SIGTERM", self.__interrupt)
 
+        if self._stop_requested is not None:
+            self._stop_listener = threading.Thread(
+                target=self.__stop_listener_main, name="ProcessorStopListener", daemon=True
+            )
+            self._stop_listener.start()
+
         if self._resume_event is None:
             return
 
@@ -216,6 +228,16 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             except RuntimeError:
                 logger.exception(f"Processor[{self.pid}]: failed to schedule suspend pending call")
 
+    def __stop_listener_main(self):
+        # Runs __interrupt from this thread when the agent asks the processor to stop, on every platform. Not a
+        # pending call: an idle processor's main thread waits in a C call, where a pending call never runs.
+        assert self._stop_requested is not None
+        assert self._listener_shutdown is not None
+        while not self._stop_requested.value:
+            if self._listener_shutdown.wait(STOP_POLL_SECONDS):
+                return
+        self.__interrupt()
+
     def __run_forever(self):
         try:
             self._connector_agent.send(ProcessorInitialized())
@@ -259,6 +281,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 self._suspend_trigger.set()
             if self._suspend_listener is not None:
                 self._suspend_listener.join(timeout=1.0)
+            if self._stop_listener is not None:
+                self._stop_listener.join(timeout=1.0)
 
             self._object_cache.destroy()
             self._connector_agent.destroy()

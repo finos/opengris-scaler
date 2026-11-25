@@ -29,6 +29,7 @@ def _make_processor() -> Processor:
         resume_event=None,
         resumed_event=None,
         suspend_trigger=None,
+        stop_requested=None,
         garbage_collect_interval_seconds=60,
         trim_memory_threshold_bytes=10**9,
         logging_paths=("/dev/stdout",),

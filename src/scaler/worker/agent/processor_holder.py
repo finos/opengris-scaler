@@ -1,3 +1,4 @@
+import ctypes
 import logging
 import multiprocessing
 import os
@@ -41,13 +42,17 @@ class ProcessorHolder:
         self._task_started_at: Optional[float] = None
         self._suspended = False
 
+        context = multiprocessing.get_context("spawn")
+        # the processor stops itself when this is set, so it exits through its own teardown on every platform; a
+        # lock-free flag, since setting a multiprocessing.Event blocks on a waiter that died
+        self._stop_requested = context.RawValue(ctypes.c_bool, False)
+
         self._hard_suspend = hard_suspend
         self._suspend_trigger = None
         if hard_suspend:
             self._resume_event = None
             self._resumed_event = None
         else:
-            context = multiprocessing.get_context("spawn")
             self._resume_event = context.Event()
             self._resumed_event = context.Event()
             if sys.platform == "win32":
@@ -63,6 +68,7 @@ class ProcessorHolder:
             resume_event=self._resume_event,
             resumed_event=self._resumed_event,
             suspend_trigger=self._suspend_trigger,
+            stop_requested=self._stop_requested,
             garbage_collect_interval_seconds=garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=trim_memory_threshold_bytes,
             logging_paths=logging_paths,
@@ -176,22 +182,17 @@ class ProcessorHolder:
         return True
 
     def kill(self):
-        # On POSIX this maps to SIGTERM and gives the processor a chance to run its __interrupt handler
-        # (which destroys connectors to break blocking ZMQ reads). On Windows psutil.terminate() is
-        # TerminateProcess and is unconditional; the SIGKILL fallback below is unnecessary but harmless.
-        try:
-            self._process.terminate()
-        except psutil.NoSuchProcess:
-            self.set_task(None)
-            return
+        """Ask the processor to stop, and kill it if it has not exited in time.
 
+        Its stop listener destroys its connectors, as its SIGTERM handler does on POSIX, so an idle processor exits
+        through its own teardown. A signal would not do on Windows, where terminate() is TerminateProcess.
+        """
+        self._stop_requested.value = True
         self._processor.join(DEFAULT_PROCESSOR_KILL_DELAY_SECONDS)
 
         if self._processor.exitcode is None:
-            # TODO: some processors fail to interrupt because of a blocking 0mq call. Ideally we should interrupt
-            # these blocking calls instead of sending a SIGKILL signal.
-
-            logger.warning(f"Processor[{self.pid()}] does not terminate in time, send SIGKILL.")
+            # a processor busy in user code or suspended does not reach its teardown in time
+            logger.warning(f"Processor[{self.pid()}] does not stop in time, killing it.")
             try:
                 self._process.kill()
             except psutil.NoSuchProcess:
