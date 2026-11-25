@@ -16,7 +16,7 @@ from scaler.protocol.capnp import (
     TaskResult,
     TaskResultType,
 )
-from scaler.utility.exceptions import ProcessorDiedError
+from scaler.utility.exceptions import ProcessorDiedError, ProcessorStartupError
 from scaler.utility.exitcode import describe_exitcode
 from scaler.utility.identifiers import ObjectID, ProcessorID, TaskID, WorkerID
 from scaler.utility.metadata.profile_result import ProfileResult
@@ -208,6 +208,13 @@ class VanillaProcessorManager(ProcessorManager):
                 )
             )
 
+    async def on_processor_died_starting(self, process_status: str):
+        holder = self.starting_processor()
+        assert holder is not None
+
+        death = f"process_status={process_status!r} exitcode={describe_exitcode(holder.exitcode())}"
+        raise ProcessorStartupError(f"Processor[{holder.pid()}] died before initializing: {death}")
+
     async def on_suspend_task(self, task_id: TaskID) -> bool:
         assert self._current_holder is not None
         holder = self._current_holder
@@ -331,6 +338,12 @@ class VanillaProcessorManager(ProcessorManager):
 
     def processors(self) -> List[ProcessorHolder]:
         return list(self._holders_by_processor_id.values())
+
+    def starting_processor(self) -> Optional[ProcessorHolder]:
+        """The current processor while it has not sent ProcessorInitialized, which `processors()` leaves out."""
+        if self._current_holder is None or self._current_holder.initialized():
+            return None
+        return self._current_holder
 
     def __start_new_processor(self):
         object_storage_address = self._heartbeat_manager.get_object_storage_address()

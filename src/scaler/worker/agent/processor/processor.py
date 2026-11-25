@@ -147,15 +147,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             identity=self._identity, address=self._object_storage_address, security_config=self._security_config
         )
 
-        self._object_cache = ObjectCache(
-            garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
-            trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
-        )
-        self._object_cache.start()
-
-        self.__register_signals()
-
-        # Execute optional preload hook if provided
+        # Runs before any thread starts: a non-daemon thread would keep the process alive after a failed preload.
         if self._preload is not None:
             try:
                 execute_preload(self._preload)
@@ -163,6 +155,14 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 raise RuntimeError(
                     f"Processor[{self.pid}] initialization failed due to preload error: {self._preload}"
                 ) from e
+
+        self._object_cache = ObjectCache(
+            garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
+            trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
+        )
+        self._object_cache.start()
+
+        self.__register_signals()
 
     def __register_signals(self):
         if sys.platform != "win32":

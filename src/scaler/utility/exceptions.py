@@ -18,6 +18,12 @@ class ProcessorDiedError(Exception):
     pass
 
 
+class ProcessorStartupError(Exception):
+    """A processor died before initializing, so its worker can never run a task."""
+
+    pass
+
+
 class TaskCancelUnsupportedError(Exception):
     """A proxy execution backend cannot stop a running task, so the cancel fails and the task reports its result."""
 

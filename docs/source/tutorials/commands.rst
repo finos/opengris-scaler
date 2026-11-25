@@ -546,6 +546,7 @@ Preload hook
 ^^^^^^^^^^^^
 
 Workers can run initialization logic before processing tasks via ``--preload``.
+A preload that raises ends the worker with exit code 1, and the scheduler moves the worker's tasks to other workers.
 
 .. code-block:: bash
 

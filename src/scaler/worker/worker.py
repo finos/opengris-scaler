@@ -31,7 +31,7 @@ from scaler.protocol.capnp import (
     WorkerHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
-from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
+from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException, ProcessorStartupError
 from scaler.utility.identifiers import ProcessorID, WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
@@ -169,6 +169,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
                 exit_code = 1
         except ClientShutdownException as e:
             logger.info(f"{self.identity!r}: {str(e)}")
+        except ProcessorStartupError as e:
+            logger.error(f"{self.identity!r}: {e}")
+            exit_code = 1
         except TimeoutError as e:
             # The worker decided on its own that it is orphaned (no heartbeat from the scheduler
             # within death_timeout_seconds), not that anyone asked it to stop: an anomaly worth a
