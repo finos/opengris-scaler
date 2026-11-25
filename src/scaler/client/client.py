@@ -4,11 +4,13 @@ import logging
 import sys
 import threading
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple, TypeVar, Union
 
 from opentelemetry import baggage, trace
-from opentelemetry.context import Context, attach, detach
+from opentelemetry.context import Context, attach, detach, get_current
 from opentelemetry.trace import SpanKind
 
 from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
@@ -32,7 +34,12 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.utility.semantic_conventions import CLIENT_ID_ATTRIBUTE, CLIENT_SUBMIT_SPAN, TASK_ID_ATTRIBUTE
+from scaler.utility.semantic_conventions import (
+    CLIENT_ID_ATTRIBUTE,
+    CLIENT_SUBMIT_SPAN,
+    RESERVED_ATTRIBUTE_PREFIX,
+    TASK_ID_ATTRIBUTE,
+)
 from scaler.utility.telemetry import is_tracing, trace_context_field
 
 if sys.platform != "emscripten":
@@ -44,6 +51,9 @@ else:
 logger = logging.getLogger(__name__)
 
 tracer = trace.get_tracer(__name__)
+
+# the tags of the client.tags() blocks the current thread or asyncio task is in, per client
+_block_tags: ContextVar[Mapping[ClientID, Dict[str, str]]] = ContextVar("scaler_client_block_tags", default={})
 
 
 _T = TypeVar("_T")
@@ -78,6 +88,7 @@ class Client:
         object_storage_address: Optional[str] = None,
         security_config: Optional[SecurityConfig] = None,
         capabilities: Optional[Dict[str, int]] = None,
+        tags: Optional[Mapping[str, Any]] = None,
     ):
         """
         The Scaler Client used to send tasks to a scheduler.
@@ -102,6 +113,9 @@ class Client:
                              `capabilities` replaces them. If None, a client inside a worker takes the capabilities of
                              the task it runs in, and any other client uses `{}`.
         :type capabilities: Optional[Dict[str, int]]
+        :param tags: Telemetry tags of every task this client submits, e.g. `{"job": "backtest-42"}`: each span of those
+                     tasks carries them as attributes, as strings. `tags()` adds tags for a block of submits.
+        :type tags: Optional[Mapping[str, Any]]
         """
         self.__initialize__(
             address,
@@ -113,6 +127,7 @@ class Client:
             object_storage_address,
             security_config,
             capabilities,
+            tags,
         )
 
     def __initialize__(
@@ -126,8 +141,10 @@ class Client:
         object_storage_address: Optional[str] = None,
         security_config: Optional[SecurityConfig] = None,
         capabilities: Optional[Dict[str, int]] = None,
+        tags: Optional[Mapping[str, Any]] = None,
     ):
         check_browser_runtime()
+        self._tags = _validate_tags(tags or {})
 
         self._future_manager: Optional[ClientFutureManager] = None
         self._bridge: Optional[ClientAgentBridge] = None
@@ -224,6 +241,7 @@ class Client:
             "timeout_seconds": self._timeout_seconds,
             "heartbeat_interval_seconds": self._heartbeat_interval_seconds,
             "capabilities": self._capabilities,
+            "tags": self._tags,
         }
 
     def __setstate__(self, state: dict) -> None:
@@ -235,7 +253,29 @@ class Client:
             timeout_seconds=state["timeout_seconds"],
             heartbeat_interval_seconds=state["heartbeat_interval_seconds"],
             capabilities=state["capabilities"],
+            tags=state["tags"],
         )
+
+    @contextmanager
+    def tags(self, **tags: Any) -> Iterator[None]:
+        """
+        Add telemetry tags to every task this client submits inside the block, over the client's own tags.
+
+        .. code:: python
+
+            with client.tags(stage="aggregate"):
+                client.submit(aggregate, results)
+
+        Blocks nest, the innermost winning, and apply to the thread or asyncio task that entered them. Keys starting
+        with `scaler.` are reserved.
+        """
+        block_tags = _block_tags.get()
+        client_block_tags = {**block_tags.get(self._identity, {}), **_validate_tags(tags)}
+        token = _block_tags.set({**block_tags, self._identity: client_block_tags})
+        try:
+            yield
+        finally:
+            _block_tags.reset(token)
 
     def submit(self, fn: Callable, *args, **kwargs) -> ScalerFuture:
         """
@@ -811,8 +851,16 @@ class Client:
         return graph_task, compute_futures, ready_futures
 
     def __submit_context(self) -> Context:
-        """The current context, its baggage kept, with this client's ID in it: a nested client replaces its parent's."""
-        return baggage.set_baggage(CLIENT_ID_ATTRIBUTE, self._identity.decode())
+        """The current context with this client's tags and ID in its baggage.
+
+        Lowest first: the baggage already current (a parent task's tags), the client's tags, its `tags()` blocks, and
+        its ID, which replaces a parent client's.
+        """
+        submit_context = get_current()
+        tags = {**self._tags, **_block_tags.get().get(self._identity, {}), CLIENT_ID_ATTRIBUTE: self._identity.decode()}
+        for key, value in tags.items():
+            submit_context = baggage.set_baggage(key, value, submit_context)
+        return submit_context
 
     def __get_task_flags(self) -> TaskFlags:
         parent_task_priority = self.__get_parent_task_priority()
@@ -905,3 +953,11 @@ class Client:
             return None
 
         return str(current_processor.object_storage_address())
+
+
+def _validate_tags(tags: Mapping[str, Any]) -> Dict[str, str]:
+    """The tags as baggage holds them, strings; a key under Scaler's own prefix is refused."""
+    reserved = [key for key in tags if key.startswith(RESERVED_ATTRIBUTE_PREFIX)]
+    if reserved:
+        raise ValueError(f"tag keys starting with {RESERVED_ATTRIBUTE_PREFIX!r} are reserved: {reserved}")
+    return {key: str(value) for key, value in tags.items()}

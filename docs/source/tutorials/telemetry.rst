@@ -101,21 +101,46 @@ Each change of a worker manager's desired concurrency is one trace, with a span 
 - Those calls carry the span's context to AWS in the ``X-Amzn-Trace-Id`` header.
 - OCI API calls have no spans: the OCI SDK has no OpenTelemetry support.
 
-Baggage
--------
+Tags
+----
 
-- `Baggage <https://opentelemetry.io/docs/concepts/signals/baggage/>`_ the client sets travels with each task, and every span the scheduler, worker, and processor start copies it into its attributes.
-- Tag a job once on the client, and every span of its tasks carries the tag:
+Tag a client's tasks, and every span of those tasks carries the tags as attributes:
 
-  .. code-block:: python
+.. code-block:: python
 
-      from opentelemetry import baggage, context
+    with Client(address=address, tags={"team": "rates", "job": "backtest-42"}) as client:
+        results = client.map(simulate, range(1000))
 
-      token = context.attach(baggage.set_baggage("job", "backtest-42"))
-      try:
-          futures = [client.submit(simulate, seed) for seed in range(100)]
-      finally:
-          context.detach(token)
+        with client.tags(stage="aggregate"):
+            client.submit(aggregate, results)
+
+- ``tags`` on the client tags everything it submits; a ``client.tags()`` block adds tags to the submits inside it.
+- A task's tags are, lowest first: the `baggage <https://opentelemetry.io/docs/concepts/signals/baggage/>`_ current when it is submitted, the client's tags, its ``tags()`` blocks with the innermost winning, and ``scaler.client.id``.
+- A ``tags()`` block applies to that client only, in the thread or asyncio task that entered it.
+- Values are sent as strings, and keys starting with ``scaler.`` are reserved.
+- A client created inside a task inherits the task's tags, and adds its own over them.
+- Tags travel as W3C baggage: user code that calls other services through instrumented HTTP libraries sends them on, so a tag must never hold a secret.
+
+Spans in task code
+------------------
+
+A task function creates spans with the OpenTelemetry API; they nest under ``scaler.processor.execute`` and carry the task's tags:
+
+.. code-block:: python
+
+    from opentelemetry import trace
+
+    tracer = trace.get_tracer("my_package")
+
+    def simulate(seed: int) -> float:
+        with tracer.start_as_current_span("simulate.load") as span:
+            span.set_attribute("seed", seed)
+            data = load(seed)
+        with tracer.start_as_current_span("simulate.run"):
+            return run(data)
+
+- The processor exports them with its own spans: the task code needs only ``opentelemetry-api``, which Scaler depends on.
+- Without ``OTEL_EXPORTER_OTLP_ENDPOINT`` set for the worker, the calls are no-ops.
 
 Metrics
 -------
