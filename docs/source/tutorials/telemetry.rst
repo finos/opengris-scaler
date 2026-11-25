@@ -92,6 +92,9 @@ Each change of a worker manager's desired concurrency is one trace, with a span 
 - ``scaler.worker.start`` ends with an error status when the worker exits before it reaches the scheduler.
 - A cloud worker manager starts each unit with ``TRACEPARENT`` and ``BAGGAGE`` set to the ``scaler.worker_manager.create_unit`` span that started it, and the unit's manager creates its workers under them.
 - The gap between the end of a cloud unit's ``create_unit`` span and the start of its manager's ``create_unit`` spans is the unit's boot time.
+- Each call that destroys a unit is a ``scaler.worker_manager.destroy_unit`` span, carrying ``scaler.unit.id`` and ending with an error status when the call raised; a retried destroy gets another.
+- A unit shed to scale down is destroyed under the ``scaler.scheduler.scaling_decision`` that lowered the desired concurrency, after ``--scale-down-cooldown-seconds``.
+- A unit destroyed because it was lost, because it exited, or because its manager is stopping starts a trace of its own.
 
 Baggage
 -------

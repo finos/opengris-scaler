@@ -25,6 +25,7 @@ PROCESSOR_FETCH_OBJECTS_SPAN = "scaler.processor.fetch_objects"
 PROCESSOR_STORE_RESULT_SPAN = "scaler.processor.store_result"
 SCHEDULER_SCALING_DECISION_SPAN = "scaler.scheduler.scaling_decision"
 WORKER_MANAGER_CREATE_UNIT_SPAN = "scaler.worker_manager.create_unit"
+WORKER_MANAGER_DESTROY_UNIT_SPAN = "scaler.worker_manager.destroy_unit"
 WORKER_START_SPAN = "scaler.worker.start"
 
 # events on the worker task span; the scheduler task span names its events after the task event classes
