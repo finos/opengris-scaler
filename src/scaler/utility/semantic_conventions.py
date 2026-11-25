@@ -2,9 +2,8 @@
 
 # resource and span attributes
 SERVICE_NAMESPACE = "scaler"
+# also baggage, so every span of a task carries the client that submitted it
 CLIENT_ID_ATTRIBUTE = "scaler.client.id"
-# baggage, so every span carries it: the client that started the tree of tasks, inherited by clients nested in them
-ROOT_CLIENT_ID_BAGGAGE = "scaler.client.root_id"
 WORKER_ID_ATTRIBUTE = "scaler.worker.id"
 WORKER_MANAGER_ID_ATTRIBUTE = "scaler.worker_manager.id"
 UNIT_ID_ATTRIBUTE = "scaler.unit.id"

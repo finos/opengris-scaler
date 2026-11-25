@@ -132,31 +132,37 @@ class TestTelemetry(unittest.TestCase):
         for span in spans:
             self.assertEqual(int.from_bytes(span.span.trace_id, "big"), CLIENT_TRACE_ID, span.name)
             self.assertEqual(span.attributes.get("job"), "backtest-42", span.name)
-            self.assertEqual(span.attributes.get("scaler.client.root_id"), client_id, span.name)
+            self.assertEqual(span.attributes.get("scaler.client.id"), client_id, span.name)
 
         self.assertEqual(int.from_bytes(spans[0].span.parent_span_id, "big"), CLIENT_SPAN_ID)
         for parent, child in zip(spans, spans[1:]):
             self.assertEqual(child.span.parent_span_id, parent.span.span_id, f"{child.name} under {parent.name}")
 
         self.assertEqual(spans[0].attributes["scaler.task.function"], "traced_work")
-        self.assertEqual(spans[0].attributes["scaler.client.id"], client_id)
         self.assertEqual(spans[0].attributes["scaler.task.state"], "success")
 
     @unittest.skipIf(sys.platform == "win32", WINDOWS_STOP_LOSES_TELEMETRY)
-    def test_a_nested_clients_spans_carry_the_root_client_and_their_own(self) -> None:
-        """A nested client's task spans carry the outer client as root, and its scheduler span the nested client."""
+    def test_a_nested_clients_spans_carry_its_own_id_inside_the_parent_task(self) -> None:
+        """A nested client's task spans carry the nested client's ID, in the parent task's trace under its execute."""
         with Client(address=self.cluster.get_address()) as client:
             nested_client_id = client.submit(nested_submit, self.cluster.get_address()).result()
             client_id = client.identity.decode()
 
-        wait_for(lambda: len(self.receiver.spans_named("scaler.scheduler.task")) == 2, "both scheduler task spans")
+        wait_for(lambda: len(self.receiver.spans_named("scaler.processor.execute")) == 2, "both execute spans")
         wait_for(lambda: bool(self.receiver.spans_named("user.work")), "the nested task's user span")
 
-        scheduler_spans = self.receiver.spans_named("scaler.scheduler.task")
-        submitters = {span.attributes["scaler.client.id"] for span in scheduler_spans}
-        self.assertEqual(submitters, {client_id, nested_client_id})
-        for span in [*scheduler_spans, *self.receiver.spans_named("user.work")]:
-            self.assertEqual(span.attributes.get("scaler.client.root_id"), client_id, span.name)
+        execute_spans = self.receiver.spans_named("scaler.processor.execute")
+        executes = {span.attributes["scaler.client.id"]: span for span in execute_spans}
+        self.assertEqual(set(executes), {client_id, nested_client_id})
+        parent_execute, nested_execute = executes[client_id], executes[nested_client_id]
+
+        (user_work,) = self.receiver.spans_named("user.work")
+        self.assertEqual(user_work.attributes.get("scaler.client.id"), nested_client_id)
+        self.assertEqual(user_work.span.parent_span_id, nested_execute.span.span_id)
+        self.assertEqual(nested_execute.span.trace_id, parent_execute.span.trace_id)
+
+        (nested_submit_span,) = self.receiver.spans_named("scaler.client.submit")
+        self.assertEqual(nested_submit_span.span.parent_span_id, parent_execute.span.span_id)
 
     def test_queue_waits_are_spans_under_the_scheduler_and_worker_spans(self) -> None:
         """Each wait for a worker or a processor is a queued span that ends before the next stage starts."""

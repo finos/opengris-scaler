@@ -8,9 +8,8 @@ from opentelemetry.trace import Span, SpanKind, Status, StatusCode
 from scaler.protocol.capnp import TaskState
 from scaler.scheduler.task.task_event import TaskEvent
 from scaler.scheduler.task.task_state_machine import TaskStateMachine
-from scaler.utility.identifiers import ClientID, TaskID
+from scaler.utility.identifiers import TaskID
 from scaler.utility.semantic_conventions import (
-    CLIENT_ID_ATTRIBUTE,
     FUNCTION_NAME_ATTRIBUTE,
     SCHEDULER_QUEUED_SPAN,
     SCHEDULER_TASK_SPAN,
@@ -50,7 +49,7 @@ class TaskStateManager:
         self._statistics: Dict[TaskState, int] = {state: 0 for state in self.TASK_STATES}
 
     def add_state_machine(
-        self, task_id: TaskID, client_id: ClientID, trace_context: str, function_name: Callable[[], str]
+        self, task_id: TaskID, trace_context: str, function_name: Callable[[], str]
     ) -> TaskStateMachine:
         """Create new task state machine, the machine starts in the inactive state.
 
@@ -72,11 +71,7 @@ class TaskStateManager:
             SCHEDULER_TASK_SPAN,
             context=parent_context,
             kind=SpanKind.CONSUMER,
-            attributes={
-                TASK_ID_ATTRIBUTE: task_id.hex(),
-                CLIENT_ID_ATTRIBUTE: client_id.decode(),
-                FUNCTION_NAME_ATTRIBUTE: function_name(),
-            },
+            attributes={TASK_ID_ATTRIBUTE: task_id.hex(), FUNCTION_NAME_ATTRIBUTE: function_name()},
         )
         self._task_id_to_context[task_id] = trace.set_span_in_context(span, parent_context)
         self.__start_queued_span(task_id)

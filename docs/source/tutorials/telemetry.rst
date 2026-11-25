@@ -74,8 +74,8 @@ Each task is one trace:
 - The client does not install the SDK: ``scaler.client.submit`` records only when the calling application configured OpenTelemetry, and joins the caller's trace.
 - Without a client span, ``scaler.scheduler.task`` starts the trace.
 - The task function runs inside ``scaler.processor.execute``, so spans it starts with the OpenTelemetry API nest under it.
-- ``scaler.scheduler.task`` carries ``scaler.task.id``, ``scaler.client.id`` of the client that submitted it, ``scaler.task.function``, and the terminal ``scaler.task.state``, and ends with an error status when the task failed.
-- Every span of a task carries ``scaler.client.root_id``: the client that submitted it or, for a task submitted by a client created inside another task, the root client of that tree, so one attribute selects everything a top-level client caused.
+- ``scaler.scheduler.task`` carries ``scaler.task.id``, ``scaler.task.function``, and the terminal ``scaler.task.state``, and ends with an error status when the task failed.
+- Every span of a task carries ``scaler.client.id``, the client that submitted it, through baggage; a client created inside a task replaces its parent's, and its tasks' spans nest under that task's ``scaler.processor.execute`` in the same trace.
 - With a client span, every Scaler process follows the client's sampling decision.
 - Without one, the scheduler decides by the standard ``OTEL_TRACES_SAMPLER`` variable, and the worker and processor follow it.
 
