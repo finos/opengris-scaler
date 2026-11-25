@@ -12,9 +12,11 @@ from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConf
 from scaler.config.types.address import AddressConfig
 from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
     child_link_arguments,
     format_capabilities,
     load_requirements_content,
+    unit_environment,
 )
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -29,6 +31,11 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
         self._config = config
         self._max_instances = max_instances
         self._children_address = children_address
+        requirements_txt = config.python_worker_environment.requirements_txt
+        check_unit_requirements_support_telemetry(
+            load_requirements_content(requirements_txt) if requirements_txt is not None else None,
+            config.worker_config.telemetry_relay,
+        )
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._container_instances_client: Any = None
         self._initialize_oci_client()
@@ -128,6 +135,7 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
                         "COMMAND": command,
                         "PYTHON_REQUIREMENTS": requirements_content,
                         "PYTHON_VERSION": config.python_worker_environment.python_version,
+                        **unit_environment(),
                     },
                 )
             ],

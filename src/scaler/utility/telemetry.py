@@ -32,6 +32,11 @@ BAGGAGE_HEADER = "baggage"
 TRACE_CONTEXT_HEADERS = (TRACEPARENT_HEADER, TRACESTATE_HEADER, BAGGAGE_HEADER)
 TRACE_CONTEXT_SEPARATOR = "\n"
 
+OTEL_ENVIRONMENT_PREFIX = "OTEL_"
+
+# OpenTelemetry's environment variable carrier: a process started inside a trace finds its parent here
+HEADER_TO_ENVIRONMENT = {TRACEPARENT_HEADER: "TRACEPARENT", TRACESTATE_HEADER: "TRACESTATE", BAGGAGE_HEADER: "BAGGAGE"}
+
 # the installed SDK (telemetry_sdk.InstalledSDK), set once per process; `None` while telemetry is off
 _installed_sdk: Optional[Any] = None
 
@@ -92,6 +97,26 @@ def extract_trace_context(trace_context: str) -> Context:
         return Context()
     values = trace_context.split(TRACE_CONTEXT_SEPARATOR)
     return propagate.extract({header: value for header, value in zip(TRACE_CONTEXT_HEADERS, values) if value})
+
+
+def otel_environment() -> Dict[str, str]:
+    """This process's OpenTelemetry settings, for a process it starts elsewhere to export the same way."""
+    return {name: value for name, value in os.environ.items() if name.startswith(OTEL_ENVIRONMENT_PREFIX)}
+
+
+def trace_context_environment() -> Dict[str, str]:
+    """The current trace context as environment variables, for a process started elsewhere to join the trace."""
+    carrier: Dict[str, str] = {}
+    propagate.inject(carrier)
+    return {
+        HEADER_TO_ENVIRONMENT[header]: value for header, value in carrier.items() if header in HEADER_TO_ENVIRONMENT
+    }
+
+
+def process_start_context() -> Context:
+    """The trace context this process was started inside, from its environment; empty when it was not."""
+    carrier = {header: os.environ[name] for header, name in HEADER_TO_ENVIRONMENT.items() if os.environ.get(name)}
+    return propagate.extract(carrier)
 
 
 def is_export_configured() -> bool:

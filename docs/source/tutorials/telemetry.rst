@@ -20,6 +20,9 @@ Enable export
 
 - A process exports only when ``OTEL_EXPORTER_OTLP_ENDPOINT`` is set, and ``OTEL_SDK_DISABLED=true`` turns export off.
 - Workers and processors inherit the environment of the worker manager that starts them.
+- A cloud worker manager (ECS, ORB AWS EC2, OCI) passes every ``OTEL_*`` variable it has to the units it starts, so a unit's manager, workers, and processors export the same way.
+- The cloud provider stores those variables with the unit (the ECS task overrides, the EC2 user data, the OCI container): put a secret such as an ``OTEL_EXPORTER_OTLP_HEADERS`` token there only if those places may hold it.
+- A cloud worker manager whose units install from ``requirements_txt`` refuses to start when its units would export but the requirements install ``opengris-scaler`` without the ``otel`` or ``all`` extra.
 - The SDK reads every other setting from the standard `OTEL_* variables <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/>`_, for example ``OTEL_EXPORTER_OTLP_HEADERS`` and ``OTEL_METRIC_EXPORT_INTERVAL``.
 
 Relay through the scheduler
@@ -77,14 +80,17 @@ Each change of a worker manager's desired concurrency is one trace, with a span 
 
 .. code-block:: text
 
-    scaler.scheduler.scaling_decision    the scaling policy changed a manager's desired task concurrency
-    └─ scaler.worker_manager.create_unit the manager creates one unit, including its cloud API calls
-       └─ scaler.worker.start            a native worker, from process start to its first heartbeat echo
+    scaler.scheduler.scaling_decision        the scaling policy changed a manager's desired task concurrency
+    └─ scaler.worker_manager.create_unit     the manager creates one unit, including its cloud API calls
+       ├─ scaler.worker.start                a native worker, from process start to its first heartbeat echo
+       └─ scaler.worker_manager.create_unit  the manager of a cloud unit, once the unit booted, starting a worker
+          └─ scaler.worker.start
 
 - ``scaler.scheduler.scaling_decision`` carries ``scaler.worker_manager.id``, ``scaler.worker_manager.desired_task_concurrency``, and ``scaler.worker_manager.previous_task_concurrency``.
 - ``scaler.worker_manager.create_unit`` carries ``scaler.unit.id``, and ends with an error status when creating the unit raised.
 - ``scaler.worker.start`` ends with an error status when the worker exits before it reaches the scheduler.
-- The trace ends at the worker manager for workers that a cloud unit starts.
+- A cloud worker manager starts each unit with ``TRACEPARENT`` and ``BAGGAGE`` set to the ``scaler.worker_manager.create_unit`` span that started it, and the unit's manager creates its workers under them.
+- The gap between the end of a cloud unit's ``create_unit`` span and the start of its manager's ``create_unit`` spans is the unit's boot time.
 
 Baggage
 -------

@@ -9,6 +9,7 @@ class TestOCIInstancesWorkerProvisioner(unittest.TestCase):
         """A container instance that installs scaler from source may take longer than the default to start."""
         config = MagicMock()
         config.cloud_children_config.unit_startup_timeout_seconds = 1800
+        config.worker_config.telemetry_relay = False
         with patch.object(OCIInstancesWorkerProvisioner, "_initialize_oci_client"):
             provisioner = OCIInstancesWorkerProvisioner(config, max_instances=-1, children_address=MagicMock())
         self.assertEqual(provisioner.startup_timeout_seconds(), 1800)
@@ -20,6 +21,7 @@ class TestOCIInstancesWorkerProvisionerCreate(unittest.IsolatedAsyncioTestCase):
         config = MagicMock()
         config.worker_config.per_worker_capabilities.capabilities = {}
         config.python_worker_environment.requirements_txt = ""
+        config.worker_config.telemetry_relay = False
         config.container_instance_config.image_pull_username = None
         with patch.object(OCIInstancesWorkerProvisioner, "_initialize_oci_client"):
             provisioner = OCIInstancesWorkerProvisioner(config, max_instances=-1, children_address=MagicMock())

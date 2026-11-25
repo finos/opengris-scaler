@@ -2,10 +2,22 @@ import os
 import tempfile
 import unittest
 from typing import Optional
+from unittest import mock
+
+from opentelemetry import context, trace
+from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 
 from scaler.config.common.cloud_children import CloudChildrenConfig
 from scaler.config.types.address import AddressConfig
-from scaler.worker_manager.cloud.child_command import child_link_arguments, load_requirements_content
+from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
+    child_link_arguments,
+    load_requirements_content,
+    unit_environment,
+)
+
+CREATE_UNIT_TRACE_ID = 0x0123456789ABCDEF0123456789ABCDEF
+CREATE_UNIT_SPAN_ID = 0x0123456789ABCDEF
 
 
 class TestLoadRequirementsContent(unittest.TestCase):
@@ -54,3 +66,48 @@ class TestChildLinkArguments(unittest.TestCase):
         """Behind 1:1 NAT, an advertised address naming port 0 takes the port the manager bound."""
         arguments = self._arguments("tcp://34.228.81.179:0")
         self.assertIn("--parent-address tcp://34.228.81.179:8518 ", arguments)
+
+
+class TestUnitEnvironment(unittest.TestCase):
+    def test_a_unit_gets_the_managers_otel_settings_and_the_create_unit_trace(self):
+        """A unit starts with every OTEL_ variable of its manager and the trace context it was started in."""
+        create_unit = SpanContext(
+            trace_id=CREATE_UNIT_TRACE_ID, span_id=CREATE_UNIT_SPAN_ID, is_remote=False, trace_flags=TraceFlags(1)
+        )
+        manager_environment = {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318", "UNRELATED": "x"}
+        token = context.attach(trace.set_span_in_context(NonRecordingSpan(create_unit)))
+        try:
+            with mock.patch.dict(os.environ, manager_environment, clear=True):
+                environment = unit_environment()
+        finally:
+            context.detach(token)
+
+        self.assertEqual(environment["OTEL_EXPORTER_OTLP_ENDPOINT"], "http://collector:4318")
+        self.assertNotIn("UNRELATED", environment)
+        self.assertEqual(environment["TRACEPARENT"], f"00-{CREATE_UNIT_TRACE_ID:032x}-{CREATE_UNIT_SPAN_ID:016x}-01")
+
+    def test_a_unit_started_outside_a_trace_gets_no_trace_context(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(unit_environment(), {})
+
+
+class TestUnitRequirementsSupportTelemetry(unittest.TestCase):
+    def test_exporting_units_without_the_otel_extra_fail_at_start(self):
+        """A manager whose units would export without the SDK refuses to start, rather than every unit failing."""
+        with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}):
+            with self.assertRaisesRegex(ValueError, r"opengris-scaler\[otel\]"):
+                check_unit_requirements_support_telemetry("opengris-scaler[aws]==2.9.0\nnumpy\n", False)
+
+    def test_relaying_units_without_the_otel_extra_fail_at_start(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", True)
+
+    def test_the_otel_or_all_extra_satisfies_the_check(self):
+        with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}):
+            check_unit_requirements_support_telemetry("opengris-scaler[aws, otel]>=2.9\n", False)
+            check_unit_requirements_support_telemetry("opengris_scaler[all] @ git+https://github.com/x/y.git\n", True)
+
+    def test_units_that_do_not_export_need_no_extra(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", False)

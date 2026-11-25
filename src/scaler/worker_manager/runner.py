@@ -27,7 +27,7 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.signal_handler import install_async_shutdown_handler
-from scaler.utility.telemetry import extract_trace_context
+from scaler.utility.telemetry import extract_trace_context, process_start_context
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController
@@ -190,8 +190,13 @@ class WorkerManagerRunner:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
         assert self._unit_controller is not None
-        # the scaling decision's context is current while the unit controller takes the new desired concurrency
-        token = attach(extract_trace_context(command.traceContext))
+        # the scaling decision's context is current while the unit controller takes the new desired concurrency; a
+        # unit's parent sends no decision, and the unit's own start, in the parent's create_unit, causes its commands
+        if command.traceContext:
+            command_context = extract_trace_context(command.traceContext)
+        else:
+            command_context = process_start_context()
+        token = attach(command_context)
         try:
             self._unit_controller.set_desired_task_concurrency(
                 extract_desired_count(list(requests), self._capabilities)
