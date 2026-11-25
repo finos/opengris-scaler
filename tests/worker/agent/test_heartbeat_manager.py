@@ -27,6 +27,7 @@ class TestVanillaHeartbeatManager(unittest.IsolatedAsyncioTestCase):
         task_manager.get_queued_size.return_value = 0
         processor_manager = MagicMock(spec=ProcessorManager)
         processor_manager.processors.return_value = []
+        processor_manager.starting_processor.return_value = None
         processor_manager.can_accept_task.return_value = True
         self.heartbeat_manager.register(
             self.connector_external,

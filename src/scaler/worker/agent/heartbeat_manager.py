@@ -15,6 +15,16 @@ from scaler.utility.network_util import get_hostname
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, TaskManager, TimeoutManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
+DEAD_PROCESS_STATUSES = frozenset({psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD})
+
+
+def _process_status(holder: ProcessorHolder) -> str:
+    try:
+        return holder.process().status()
+    except psutil.NoSuchProcess:
+        # The OS process has already exited; treat as dead so it gets cleaned up.
+        return psutil.STATUS_DEAD
+
 
 def _host_network_counters() -> Tuple[int, int]:
     """Host-wide bytes sent and received, 0 where the host has no counters to read.
@@ -93,13 +103,15 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         processors = self._processor_manager.processors()
 
         for processor_holder in processors:
-            try:
-                status = processor_holder.process().status()
-            except psutil.NoSuchProcess:
-                # The OS process has already exited; treat as dead so it gets cleaned up.
-                status = psutil.STATUS_DEAD
-            if status in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
+            status = _process_status(processor_holder)
+            if status in DEAD_PROCESS_STATUSES:
                 await self._processor_manager.on_failing_processor(processor_holder.processor_id(), status)
+
+        starting_holder = self._processor_manager.starting_processor()
+        if starting_holder is not None:
+            status = _process_status(starting_holder)
+            if status in DEAD_PROCESS_STATUSES:
+                await self._processor_manager.on_processor_died_starting(status)
 
         processors = self._processor_manager.processors()  # refreshes for removed dead and zombie processors
 

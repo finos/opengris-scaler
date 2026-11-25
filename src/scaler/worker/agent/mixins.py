@@ -75,6 +75,10 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    async def on_processor_died_starting(self, process_status: str):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     async def on_suspend_task(self, task_id: TaskID) -> bool:
         raise NotImplementedError()
 
@@ -112,6 +116,10 @@ class ProcessorManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def processors(self) -> List[ProcessorHolder]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def starting_processor(self) -> Optional[ProcessorHolder]:
         raise NotImplementedError()
 
 
