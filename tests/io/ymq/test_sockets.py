@@ -22,8 +22,10 @@ _OPENSSL_TEST_DIR = pathlib.Path(__file__).resolve().parents[2] / "cpp" / "wrapp
 _CERT_CHAIN = str(_OPENSSL_TEST_DIR / "sample_cert.pem")
 _PRIVATE_KEY = str(_OPENSSL_TEST_DIR / "sample_private_key.pem")
 
-# More than loopback holds for a peer that does not read, Windows' 16 MB auto-tuned receive window included.
+# More than loopback's buffers hold for a peer that does not read, Windows' 16 MB maximum receive window included.
 _STALLED_SEND_BYTES = 64 * 1024 * 1024
+# Windows completes at most two sends to a peer that does not read, whatever their size (Microsoft KB 214397).
+_STALLED_SENDS = 3
 _SEND_SETTLE_SECONDS = 0.2
 _SEND_FAIL_TIMEOUT_SECONDS = 5.0
 
@@ -69,8 +71,9 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
             peer, _ = listener.accept()
 
             with peer:
-                send = asyncio.ensure_future(connector.send_message(Bytes(b"x" * _STALLED_SEND_BYTES)))
-                await self._assert_abort_raises_connection_lost(peer, _INVALID_MAGIC_STRING, send)
+                payload = b"x" * _STALLED_SEND_BYTES
+                sends = [asyncio.ensure_future(connector.send_message(Bytes(payload))) for _ in range(_STALLED_SENDS)]
+                await self._assert_abort_raises_connection_lost(peer, _INVALID_MAGIC_STRING, sends)
 
             # the connector was not stopped: it reconnects, and the next send arrives
             new_peer, _ = await asyncio.get_running_loop().run_in_executor(None, listener.accept)
@@ -93,20 +96,25 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
             peer.sendall(MAGIC_STRING + _ymq_frame(b"peer"))
 
             # queued until the peer has identified itself, then in flight, as the peer never reads
-            send = asyncio.ensure_future(binder.send_message("peer", Bytes(b"x" * _STALLED_SEND_BYTES)))
-            await self._assert_abort_raises_connection_lost(peer, _UNALLOCATABLE_FRAME_HEADER, send)
+            payload = b"x" * _STALLED_SEND_BYTES
+            sends = [asyncio.ensure_future(binder.send_message("peer", Bytes(payload))) for _ in range(_STALLED_SENDS)]
+            await self._assert_abort_raises_connection_lost(peer, _UNALLOCATABLE_FRAME_HEADER, sends)
 
     async def _assert_abort_raises_connection_lost(
-        self, peer: socket.socket, abort_bytes: bytes, send: asyncio.Future
+        self, peer: socket.socket, abort_bytes: bytes, sends: list[asyncio.Task[None]]
     ) -> None:
         await asyncio.sleep(_SEND_SETTLE_SECONDS)
-        self.assertFalse(send.done(), f"the peer never reads, so the send should still be in flight: {send!r}")
+        self.assertFalse(sends[-1].done(), f"the peer never reads, so the last send should be in flight: {sends[-1]!r}")
 
         peer.sendall(abort_bytes)
 
         with self.assertRaises(ConnectionLostError) as exc:
-            await asyncio.wait_for(send, _SEND_FAIL_TIMEOUT_SECONDS)
+            await asyncio.wait_for(sends[-1], _SEND_FAIL_TIMEOUT_SECONDS)
         self.assertEqual(exc.exception.code, ErrorCode.ConnectionLost)
+
+        # the earlier sends succeed where the OS took them whole (Windows), else they raise ConnectionLostError too
+        for result in await asyncio.gather(*sends[:-1], return_exceptions=True):
+            self.assertTrue(result is None or isinstance(result, ConnectionLostError), repr(result))
 
     async def test_invalid_address(self):
         ctx = IOContext()
