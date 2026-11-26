@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 # YMQ errors that mean the scheduler connection is already gone.
 _EXPECTED_TEARDOWN_ERROR_CODES = frozenset(
-    {ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd, ymq.ErrorCode.SocketStopRequested}
+    {ymq.ErrorCode.ConnectionLost, ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd, ymq.ErrorCode.SocketStopRequested}
 )
 
 _SpawnProcess = multiprocessing.get_context("spawn").Process

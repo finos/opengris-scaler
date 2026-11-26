@@ -140,6 +140,9 @@ private:
     // Whether a write on the current client saw the connection abort. Shared as the writes can outlive this object.
     std::shared_ptr<bool> _clientAborted {};
 
+    // What in-flight writes fail with if libuv cancels them. Shared as the writes can outlive this object.
+    std::shared_ptr<Error::ErrorCode> _writeCancelError {};
+
     // Set from an EOF until its reason is decided.
     std::optional<scaler::wrapper::uv::Timer> _eofTimer {};
 
@@ -175,6 +178,7 @@ private:
     static void onWriteDone(
         SendCallback callback,
         std::shared_ptr<bool> clientAborted,
+        Error::ErrorCode writeCancelError,
         std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
 
     static void noteAbort(bool& clientAborted, const std::expected<void, scaler::wrapper::uv::Error>& result) noexcept;
