@@ -22,8 +22,8 @@ _OPENSSL_TEST_DIR = pathlib.Path(__file__).resolve().parents[2] / "cpp" / "wrapp
 _CERT_CHAIN = str(_OPENSSL_TEST_DIR / "sample_cert.pem")
 _PRIVATE_KEY = str(_OPENSSL_TEST_DIR / "sample_private_key.pem")
 
-# More than loopback's socket buffers hold, so a send to a peer that does not read stays in flight.
-_STALLED_SEND_BYTES = 16 * 1024 * 1024
+# More than loopback holds for a peer that does not read, Windows' 16 MB auto-tuned receive window included.
+_STALLED_SEND_BYTES = 64 * 1024 * 1024
 _SEND_SETTLE_SECONDS = 0.2
 _SEND_FAIL_TIMEOUT_SECONDS = 5.0
 
@@ -100,7 +100,7 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
         self, peer: socket.socket, abort_bytes: bytes, send: asyncio.Future
     ) -> None:
         await asyncio.sleep(_SEND_SETTLE_SECONDS)
-        self.assertFalse(send.done(), "the peer never reads, so the send should still be in flight")
+        self.assertFalse(send.done(), f"the peer never reads, so the send should still be in flight: {send!r}")
 
         peer.sendall(abort_bytes)
 
