@@ -49,7 +49,7 @@ These parameters control individual worker processes started by the worker manag
 * ``--garbage-collect-interval-seconds`` (``-gc``): Interval at which the worker runs garbage collection in seconds (default: ``30``).
 * ``--trim-memory-threshold-bytes`` (``-tm``): Threshold for trimming libc's memory in bytes (default: ``1073741824``, i.e., 1 GB).
 * ``--hard-processor-suspend`` (``-hps``): When set, suspends worker processors using SIGTSTP instead of a synchronization event.
-* ``--telemetry-relay`` (``-tr``): When set, workers and processors send their telemetry through the scheduler instead of to ``OTEL_EXPORTER_OTLP_ENDPOINT`` (see :doc:`../telemetry`). Mutually exclusive with ``--worker-otlp-endpoint``.
+* ``--telemetry-relay`` (``-tr``): ``true`` (default) or ``false``. When true, the worker manager, its workers, and their processors relay their telemetry up to the scheduler when they have no endpoint of their own; false exports nothing instead (see :doc:`../telemetry`).
 * ``--worker-otlp-endpoint`` (``-woe``): OTLP/HTTP endpoint the workers and processors this worker manager starts export telemetry to, local or in cloud units, in place of the worker manager's own. Set it when the workers reach the collector at another address, such as through NAT (see :doc:`../telemetry`).
 * ``--io-threads`` (``-it``): Number of IO threads per worker (default: ``1``).
 * ``--per-worker-capabilities`` (``-pwc``): Comma-separated list of capabilities (e.g., ``"linux,cpu=4"``).

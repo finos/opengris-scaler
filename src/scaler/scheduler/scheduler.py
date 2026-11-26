@@ -39,11 +39,11 @@ from scaler.scheduler.controllers.worker_controller import VanillaWorkerControll
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.scheduler.metrics import EventLoopLagMonitor
 from scaler.scheduler.policies.utility import create_policies
-from scaler.scheduler.telemetry_forwarder import TelemetryForwarder
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
 from scaler.utility.network_util import OS_PICKED_PORT, resolve_port_zero
+from scaler.utility.telemetry_forwarder import TelemetryForwarder
 
 logger = logging.getLogger(__name__)
 

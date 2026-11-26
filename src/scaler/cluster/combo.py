@@ -81,7 +81,7 @@ class SchedulerClusterCombo:
         trim_memory_threshold_bytes: int = DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
         per_worker_task_queue_size: int = DEFAULT_PER_WORKER_QUEUE_SIZE,
         hard_processor_suspend: bool = DEFAULT_HARD_PROCESSOR_SUSPEND,
-        telemetry_relay: bool = False,
+        telemetry_relay: bool = True,
         protected: bool = True,
         scaler_policy: PolicyConfig = PolicyConfig(policy_content="allocate=even_load; scaling=static"),
         event_loop: str = "builtin",

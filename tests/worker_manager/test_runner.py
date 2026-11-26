@@ -54,6 +54,7 @@ class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
             capabilities={},
             create_provisioner=lambda _children_address: provisioner,
             children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
+            telemetry_relay=True,
         )
         # _get_loops creates the controller after the bind, which never runs here
         self.runner._create_unit_controller(AddressConfig.from_string("tcp://127.0.0.1:2"))
@@ -114,6 +115,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
             capabilities={"cpu": 4},
             create_provisioner=lambda _children_address: self.provisioner,
             children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
+            telemetry_relay=True,
         )
         connector = AsyncMock()
         connector.send = self.send_mock

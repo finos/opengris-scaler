@@ -352,8 +352,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             await self._processor_manager.on_internal_object_instruction(processor_id, message)
             return
 
-        if isinstance(message, (TaskLog, TelemetryBatch)):
+        if isinstance(message, TaskLog):
             await self._connector_external.send(message, detached=True)
+            return
+
+        if isinstance(message, TelemetryBatch):
+            await self._connector_manager.send(message, detached=True)  # a processor's telemetry, relayed up
             return
 
         if isinstance(message, TaskResult):
@@ -385,7 +389,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             create_async_loop_routine(self._timeout_manager.routine, 1),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
-            *relay_routines(self._connector_external),
+            *relay_routines(self._connector_manager),
         )
 
     def __end_start_span(self, status: StatusCode) -> None:
@@ -399,7 +403,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         # Guarded with `is not None` throughout: this runs even when __initialize failed partway
         # through, so some of these may never have been created.
         self.__end_start_span(StatusCode.ERROR)  # still open: the worker never reached the scheduler
-        await send_remaining_telemetry(self._connector_external)  # ahead of the exit notification, on the same socket
+        await send_remaining_telemetry(self._connector_manager)  # ahead of the exit notification, on the same socket
         await self.__notify_of_exit()
 
         destroyables: List[Tuple[str, Callable[[], None]]] = []

@@ -301,7 +301,8 @@ Scheduler arguments
    * - ``-oe``, ``--otlp-endpoint``
      - No
      - ``OTEL_EXPORTER_OTLP_ENDPOINT``
-     - OTLP/HTTP endpoint the scheduler exports telemetry to, and forwards relayed telemetry to (see :doc:`telemetry`).
+     - OTLP/HTTP endpoint the scheduler exports telemetry to, and forwards relayed telemetry to; worker managers and
+       workers without an endpoint relay to it (see :doc:`telemetry`).
    * - ``-sri``, ``--status-report-interval-seconds``
      - No
      - ``1``
@@ -521,9 +522,9 @@ Arguments (shared by all subcommands)
      - Use OS-level processor suspension (SIGTSTP) for paused tasks.
    * - ``-tr``, ``--telemetry-relay``
      - No
-     - ``False``
-     - Send worker and processor telemetry through the scheduler (see :doc:`telemetry`). Mutually exclusive with
-       ``--worker-otlp-endpoint``.
+     - ``true``
+     - Relay the telemetry of the worker manager, its workers, and their processors up to the scheduler when they have
+       no endpoint of their own; ``false`` exports nothing instead (see :doc:`telemetry`).
    * - ``-woe``, ``--worker-otlp-endpoint``
      - No
      - ``--otlp-endpoint``

@@ -3,6 +3,7 @@ import math
 
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
 from scaler.config.types.address import AddressConfig
+from scaler.utility.telemetry import accepts_relayed_telemetry
 from scaler.worker_manager.local_process import (
     LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS,
     local_children_address,
@@ -46,7 +47,7 @@ class AWSBatchWorkerProvisioner(UnitProvisioner):
             worker_manager_id=config.worker_manager_config.worker_manager_id,
             worker_manager_address=self._children_address,
             unit_id=unit_id,
-            telemetry_relay=config.worker_config.telemetry_relay,
+            telemetry_relay=config.worker_config.telemetry_relay and accepts_relayed_telemetry(),
             otlp_endpoint=config.worker_config.worker_otlp_endpoint,
         )
         worker.start()
@@ -88,5 +89,6 @@ class AWSBatchWorkerManager:
             create_provisioner=lambda children_address: AWSBatchWorkerProvisioner(config, max_units, children_address),
             children_address=local_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
+            telemetry_relay=config.worker_config.telemetry_relay,
         )
         runner.run()

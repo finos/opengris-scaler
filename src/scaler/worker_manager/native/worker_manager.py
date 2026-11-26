@@ -2,7 +2,7 @@ import logging
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig
-from scaler.utility.telemetry import inject_trace_context
+from scaler.utility.telemetry import accepts_relayed_telemetry, inject_trace_context
 from scaler.worker.worker import Worker
 from scaler.worker_manager.local_process import (
     LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS,
@@ -56,7 +56,7 @@ class NativeWorkerProvisioner(UnitProvisioner):
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
             hard_processor_suspend=self._hard_processor_suspend,
-            telemetry_relay=self._telemetry_relay,
+            telemetry_relay=self._telemetry_relay and accepts_relayed_telemetry(),
             otlp_endpoint=self._worker_otlp_endpoint,
             event_loop=self._event_loop,
             logging_paths=self._logging_paths,
@@ -106,6 +106,7 @@ class NativeWorkerManager:
             create_provisioner=lambda children_address: NativeWorkerProvisioner(self._config, children_address),
             children_address=local_children_address(self._config.worker_manager_config),
             io_threads=self._config.worker_config.io_threads,
+            telemetry_relay=self._config.worker_config.telemetry_relay,
             security_config=self._config.security,
             parent_address=self._config.parent_address,
             unit_id=self._config.unit_id,

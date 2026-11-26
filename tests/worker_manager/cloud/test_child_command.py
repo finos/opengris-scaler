@@ -70,12 +70,16 @@ class TestChildLinkArguments(unittest.TestCase):
 
 
 class TestUnitEnvironment(unittest.TestCase):
-    def test_a_unit_gets_the_managers_otel_settings_and_the_create_unit_trace(self):
-        """A unit starts with every OTEL_ variable of its manager and the trace context it was started in."""
+    def test_a_unit_gets_the_managers_otel_settings_but_not_its_endpoint_and_the_create_unit_trace(self):
+        """A unit starts with its manager's OTEL_ settings and trace, but no endpoint: it relays to the manager."""
         create_unit = SpanContext(
             trace_id=CREATE_UNIT_TRACE_ID, span_id=CREATE_UNIT_SPAN_ID, is_remote=False, trace_flags=TraceFlags(1)
         )
-        manager_environment = {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318", "UNRELATED": "x"}
+        manager_environment = {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318",
+            "OTEL_TRACES_SAMPLER": "parentbased_always_on",
+            "UNRELATED": "x",
+        }
         token = context.attach(trace.set_span_in_context(NonRecordingSpan(create_unit)))
         try:
             with mock.patch.dict(os.environ, manager_environment, clear=True):
@@ -83,7 +87,8 @@ class TestUnitEnvironment(unittest.TestCase):
         finally:
             context.detach(token)
 
-        self.assertEqual(environment["OTEL_EXPORTER_OTLP_ENDPOINT"], "http://collector:4318")
+        self.assertNotIn("OTEL_EXPORTER_OTLP_ENDPOINT", environment)
+        self.assertEqual(environment["OTEL_TRACES_SAMPLER"], "parentbased_always_on")
         self.assertNotIn("UNRELATED", environment)
         self.assertEqual(environment["TRACEPARENT"], f"00-{CREATE_UNIT_TRACE_ID:032x}-{CREATE_UNIT_SPAN_ID:016x}-01")
 
@@ -99,17 +104,15 @@ class TestUnitEnvironment(unittest.TestCase):
 
 
 class TestUnitRequirementsSupportTelemetry(unittest.TestCase):
-    def test_exporting_units_without_the_otel_extra_fail_at_start(self):
-        """A manager whose units would export without the SDK refuses to start, rather than every unit failing."""
+    def test_units_relaying_to_an_exporting_manager_without_the_otel_extra_fail_at_start(self):
+        """A manager whose units would relay to it without the SDK refuses to start, rather than lose telemetry."""
         with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}):
             with self.assertRaisesRegex(ValueError, r"opengris-scaler\[otel\]"):
                 check_unit_requirements_support_telemetry("opengris-scaler[aws]==2.9.0\nnumpy\n", WorkerConfig())
 
-    def test_relaying_units_without_the_otel_extra_fail_at_start(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(ValueError):
-                relaying = WorkerConfig(telemetry_relay=True)
-                check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", relaying)
+    def test_units_with_relay_off_need_no_extra_even_under_an_exporting_manager(self):
+        with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}):
+            check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", WorkerConfig(telemetry_relay=False))
 
     def test_the_otel_or_all_extra_satisfies_the_check(self):
         with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}):
@@ -127,10 +130,3 @@ class TestUnitRequirementsSupportTelemetry(unittest.TestCase):
     def test_units_that_do_not_export_need_no_extra(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             check_unit_requirements_support_telemetry("opengris-scaler==2.9.0\n", WorkerConfig())
-
-
-class TestWorkerTelemetryDestination(unittest.TestCase):
-    def test_relaying_and_a_worker_endpoint_together_are_refused(self):
-        """Both say where workers send telemetry, so setting both is an error rather than one silently winning."""
-        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
-            WorkerConfig(telemetry_relay=True, worker_otlp_endpoint="http://203.0.113.7:4318")

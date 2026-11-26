@@ -259,6 +259,7 @@ class ORBAWSEC2WorkerManager:
             create_provisioner=create_provisioner,
             children_address=self._config.worker_manager_config.children_address,
             io_threads=self._config.worker_config.io_threads,
+            telemetry_relay=self._config.worker_config.telemetry_relay,
         )
 
     def run(self) -> None:
@@ -439,8 +440,8 @@ set +e
         if worker_config.hard_processor_suspend:
             script += " \\\n    --hard-processor-suspend"
 
-        if worker_config.telemetry_relay:
-            script += " \\\n    --telemetry-relay"
+        if not worker_config.telemetry_relay:
+            script += " \\\n    --telemetry-relay false"
 
         if worker_manager_config.object_storage_address:
             script += f" \\\n    --object-storage-address {worker_manager_config.object_storage_address!r}"

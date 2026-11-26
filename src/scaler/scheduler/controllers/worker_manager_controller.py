@@ -29,7 +29,7 @@ from scaler.utility.semantic_conventions import (
     WORKER_MANAGER_ID_ATTRIBUTE,
 )
 from scaler.utility.snapshot import InformationSnapshot
-from scaler.utility.telemetry import empty_trace_context, inject_trace_context
+from scaler.utility.telemetry import empty_trace_context, inject_trace_context, is_export_configured
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,9 @@ class WorkerManagerController(Looper, Reporter):
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
-        await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
+        await self._binder.send(
+            source, WorkerManagerHeartbeatEcho(forwardsTelemetry=is_export_configured()), detached=True
+        )
 
         information_snapshot = self._build_snapshot()
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)

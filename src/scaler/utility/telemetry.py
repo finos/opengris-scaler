@@ -7,7 +7,7 @@ import dataclasses
 import enum
 import logging
 import os
-from typing import Any, Awaitable, Dict, List, Optional
+from typing import Any, Awaitable, Dict, List, Optional, Tuple
 
 from opentelemetry import propagate, trace
 from opentelemetry.context import Context
@@ -48,8 +48,11 @@ HEADER_TO_ENVIRONMENT = {
 # the installed SDK (telemetry_sdk.InstalledSDK), set once per process; `None` while telemetry is off
 _installed_sdk: Optional[Any] = None
 
-# where a relaying process's exporters put their requests, for the process to send to the scheduler
+# where a relaying process's exporters put their requests, for the process to send to its parent
 _relay_buffer: Optional[TelemetryRelayBuffer] = None
+
+# a process with no endpoint of its own, kept until its parent says whether it forwards: see relay_to_parent()
+_deferred_service: Optional[Tuple["TelemetryService", str]] = None
 
 
 class ServiceName(enum.Enum):
@@ -65,7 +68,7 @@ class TelemetryService:
 
     name: ServiceName
     attributes: Dict[str, str] = dataclasses.field(default_factory=dict)
-    relay: bool = False  # send telemetry through the scheduler instead of to OTEL_EXPORTER_OTLP_ENDPOINT
+    relay: bool = False  # the parent forwards, so without an endpoint of its own the process relays to it
     # replaces OTEL_EXPORTER_OTLP_ENDPOINT for this process, and so for the processes it starts
     otlp_endpoint: Optional[str] = None
 
@@ -139,21 +142,47 @@ def is_export_configured() -> bool:
 def configure_telemetry(service: TelemetryService, logging_level: str) -> None:
     """Install the SDK for traces, metrics, and the `scaler` logger, when the process exports or relays.
 
-    A relaying process exports into a buffer it sends to the scheduler; any other process exports over OTLP/HTTP
-    when an endpoint is set. Safe to call again after logging is reconfigured: the SDK is installed once, the log
-    handler is re-attached. The SDK reads every other setting (sampler, headers, intervals) from `OTEL_*` variables.
+    An endpoint of its own wins: the process exports over OTLP/HTTP. Without one, a process whose parent forwards
+    (`service.relay`) relays into a buffer it sends to its parent, and any other process waits for relay_to_parent().
+    Safe to call again after logging is reconfigured: the SDK is installed once, the log handler is re-attached. The
+    SDK reads every other setting (sampler, headers, intervals) from `OTEL_*` variables.
     """
-    global _installed_sdk, _relay_buffer
+    global _deferred_service
 
     if service.otlp_endpoint is not None:
         os.environ[OTLP_ENDPOINT_ENV] = service.otlp_endpoint
 
-    if not service.relay and not is_export_configured():
+    if is_export_configured():
+        _install(dataclasses.replace(service, relay=False), logging_level)
+    elif service.relay:
+        _install(service, logging_level)
+    else:
+        _deferred_service = (service, logging_level)
+
+
+def relay_to_parent() -> None:
+    """Relay this process's telemetry to its parent, which forwards it; a no-op for a process that already exports."""
+    if _installed_sdk is not None or _deferred_service is None:
         return
+    service, logging_level = _deferred_service
+    _install(dataclasses.replace(service, relay=True), logging_level)
+
+
+def accepts_relayed_telemetry() -> bool:
+    """True when this process exports, directly or by relaying, so the processes it supervises may relay to it."""
+    return _installed_sdk is not None
+
+
+def _install(service: TelemetryService, logging_level: str) -> None:
+    global _installed_sdk, _relay_buffer
 
     try:
         from scaler.utility import telemetry_sdk
     except ImportError as e:
+        if service.relay:
+            # relaying is the default, not something this process was told to do: carry on without telemetry
+            logger.warning("not relaying telemetry: the OpenTelemetry SDK is missing, install opengris-scaler[otel]")
+            return
         raise ImportError(
             "telemetry is configured but the OpenTelemetry SDK is missing: install opengris-scaler[otel]"
         ) from e
@@ -163,14 +192,14 @@ def configure_telemetry(service: TelemetryService, logging_level: str) -> None:
         _installed_sdk = telemetry_sdk.install_sdk(service.name.value, service.attributes, _relay_buffer)
         if service.name == ServiceName.WORKER_MANAGER:
             telemetry_sdk.instrument_aws_api_calls()
-        destination = "the scheduler" if service.relay else repr(os.environ[OTLP_ENDPOINT_ENV])
+        destination = "its parent" if service.relay else repr(os.environ[OTLP_ENDPOINT_ENV])
         logger.info(f"exporting telemetry as {service.name.value!r} to {destination}")
 
     telemetry_sdk.attach_log_handler(_installed_sdk.logger_provider, LoggingLevel[logging_level].value)
 
 
 def relay_buffer() -> Optional[TelemetryRelayBuffer]:
-    """The buffer this process relays through the scheduler, `None` when it does not relay."""
+    """The buffer this process relays to its parent through, `None` when it does not relay."""
     return _relay_buffer
 
 

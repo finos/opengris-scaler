@@ -12,36 +12,42 @@ Enable export
 
        pip install opengris-scaler[otel]
 
-2. Set the collector endpoint in the environment of each Scaler process:
+2. Give the scheduler the collector endpoint, in its environment or as ``otlp_endpoint`` in its ``[scheduler]`` section:
 
    .. code-block:: bash
 
        export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
 
-- A process exports only when ``OTEL_EXPORTER_OTLP_ENDPOINT`` is set, and ``OTEL_SDK_DISABLED=true`` turns export off.
+- Every other process relays to the scheduler by default (see below), so the scheduler's endpoint is enough; ``OTEL_SDK_DISABLED=true`` turns export off.
 - Workers and processors inherit the environment of the worker manager that starts them.
-- A cloud worker manager (ECS, ORB AWS EC2, OCI) passes every ``OTEL_*`` variable it has to the units it starts, so a unit's manager, workers, and processors export the same way.
+- A cloud worker manager (ECS, ORB AWS EC2, OCI) passes its ``OTEL_*`` variables to the units it starts, except ``OTEL_EXPORTER_OTLP_ENDPOINT``, which a unit may not reach.
 - ``otlp_endpoint`` in the ``[scheduler]`` or a ``[[worker_manager]]`` section (``--otlp-endpoint``) sets the endpoint for that process in place of ``OTEL_EXPORTER_OTLP_ENDPOINT``, so one configuration file can send each component to the collector address it reaches.
 - Workers that reach the collector at another address, such as cloud units behind NAT, export to ``worker_otlp_endpoint`` (``--worker-otlp-endpoint``) of their worker manager instead; it applies to local workers and to units alike.
 - Both replace ``OTEL_EXPORTER_OTLP_ENDPOINT`` only, so a signal-specific endpoint such as ``OTEL_EXPORTER_OTLP_TRACES_ENDPOINT``, headers, and certificates still come from the environment.
 - The cloud provider stores those variables with the unit (the ECS task overrides, the EC2 user data, the OCI container): put a secret such as an ``OTEL_EXPORTER_OTLP_HEADERS`` token there only if those places may hold it.
-- A cloud worker manager whose units install from ``requirements_txt`` refuses to start when its units would export (an endpoint, ``--worker-otlp-endpoint``, or ``--telemetry-relay``) but the requirements install ``opengris-scaler`` without the ``otel`` or ``all`` extra.
+- A cloud worker manager whose units install from ``requirements_txt`` refuses to start when its units would export (``--worker-otlp-endpoint``, or relay to a worker manager with an endpoint) but the requirements install ``opengris-scaler`` without the ``otel`` or ``all`` extra.
 - On Windows, a worker or processor that is stopped loses the telemetry it has not exported yet, up to ``OTEL_BSP_SCHEDULE_DELAY`` of spans: Windows stops them without letting them flush.
 - The SDK reads every other setting from the standard `OTEL_* variables <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/>`_, for example ``OTEL_EXPORTER_OTLP_HEADERS`` and ``OTEL_METRIC_EXPORT_INTERVAL``.
 
-Relay through the scheduler
----------------------------
+Relay
+-----
 
-Workers that cannot reach a collector, such as workers in cloud units, send their telemetry through the scheduler:
+A process with no endpoint of its own sends its telemetry to the process that supervises it, which exports it or passes it up:
 
-1. Set ``OTEL_EXPORTER_OTLP_ENDPOINT`` for the scheduler.
-2. Start the worker manager with ``--telemetry-relay``, or set ``telemetry_relay = true`` in its ``[[worker_manager]]`` section.
+.. code-block:: text
 
-- Its workers and processors then export into a buffer, and send it to the scheduler every second; a processor also sends after each task.
-- The scheduler forwards each batch unparsed to ``<OTEL_EXPORTER_OTLP_ENDPOINT>/v1/traces``, ``/v1/metrics``, or ``/v1/logs`` with ``OTEL_EXPORTER_OTLP_HEADERS``, from a thread.
-- A relaying worker ignores ``OTEL_EXPORTER_OTLP_ENDPOINT``, and needs the ``otel`` extra installed; ``telemetry_relay`` and ``worker_otlp_endpoint`` are mutually exclusive.
-- A full buffer, on a worker or in the scheduler, drops new batches and logs a warning with the count.
-- A scheduler without ``OTEL_EXPORTER_OTLP_ENDPOINT`` drops relayed telemetry, and logs a warning once.
+    processor -> worker -> worker manager -> (a cloud unit's manager -> its parent worker manager) -> scheduler
+
+- A process with an endpoint of its own (``otlp_endpoint``, ``worker_otlp_endpoint``, or ``OTEL_EXPORTER_OTLP_ENDPOINT``) exports directly, and exports what the processes it supervises relay to it.
+- A worker manager relays when its parent forwards: the scheduler, or a parent worker manager, says so in its heartbeat echo, and the first one decides before the manager creates a unit.
+- A worker manager tells each worker it starts whether to relay.
+- So with only the scheduler's endpoint set, every worker manager, worker, and processor relays up to it; a worker manager with its own endpoint keeps its workers' telemetry off the scheduler.
+- ``telemetry_relay = false`` in a ``[[worker_manager]]`` section (``--telemetry-relay false``) makes that worker manager and its workers export nothing when they have no endpoint of their own.
+- A relaying process exports into a buffer, and sends it to its parent every second; a processor also sends after each task, and a worker manager keeps receiving while its units stop.
+- The top of the chain posts each batch unparsed to ``<OTEL_EXPORTER_OTLP_ENDPOINT>/v1/traces``, ``/v1/metrics``, or ``/v1/logs`` with ``OTEL_EXPORTER_OTLP_HEADERS``, from a thread.
+- A process that would relay but lacks the ``otel`` extra logs a warning and exports nothing.
+- A full buffer drops new batches and logs a warning with the count.
+- Relaying costs more than exporting directly: give the processes that can reach the collector an endpoint of their own.
 
 Services
 --------

@@ -107,6 +107,7 @@ struct WorkerManagerHeartbeat {
 }
 
 struct WorkerManagerHeartbeatEcho {
+    forwardsTelemetry @0 :Bool;  # the sender exports what its worker managers relay to it, fixed for its lifetime
 }
 
 struct WorkerManagerCommand {

@@ -4,10 +4,11 @@ import os
 import sys
 import time
 import unittest
-from typing import Callable
+from typing import Callable, List, Optional, Set
 from unittest import mock
 
 from opentelemetry import baggage, context, trace
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 
 from scaler import Client, SchedulerClusterCombo
@@ -16,6 +17,7 @@ from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig, SocketType
+from scaler.protocol.capnp import TelemetryBatch
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
@@ -31,6 +33,9 @@ CLIENT_TRACE_ID = 0x0123456789ABCDEF0123456789ABCDEF
 CLIENT_SPAN_ID = 0x0123456789ABCDEF
 
 TASK_COUNT = 20
+
+# a few relay send intervals and export delays
+RELAY_SETTLE_SECONDS = 3
 
 # Windows stops a worker or processor with TerminateProcess, which drops the telemetry it has not exported yet
 WINDOWS_STOP_LOSES_TELEMETRY = "Windows stops workers and processors without letting them flush"
@@ -249,7 +254,48 @@ class TestTelemetry(unittest.TestCase):
         self.assertEqual(decision.attributes["scaler.worker_manager.desired_task_concurrency"], 1)
 
 
+def start_native_worker_manager(
+    combo: SchedulerClusterCombo,
+    worker_manager_id: str,
+    otlp_endpoint: Optional[str] = None,
+    telemetry_relay: bool = True,
+) -> multiprocessing.process.BaseProcess:
+    """A native worker manager for one worker, in its own process, with the environment the caller set."""
+    manager = NativeWorkerManager(
+        NativeWorkerManagerConfig(
+            worker_manager_config=WorkerManagerConfig(
+                scheduler_address=AddressConfig.from_string(combo.get_address()),
+                worker_manager_id=WorkerManagerID.from_string(worker_manager_id),
+                max_task_concurrency=1,
+                otlp_endpoint=otlp_endpoint,
+            ),
+            worker_config=WorkerConfig(heartbeat_interval_seconds=1, telemetry_relay=telemetry_relay),
+        )
+    )
+    process = multiprocessing.get_context("spawn").Process(target=_run_native_worker_manager, args=(manager,))
+    process.start()
+    return process
+
+
+def relayed_span_names(batches: List[TelemetryBatch]) -> Set[str]:
+    names: Set[str] = set()
+    for batch in batches:
+        if TelemetryBatch.Signal(batch.signal) != TelemetryBatch.Signal.traces:
+            continue
+        for resource_spans in ExportTraceServiceRequest.FromString(bytes(batch.payload)).resource_spans:
+            for scope_spans in resource_spans.scope_spans:
+                names.update(span.name for span in scope_spans.spans)
+    return names
+
+
+def stop(process: multiprocessing.process.BaseProcess) -> None:
+    process.terminate()
+    process.join()
+
+
 class TestTelemetryRelay(unittest.TestCase):
+    """Only the scheduler has an endpoint: a worker manager and its workers relay to it by default."""
+
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -258,43 +304,84 @@ class TestTelemetryRelay(unittest.TestCase):
         self.receiver.start()
         self.addCleanup(self.receiver.stop)
 
-        environment = mock.patch.dict(
-            os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": self.receiver.endpoint, **FAST_EXPORT_ENVIRONMENT}
-        )
+        environment = mock.patch.dict(os.environ, FAST_EXPORT_ENVIRONMENT)
         environment.start()
         self.addCleanup(environment.stop)
 
-        self.cluster = SchedulerClusterCombo(n_workers=1, telemetry_relay=True)
+        # the scheduler takes the endpoint from the environment it is spawned with; the managers start without it
+        with mock.patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": self.receiver.endpoint}):
+            self.cluster = SchedulerClusterCombo(n_workers=0)
         self.addCleanup(self.cluster.shutdown)
+        os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
 
-    def test_relayed_worker_spans_reach_the_collector_through_the_scheduler(self) -> None:
-        """A relaying worker's and processor's spans arrive from the scheduler's forwarder, still in the task trace."""
+    def test_a_manager_and_its_workers_relay_through_the_scheduler_by_default(self) -> None:
+        """Manager, worker, and processor spans arrive from the scheduler's forwarder, still in the task trace."""
+        manager = start_native_worker_manager(self.cluster, "relay-test")
+        self.addCleanup(stop, manager)
+
         with Client(address=self.cluster.get_address()) as client:
             self.assertEqual(client.submit(traced_work, 1).result(), 2)
 
-        span_names = ["scaler.scheduler.task", "scaler.worker.task", "scaler.processor.execute", "user.work"]
+        span_names = [
+            "scaler.scheduler.task",
+            "scaler.worker.task",
+            "scaler.processor.execute",
+            "user.work",
+            "scaler.worker_manager.create_unit",
+        ]
         wait_for(lambda: all(self.receiver.spans_named(name) for name in span_names), f"spans {span_names}")
 
-        scheduler_task, worker_task, execute, user_work = [self.receiver.spans_named(name)[0] for name in span_names]
+        scheduler_task, worker_task, execute, user_work, create_unit = [
+            self.receiver.spans_named(name)[0] for name in span_names
+        ]
         self.assertNotIn("urllib", scheduler_task.user_agent)
-        for relayed in (worker_task, execute, user_work):
+        for relayed in (worker_task, execute, user_work, create_unit):
             self.assertIn("urllib", relayed.user_agent, relayed.name)
 
+        self.assertEqual(create_unit.service_name, "scaler-worker-manager")
         self.assertEqual(worker_task.span.parent_span_id, scheduler_task.span.span_id)
         self.assertEqual(user_work.span.parent_span_id, execute.span.span_id)
-        self.assertEqual(execute.service_name, "scaler-processor")
+
+    def test_a_manager_with_its_own_endpoint_exports_what_its_workers_relay(self) -> None:
+        """The workers relay to their manager, which exports to its endpoint: none of it passes the scheduler."""
+        manager_receiver = OTLPReceiver()
+        manager_receiver.start()
+        self.addCleanup(manager_receiver.stop)
+        manager = start_native_worker_manager(self.cluster, "relay-test", otlp_endpoint=manager_receiver.endpoint)
+        self.addCleanup(stop, manager)
+
+        with Client(address=self.cluster.get_address()) as client:
+            self.assertEqual(client.submit(traced_work, 1).result(), 2)
+
+        wait_for(lambda: bool(manager_receiver.spans_named("user.work")), "the task's user span at the manager's")
+        wait_for(lambda: bool(self.receiver.spans_named("scaler.scheduler.task")), "the scheduler's own span")
+        self.assertTrue(manager_receiver.spans_named("scaler.worker.task"))
+        self.assertFalse(self.receiver.spans_named("scaler.worker.task"))
+        self.assertFalse(self.receiver.spans_named("scaler.worker_manager.create_unit"))
+
+    def test_relay_off_exports_nothing_from_a_manager_without_an_endpoint(self) -> None:
+        manager = start_native_worker_manager(self.cluster, "relay-test", telemetry_relay=False)
+        self.addCleanup(stop, manager)
+
+        with Client(address=self.cluster.get_address()) as client:
+            self.assertEqual(client.submit(traced_work, 1).result(), 2)
+
+        wait_for(lambda: bool(self.receiver.spans_named("scaler.scheduler.task")), "the scheduler's own span")
+        time.sleep(RELAY_SETTLE_SECONDS)  # long enough for relayed spans to arrive, had there been any
+        self.assertFalse(self.receiver.spans_named("scaler.worker.task"))
+        self.assertFalse(self.receiver.spans_named("scaler.worker_manager.create_unit"))
 
     @unittest.skipIf(sys.platform == "win32", WINDOWS_STOP_LOSES_TELEMETRY)
-    def test_a_relaying_worker_sends_its_buffered_spans_before_it_exits(self) -> None:
-        """Worker spans still in the SDK's batch when the cluster stops reach the collector."""
+    def test_relayed_spans_still_buffered_when_the_manager_stops_reach_the_collector(self) -> None:
+        """Worker spans held in the SDK's batch pass up through the manager as it stops its workers."""
         # the default 5s batch delay holds the worker spans in its SDK until the worker exits
         with mock.patch.dict(os.environ, {"OTEL_BSP_SCHEDULE_DELAY": "5000"}):
-            cluster = SchedulerClusterCombo(n_workers=1, telemetry_relay=True)
+            manager = start_native_worker_manager(self.cluster, "relay-test")
         try:
-            with Client(address=cluster.get_address()) as client:
+            with Client(address=self.cluster.get_address()) as client:
                 client.map(pow, [2] * TASK_COUNT, range(TASK_COUNT))
         finally:
-            cluster.shutdown()
+            stop(manager)
 
         wait_for(
             lambda: len(self.receiver.spans_named("scaler.worker.task")) >= TASK_COUNT,
@@ -416,3 +503,45 @@ class TestTelemetryOfAUnit(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(int.from_bytes(create_unit.trace_id, "big"), PARENT_CREATE_UNIT_TRACE_ID)
         self.assertEqual(int.from_bytes(create_unit.parent_span_id, "big"), PARENT_CREATE_UNIT_SPAN_ID)
         self.assertEqual(start.parent_span_id, create_unit.span_id)
+
+    async def test_a_units_manager_without_an_endpoint_relays_to_its_parent(self) -> None:
+        """A unit's manager relays its spans to the parent manager that forwards, instead of exporting them."""
+        combo = SchedulerClusterCombo(n_workers=0)
+        parent = _FakeParent(AddressConfig(SocketType.tcp, "127.0.0.1", OS_PICKED_PORT))
+        await parent.bind()
+        parent.task_concurrency = 1
+        parent.forwards_telemetry = True
+        parent_task = asyncio.ensure_future(parent.run())
+        child_manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
+                worker_manager_config=WorkerManagerConfig(
+                    scheduler_address=AddressConfig.from_string(combo.get_address()),
+                    worker_manager_id=WorkerManagerID.from_string("unit-relay-test"),
+                    max_task_concurrency=1,
+                ),
+                worker_config=WorkerConfig(heartbeat_interval_seconds=1),
+                parent_address=parent.address,
+                unit_id=UNIT_ID,
+            )
+        )
+        child_process = multiprocessing.get_context("spawn").Process(
+            target=_run_native_worker_manager, args=(child_manager,)
+        )
+        try:
+            with mock.patch.dict(os.environ, FAST_EXPORT_ENVIRONMENT):
+                os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+                child_process.start()
+
+            deadline = time.monotonic() + TELEMETRY_TIMEOUT_SECONDS
+            while "scaler.worker_manager.create_unit" not in relayed_span_names(parent.relayed):
+                self.assertLess(time.monotonic(), deadline, "timed out waiting for the relayed create_unit span")
+                await asyncio.sleep(POLL_SECONDS)
+        finally:
+            if child_process.is_alive():
+                child_process.terminate()
+                child_process.join()
+            parent_task.cancel()
+            parent.destroy()
+            combo.shutdown()
+
+        self.assertFalse(self.receiver.spans_named("scaler.worker_manager.create_unit"), "exported, not relayed")

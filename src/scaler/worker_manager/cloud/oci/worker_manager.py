@@ -96,8 +96,8 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
         if worker_config.hard_processor_suspend:
             command += " --hard-processor-suspend"
 
-        if worker_config.telemetry_relay:
-            command += " --telemetry-relay"
+        if not worker_config.telemetry_relay:
+            command += " --telemetry-relay false"
 
         object_storage_address = config.worker_manager_config.object_storage_address
         if object_storage_address is not None:
@@ -199,6 +199,7 @@ class OCIInstancesWorkerManager:
             ),
             children_address=config.worker_manager_config.children_address,
             io_threads=config.worker_config.io_threads,
+            telemetry_relay=config.worker_config.telemetry_relay,
         )
 
     def run(self) -> None:

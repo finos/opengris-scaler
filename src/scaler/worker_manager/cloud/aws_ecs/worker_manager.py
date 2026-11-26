@@ -124,8 +124,8 @@ class ECSWorkerProvisioner(UnitProvisioner):
         if self._hard_processor_suspend:
             command += " --hard-processor-suspend"
 
-        if self._telemetry_relay:
-            command += " --telemetry-relay"
+        if not self._telemetry_relay:
+            command += " --telemetry-relay false"
 
         if self._object_storage_address:
             command += f" --object-storage-address {self._object_storage_address!r}"
@@ -209,6 +209,7 @@ class ECSWorkerManager:
             create_provisioner=lambda children_address: ECSWorkerProvisioner(config, children_address),
             children_address=config.worker_manager_config.children_address,
             io_threads=config.worker_config.io_threads,
+            telemetry_relay=config.worker_config.telemetry_relay,
         )
 
     def run(self) -> None:

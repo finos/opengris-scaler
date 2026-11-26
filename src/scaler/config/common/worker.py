@@ -53,13 +53,12 @@ class WorkerConfig(ConfigClass):
         ),
     )
     telemetry_relay: bool = dataclasses.field(
-        default=False,
+        default=True,
         metadata=dict(
             short="-tr",
-            action="store_true",
             help=(
-                "send the telemetry of workers and processors through the scheduler instead of to "
-                "OTEL_EXPORTER_OTLP_ENDPOINT, for workers that cannot reach a collector"
+                "relay the telemetry of this worker manager, its workers, and their processors up to the scheduler, "
+                "when they have no OTLP endpoint of their own and the scheduler has one; false exports nothing instead"
             ),
         ),
     )
@@ -100,5 +99,3 @@ class WorkerConfig(ConfigClass):
             raise ValueError("trim_memory_threshold_bytes cannot be negative.")
         if self.io_threads <= 0:
             raise ValueError("io_threads must be a positive integer.")
-        if self.telemetry_relay and self.worker_otlp_endpoint is not None:
-            raise ValueError("telemetry_relay and worker_otlp_endpoint are mutually exclusive.")

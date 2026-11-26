@@ -254,7 +254,8 @@ class WorkerManagerHeartbeat(BaseMessage):
     activeUnits: int
     pendingUnits: int
 
-class WorkerManagerHeartbeatEcho(BaseMessage): ...
+class WorkerManagerHeartbeatEcho(BaseMessage):
+    forwardsTelemetry: bool
 
 class WorkerManagerCommand(BaseMessage):
     setDesiredTaskConcurrencyRequests: Any
