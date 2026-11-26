@@ -5,6 +5,7 @@
 #include <cstring>
 #include <functional>
 #include <memory>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -230,13 +231,15 @@ void MessageConnection::recv(size_t size, RecvCallback callback) noexcept
 
     _recvCurrent._cursor = 0;
 
-    try {
-        _recvCurrent._buffer = std::make_unique<BufferedBytes>(size);
-    } catch (const std::bad_alloc& e) {
+    // nothrow: on macOS operator new can bind to the system C++ runtime, whose bad_alloc this library cannot catch.
+    std::unique_ptr<uint8_t[]> data {new (std::nothrow) uint8_t[size]()};
+    if (data == nullptr) {
         _logger.log(Logger::LoggingLevel::error, "Failed to allocate ", size, " bytes.");
         onRemoteDisconnect(DisconnectReason::Aborted);
         return;
     }
+
+    _recvCurrent._buffer = std::make_unique<BufferedBytes>(std::move(data), size);
 
     if (size == 0) {
         // Empty read, complete immediately with an empty buffer.

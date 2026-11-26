@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "scaler/ymq/bytes.h"
 
@@ -15,6 +16,10 @@ namespace ymq {
 class BufferedBytes final: public Bytes {
 public:
     explicit BufferedBytes(size_t size): _data(std::make_unique<uint8_t[]>(size)), _size(size)
+    {
+    }
+
+    BufferedBytes(std::unique_ptr<uint8_t[]> data, size_t size): _data(std::move(data)), _size(size)
     {
     }
 
