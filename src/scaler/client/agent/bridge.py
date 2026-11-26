@@ -16,8 +16,6 @@ satisfy, and implements both the native (``IPCAgentBridge``) and browser
 (``InProcessAgentBridge``) paths.
 """
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import struct

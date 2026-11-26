@@ -20,8 +20,6 @@ Only ``ConnectorSocket.connect`` is implemented; ``BinderSocket`` and
 listen for inbound TCP/WebSocket connections).
 """
 
-from __future__ import annotations
-
 import logging
 import struct
 import sys
