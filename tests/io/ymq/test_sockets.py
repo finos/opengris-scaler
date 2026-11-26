@@ -60,6 +60,7 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             listener.listen()
+            listener.settimeout(_SEND_FAIL_TIMEOUT_SECONDS)
 
             connector = ConnectorSocket.connect(
                 IOContext(), "connector", f"tcp://127.0.0.1:{listener.getsockname()[1]}"
