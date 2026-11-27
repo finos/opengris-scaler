@@ -29,6 +29,65 @@ Enable export
 - On Windows, a worker or processor that is stopped loses the telemetry it has not exported yet, up to ``OTEL_BSP_SCHEDULE_DELAY`` of spans: Windows stops them without letting them flush.
 - The SDK reads every other setting from the standard `OTEL_* variables <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/>`_, for example ``OTEL_EXPORTER_OTLP_HEADERS`` and ``OTEL_METRIC_EXPORT_INTERVAL``.
 
+Configuration examples
+----------------------
+
+Each example is a ``scaler config.toml`` file; the same keys work as flags on ``scaler_scheduler`` and ``scaler_worker_manager``.
+
+The scheduler's endpoint alone exports the whole cluster: relaying is on by default, so the worker manager, its workers, and their processors send their telemetry through the scheduler.
+
+.. code-block:: toml
+
+    [scheduler]
+    bind_address = "tcp://127.0.0.1:6378"
+    object_storage_address = "tcp://127.0.0.1:6379"
+    otlp_endpoint = "http://collector:4318"
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    scheduler_address = "tcp://127.0.0.1:6378"
+    worker_manager_id = "wm-native"
+    # no endpoint of its own, and telemetry_relay defaults to true: it relays up to the scheduler
+
+A worker manager that reaches the collector exports directly, with its workers, and keeps their telemetry off the scheduler:
+
+.. code-block:: toml
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    scheduler_address = "tcp://10.0.0.5:6378"
+    worker_manager_id = "wm-rack-2"
+    otlp_endpoint = "http://10.0.0.9:4318"
+
+Cloud units that reach the collector at another address than their worker manager does export to ``worker_otlp_endpoint``:
+
+.. code-block:: toml
+
+    [[worker_manager]]
+    type = "orb_aws_ec2"
+    worker_manager_id = "wm-orb"
+    # ... the worker manager's other settings
+    otlp_endpoint = "http://10.0.0.9:4318"
+    # the collector as the units reach it through NAT
+    worker_otlp_endpoint = "http://203.0.113.10:4318"
+
+A worker manager whose telemetry must not leave it turns relaying off, and with no endpoint of its own exports nothing:
+
+.. code-block:: toml
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    scheduler_address = "tcp://127.0.0.1:6378"
+    worker_manager_id = "wm-quiet"
+    telemetry_relay = false
+
+The same, from the command line:
+
+.. code-block:: bash
+
+    scaler_scheduler tcp://127.0.0.1:6378 --object-storage-address tcp://127.0.0.1:6379 --otlp-endpoint http://collector:4318
+    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-quiet --telemetry-relay false
+
 Relay
 -----
 
