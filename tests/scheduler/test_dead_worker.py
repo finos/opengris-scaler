@@ -1,8 +1,9 @@
 import concurrent.futures
+import sys
 import threading
 import time
 import unittest
-from typing import List
+from typing import Any, List
 
 import psutil
 
@@ -10,8 +11,14 @@ from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestDeadWorker(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -81,7 +88,7 @@ class TestDeadWorker(unittest.TestCase):
 
         CLIENT_TIMEOUT_SECONDS = 2.0
 
-        outcome: concurrent.futures.Future = concurrent.futures.Future()
+        outcome: concurrent.futures.Future[Any] = concurrent.futures.Future()
 
         def connect_and_run_task() -> None:
             try:

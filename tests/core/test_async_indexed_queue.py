@@ -1,12 +1,19 @@
 import asyncio
+import sys
 import unittest
 
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.queues.async_indexed_queue import AsyncIndexedQueue
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestAsyncIndexedQueue(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

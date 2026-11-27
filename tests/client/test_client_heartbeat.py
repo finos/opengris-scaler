@@ -1,3 +1,4 @@
+import sys
 import time
 import unittest
 from typing import Any
@@ -5,9 +6,15 @@ from typing import Any
 import cloudpickle
 
 from scaler import Client, SchedulerClusterCombo
+from scaler.client.future import ScalerFuture
 from scaler.client.serializer.mixins import Serializer
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 # How long the scheduler waits for a client's heartbeat before disconnecting it.
 SCHEDULER_CLIENT_TIMEOUT_SECONDS = 2
@@ -59,6 +66,7 @@ class SlowSerializer(Serializer):
 
 
 class TestClientHeartbeat(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -67,6 +75,7 @@ class TestClientHeartbeat(unittest.TestCase):
         )
         self.address = self.combo.get_address()
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
 
@@ -83,7 +92,7 @@ class TestClientHeartbeat(unittest.TestCase):
 
             # Registering a callback forces the result object to be deserialized as soon as the task finishes, on the
             # agent's event loop.
-            future = client.submit(slow_task, SlowObject())
+            future: ScalerFuture = client.submit(slow_task, SlowObject())
             future.add_done_callback(lambda _: None)
 
             self.assertIsInstance(future.result(timeout=RESULT_TIMEOUT_SECONDS), SlowObject)

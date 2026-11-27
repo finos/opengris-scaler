@@ -2,7 +2,7 @@ STORAGE_SIZE_MODULUS = 1024.0
 TIME_MODULUS = 1000
 
 
-def format_bytes(number) -> str:
+def format_bytes(number: float) -> str:
     for unit in ["B", "K", "M", "G", "T"]:
         if number >= STORAGE_SIZE_MODULUS:
             number /= STORAGE_SIZE_MODULUS
@@ -16,7 +16,7 @@ def format_bytes(number) -> str:
     raise ValueError("This should not happen")
 
 
-def format_integer(number):
+def format_integer(number: int):
     return f"{number:,}"
 
 
@@ -24,9 +24,9 @@ def format_percentage(number: int):
     return f"{(number / 1000):.1%}"
 
 
-def format_microseconds(number: int):
+def format_microseconds(number: int) -> str:
     for unit in ["us", "ms", "s"]:
-        if number >= TIME_MODULUS:
+        if number >= TIME_MODULUS and unit != "s":
             number = int(number / TIME_MODULUS)
             continue
 
@@ -35,6 +35,8 @@ def format_microseconds(number: int):
 
         too_big_sign = "+" if unit == "s" and number > TIME_MODULUS else ""
         return f"{number}{too_big_sign}{unit}"
+
+    raise ValueError("This should not happen")
 
 
 def format_seconds(number: int) -> str:

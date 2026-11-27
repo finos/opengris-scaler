@@ -13,6 +13,11 @@ from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 RESULT_TIMEOUT_SECONDS = 60
 
 
@@ -37,6 +42,7 @@ def square(value: int) -> int:
 
 @unittest.skipIf(sys.platform == "win32", "sends SIGKILL to a suspended processor")
 class TestDyingSuspendedProcessor(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -45,6 +51,7 @@ class TestDyingSuspendedProcessor(unittest.TestCase):
         self.address = self.cluster.get_address()
         self.directory = tempfile.mkdtemp(prefix="scaler_suspended_processor_")
 
+    @override
     def tearDown(self) -> None:
         self.cluster.shutdown()
         shutil.rmtree(self.directory, ignore_errors=True)

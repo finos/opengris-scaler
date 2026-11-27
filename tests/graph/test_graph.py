@@ -1,8 +1,10 @@
 import graphlib
 import logging
 import math
+import sys
 import time
 import unittest
+from typing import Any, Dict, List, Tuple
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.graph.optimization import cull_graph
@@ -10,31 +12,37 @@ from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
-def inc(i):
+
+def inc(i: int):
     return i + 1
 
 
-def add(a, b):
+def add(a: int, b: int):
     return a + b
 
 
-def minus(a, b):
+def minus(a: float, b: float):
     return a - b
 
 
-def inc_error(i):
+def inc_error(i: int):
     assert isinstance(i, int)
     time.sleep(1)
     raise ValueError("Compute Error")
 
 
-def add_sleep(a, b):
+def add_sleep(a: int, b: int):
     time.sleep(5)
     return a + b
 
 
 class TestGraph(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -42,6 +50,7 @@ class TestGraph(unittest.TestCase):
         self.address = self.combo.get_address()
         # self.address = "tcp://127.0.0.1:2345"
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
         pass
@@ -150,7 +159,7 @@ class TestGraph(unittest.TestCase):
                 self.assertEqual(results, {"e": 1, "d": 4, "c": 3})
 
     def test_get_data_key(self):
-        def func(a):
+        def func(a: List[int]):
             return a
 
         # If we don't sleep, then cluster will shutdown before OSS address get exchanged
@@ -179,7 +188,7 @@ class TestGraph(unittest.TestCase):
                 self.assertEqual(results, {"e": 4, "d": 7, "c": 3})
 
     def test_none_value(self):
-        def func(a, optional_param_can_be_none):
+        def func(a: int, optional_param_can_be_none: None):
             return a
 
         with Client(address=self.address) as client:
@@ -196,7 +205,7 @@ class TestGraph(unittest.TestCase):
                 self.assertEqual(results, {"b": 1})
 
     def test_cancel(self):
-        def func(a):
+        def func(a: int):
             time.sleep(5)
             return a
 
@@ -235,7 +244,7 @@ class TestGraph(unittest.TestCase):
         combo.shutdown()
 
     def test_client_quit(self):
-        def func(a):
+        def func(a: int):
             time.sleep(10)
             return a
 
@@ -255,7 +264,7 @@ class TestGraph(unittest.TestCase):
 
     def test_cull_graph(self):
         # fmt: off
-        graph = {
+        graph: Dict[str, Tuple[Any, ...]] = {
             "a": (lambda *_: None,),
             "b": (lambda *_: None, "a"),
             "c": (lambda *_: None, "a"),
@@ -265,7 +274,7 @@ class TestGraph(unittest.TestCase):
         }
         # fmt: on
 
-        def filter_keys(_graph, keys):
+        def filter_keys(_graph: Dict[str, Tuple[Any, ...]], keys: List[str]):
             return {key: value for key, value in _graph.items() if key in keys}
 
         self.assertEqual(cull_graph(graph, ["d"]), filter_keys(graph, ["a", "b", "d"]))
@@ -274,11 +283,11 @@ class TestGraph(unittest.TestCase):
         self.assertEqual(cull_graph(graph, ["d", "e", "f"]), graph)
 
     def test_graph_error(self):
-        def raise_exception(*args):
+        def raise_exception(*args: object):
             raise ValueError("some error")
 
         # fmt: off
-        graph = {
+        graph: Dict[str, Tuple[Any, ...]] = {
             "a": (lambda *_: None,),
             "b": (lambda *_: time.sleep(1), "a"),
             "c": (lambda *_: time.sleep(2), "a"),

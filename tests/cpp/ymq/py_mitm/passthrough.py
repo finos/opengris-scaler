@@ -13,14 +13,14 @@ from tests.cpp.ymq.py_mitm.mitm_types import IP, MITM, MITMInterface, TCPConnect
 class PassthroughMITM(MITM):
     def proxy(
         self,
-        tuntap: MITMInterface,
+        interface: MITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],
         server_conn: TCPConnection,
     ) -> bool:
         if sender == client_conn or client_conn is None:
-            tuntap.send(server_conn.rewrite(pkt))
+            interface.send(server_conn.rewrite(pkt))
         elif sender == server_conn:
-            tuntap.send(client_conn.rewrite(pkt))
+            interface.send(client_conn.rewrite(pkt))
         return True

@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import sys
 import unittest
 
 import psutil
@@ -13,6 +14,11 @@ from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 # Short, so the scheduler forgets the killed worker instead of assigning the next task to it.
 WORKER_TIMEOUT_SECONDS = 5
@@ -28,6 +34,7 @@ def _processor_pid() -> int:
 
 
 class TestNativeWorkerSupervision(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

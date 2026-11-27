@@ -1,10 +1,13 @@
 import unittest
+from typing import Dict
 
 from scaler.protocol.capnp import TaskCapability, WorkerManagerCommand
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 
 
-def _make_request(task_concurrency: int, capabilities: dict) -> WorkerManagerCommand.DesiredTaskConcurrencyRequest:
+def _make_request(
+    task_concurrency: int, capabilities: Dict[str, int]
+) -> WorkerManagerCommand.DesiredTaskConcurrencyRequest:
     # Build the real protocol struct (matching build_set_desired_command) and round-trip it through the
     # wire, so the test reads capabilities exactly as a worker manager does. A MagicMock here can invent
     # whatever attribute the code reads and hide a field-name mismatch (TaskCapability uses `name`, not

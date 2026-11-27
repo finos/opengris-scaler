@@ -1,10 +1,11 @@
 import asyncio
+import sys
 import time
 import unittest
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from scaler.config.defaults import TASKS_PER_WORKER
-from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
+from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
@@ -20,16 +21,21 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, Wor
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
-def _generic_request(command):
+
+def _generic_request(command: WorkerManagerCommand) -> WorkerManagerCommand.DesiredTaskConcurrencyRequest:
     """Return the empty-capabilities (generic) DesiredTaskConcurrencyRequest from a command."""
     for r in command.setDesiredTaskConcurrencyRequests:
         if not capabilities_to_dict(r.capabilities):
             return r
-    return None
+    raise AssertionError("the command has no generic DesiredTaskConcurrencyRequest")
 
 
-def _capability_requests(command):
+def _capability_requests(command: WorkerManagerCommand) -> List[Tuple[Dict[str, int], int]]:
     """Return only capability-bearing requests as (caps_dict, taskConcurrency) tuples."""
     return [
         (capabilities_to_dict(r.capabilities), r.taskConcurrency)
@@ -41,6 +47,7 @@ def _capability_requests(command):
 class TestWaterfallScalingPolicy(unittest.TestCase):
     """Unit tests for declarative WaterfallScalingPolicy emission."""
 
+    @override
     def setUp(self):
         setup_logger()
         self.rules = [
@@ -433,6 +440,7 @@ class TestDrainOrder(unittest.TestCase):
 class TestWaterfallFloor(unittest.TestCase):
     """The floor reaches a manager through the policy's heartbeat and snapshot handling."""
 
+    @override
     def setUp(self):
         setup_logger()
 
@@ -498,6 +506,7 @@ class TestWaterfallFloor(unittest.TestCase):
 class TestWaterfallCapabilities(unittest.TestCase):
     """Capability-aware declarative emission for WaterfallScalingPolicy."""
 
+    @override
     def setUp(self):
         setup_logger()
 
@@ -682,6 +691,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
 class TestWaterfallConfigParsing(unittest.TestCase):
     """Unit tests for waterfall config parsing via create_policies() factory."""
 
+    @override
     def setUp(self):
         setup_logger()
         # EvenLoadAllocatePolicy creates an AsyncPriorityQueue which requires an event loop.
@@ -804,6 +814,7 @@ class TestWaterfallConfigParsing(unittest.TestCase):
 class TestWaterfallAllocationWithCapabilities(unittest.TestCase):
     """Tests that the waterfall allocation policy respects task capabilities."""
 
+    @override
     def setUp(self):
         setup_logger()
         try:

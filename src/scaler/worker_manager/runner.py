@@ -72,7 +72,7 @@ class WorkerManagerRunner:
         self._connector_parent: Optional[AsyncConnector] = None
         self._binder_children: Optional[AsyncBinder] = None
         self._ident: bytes = b""
-        self._task: asyncio.Task
+        self._task: asyncio.Task[None]
 
     async def _initialize_network(self) -> None:
         # A child manager is known to its parent by the unit id the parent chose.

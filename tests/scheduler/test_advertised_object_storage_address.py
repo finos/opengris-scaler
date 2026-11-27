@@ -1,4 +1,5 @@
 import multiprocessing
+import sys
 import unittest
 
 from scaler import Client
@@ -26,11 +27,17 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 # a client or worker dialing an unreachable object storage address never gets the result
 TASK_TIMEOUT_SECONDS = 30
 
 
 class TestAdvertisedObjectStorageAddress(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

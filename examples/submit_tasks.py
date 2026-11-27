@@ -33,7 +33,7 @@ def cpu_bound(n: int) -> int:
     return count
 
 
-def mixed_work(index: int, workload: int) -> dict:
+def mixed_work(index: int, workload: int) -> dict[str, float]:
     """CPU work followed by a short sleep to simulate mixed I/O+CPU load."""
     start = time.monotonic()
     prime_count = cpu_bound(workload)

@@ -12,6 +12,7 @@ If wasm and native ever diverge at the wire level, the matching byte-for-byte
 assertions here catch it.
 """
 
+import sys
 import unittest
 from typing import Tuple
 
@@ -19,6 +20,11 @@ from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.config.types.address import AddressConfig
 from scaler.io.network_backends import YMQNetworkBackend
 from scaler.utility.identifiers import ClientID, ObjectID
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def _start_server(address: AddressConfig) -> Tuple[ObjectStorageServerProcess, AddressConfig]:
@@ -41,6 +47,7 @@ def _stop_server(server: ObjectStorageServerProcess) -> None:
 class ObjectStorageWsParityTest(unittest.TestCase):
     """Exercise the same operations against ``tcp://`` and ``ws://`` servers."""
 
+    @override
     @classmethod
     def setUpClass(cls) -> None:
         cls._tcp_server, cls._tcp_address = _start_server(AddressConfig.from_string("tcp://127.0.0.1:0"))
@@ -48,6 +55,7 @@ class ObjectStorageWsParityTest(unittest.TestCase):
 
         cls._backend = YMQNetworkBackend(num_threads=1)
 
+    @override
     @classmethod
     def tearDownClass(cls) -> None:
         cls._backend.destroy()
@@ -60,7 +68,7 @@ class ObjectStorageWsParityTest(unittest.TestCase):
             object_id = ObjectID.generate_object_id(ClientID(b"parity-client"))
             payload = b"parity-payload-" + b"x" * 1024
             connector.set_object(object_id, payload)
-            fetched = bytes(connector.get_object(object_id))
+            fetched = connector.get_object(object_id)
             self.assertEqual(fetched, payload)
             self.assertTrue(connector.delete_object(object_id))
             self.assertFalse(connector.delete_object(object_id))

@@ -18,7 +18,7 @@ class TestOCIInstancesWorkerProvisionerCreate(unittest.IsolatedAsyncioTestCase):
     async def test_create_returns_the_instance_without_waiting_for_it_to_become_active(self) -> None:
         """A handle from the first API call lets terminate destroy an instance that is still booting."""
         config = MagicMock()
-        config.worker_config.per_worker_capabilities.capabilities = {}
+        config.worker_config.per_worker_capabilities.capabilities = dict[str, int]()
         config.python_worker_environment.requirements_txt = ""
         config.container_instance_config.image_pull_username = None
         with patch.object(OCIInstancesWorkerProvisioner, "_initialize_oci_client"):

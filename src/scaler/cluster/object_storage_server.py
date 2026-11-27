@@ -59,6 +59,9 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         tls_cert = self._security_config.tls_cert if self._security_config is not None else None
         tls_key = self._security_config.tls_key if self._security_config is not None else None
 
+        def send_bound_address(bound_address: str) -> None:
+            self._ready_sender.send(AddressConfig.from_string(bound_address))
+
         self._server = ObjectStorageServer()
         try:
             self._server.run(
@@ -69,7 +72,7 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
                 logging_paths,
                 tls_cert,
                 tls_key,
-                lambda bound_address: self._ready_sender.send(AddressConfig.from_string(bound_address)),
+                send_bound_address,
             )
         except KeyboardInterrupt:
             logger.info("ObjectStorageServer: received KeyboardInterrupt, shutting down")

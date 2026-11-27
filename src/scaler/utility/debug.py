@@ -1,12 +1,12 @@
 import functools
 import pdb
 import sys
-from typing import Callable
+from typing import Any, Callable, Optional
 
 
-def pdb_wrapped(func: Callable):
+def pdb_wrapped(func: Callable[..., Optional[int]]):
     @functools.wraps(func)
-    def pdb_wrapper(*args, **kwargs):
+    def pdb_wrapper(*args: Any, **kwargs: Any):
         try:
             exit_code = func(*args, **kwargs)
             sys.exit(exit_code)

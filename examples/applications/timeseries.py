@@ -5,6 +5,7 @@ This reveals a ~4x speedup over the non-parallelized version.
 
 from multiprocessing import cpu_count
 from timeit import default_timer as timer
+from typing import Any, Callable, Iterable, List
 
 import pandas as pd
 import prophet.diagnostics
@@ -33,7 +34,7 @@ def main():
             def __init__(self, client: Client):
                 self.client = client
 
-            def map(self, func, *iterables):
+            def map(self, func: Callable[..., Any], *iterables: Iterable[Any]) -> List[Any]:
                 return self.client.starmap(func, list(zip(*iterables)))
 
         # non-parallelized cross-validation

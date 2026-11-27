@@ -1,22 +1,31 @@
+import sys
 import unittest
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
-from scaler.protocol.capnp import Task, WorkerManagerHeartbeat
+from scaler.protocol.capnp import Task, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestCapabilityScalingPolicy(unittest.TestCase):
     """Unit tests for CapabilityScalingPolicy declarative emission."""
 
+    @override
     def setUp(self):
         setup_logger()
         self.policy = CapabilityScalingPolicy()
 
-    def _commands(self, snapshot, heartbeat, managed):
+    def _commands(
+        self, snapshot: InformationSnapshot, heartbeat: WorkerManagerHeartbeat, managed: List[WorkerID]
+    ) -> WorkerManagerCommand:
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
         self.assertEqual(len(commands), 1)
         return commands[0]
@@ -126,6 +135,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
     """Declarative equivalents of the master-branch capability shutdown tests."""
 
+    @override
     def setUp(self):
         setup_logger()
         self.policy = CapabilityScalingPolicy()
@@ -146,7 +156,7 @@ class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
         self.assertEqual(list(commands[0].setDesiredTaskConcurrencyRequests), [])
 
 
-def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
+def _create_mock_task(task_id: TaskID, capabilities: Dict[str, int]) -> Task:
     client_id = ClientID.generate_client_id()
     return Task(
         taskId=task_id,

@@ -1,5 +1,6 @@
 import asyncio
 import multiprocessing
+import sys
 import unittest
 from typing import List
 
@@ -15,6 +16,11 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 UNIT_ID = "unit-under-test"
 TIMEOUT_SECONDS = 60
@@ -82,6 +88,7 @@ def _child_manager_process(combo: SchedulerClusterCombo, parent: _FakeParent) ->
 
 
 class TestChildManager(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

@@ -10,8 +10,10 @@ expose a stub that raises if it is ever invoked, while letting the bare
 ``pargraph/engine/engine.py`` succeed at module load time.
 """
 
+from typing import Any
 
-def get_reusable_executor(*args, **kwargs):
+
+def get_reusable_executor(*args: Any, **kwargs: Any):
     raise RuntimeError(
         "loky.get_reusable_executor is unavailable under Pyodide (the "
         "_multiprocessing C extension is not built for wasm32). Pass an "

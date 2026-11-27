@@ -1,4 +1,5 @@
 import logging
+import sys
 import unittest
 from typing import Any, Optional
 from unittest import mock
@@ -12,6 +13,11 @@ from scaler.protocol.capnp import Task, TaskResultType
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.worker.agent.processor.processor import Processor
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 _LOGGER_NAME = "scaler.worker.agent.processor.processor"
 
@@ -50,6 +56,7 @@ class ProcessorLogExitTest(unittest.TestCase):
     """__log_exit is the processor's only report of why its main loop stopped, so it must name the orphaned task,
     keep the traceback for genuine faults, and stay quiet for a teardown the agent itself requested."""
 
+    @override
     def setUp(self) -> None:
         self.processor = _make_processor()
 
@@ -130,6 +137,7 @@ class ProcessorSendResultTest(unittest.TestCase):
     """_current_task must stay set until the result is fully handed off, so a failure part-way through can still
     report which task was orphaned."""
 
+    @override
     def setUp(self) -> None:
         self.processor = _make_processor()
         self.processor._connector_agent = Mock()
@@ -167,6 +175,7 @@ class ProcessorResultHandOffRetryTest(unittest.TestCase):
     """A finished task's result is unreproducible work, so a transport that drops under the hand-off must be
     retried instead of unwinding the main loop, which exits the processor and loses the result."""
 
+    @override
     def setUp(self) -> None:
         self.processor = _make_processor()
         self.processor._connector_agent = Mock()
@@ -265,6 +274,7 @@ class ProcessorRunForeverTest(unittest.TestCase):
     """SystemExit must reach multiprocessing's _bootstrap, otherwise the processor exits 0 and the exit code
     the task asked for is lost."""
 
+    @override
     def setUp(self) -> None:
         self.processor = _make_processor()
         self.processor._connector_agent = Mock()

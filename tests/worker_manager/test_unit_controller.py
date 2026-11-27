@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import unittest
 from typing import Dict, List, Set
 
@@ -7,6 +8,11 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController, UnitState
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 TASK_CONCURRENCY_PER_UNIT = 2
 RESTART_BACKOFF_SECONDS = 60
@@ -64,6 +70,7 @@ class _FakeProvisioner(UnitProvisioner):
 
 
 class TestUnitController(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

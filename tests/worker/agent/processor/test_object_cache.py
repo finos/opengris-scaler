@@ -1,3 +1,4 @@
+import sys
 import time
 import unittest
 from typing import Any
@@ -8,6 +9,11 @@ from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.utility.exceptions import DeserializeObjectError
 from scaler.utility.identifiers import ClientID, ObjectID
 from scaler.worker.agent.processor.object_cache import ObjectCache
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 CLEANUP_PASSES_TO_WAIT = 2
 
@@ -29,6 +35,7 @@ class ObjectCacheDeserializeFailureTest(unittest.TestCase):
     failure and ``get_object`` must surface it as ``DeserializeObjectError``
     rather than allowing the processor to crash with an unbound local."""
 
+    @override
     def setUp(self) -> None:
         self.client = ClientID(b"Client|test")
         self.object_id = _make_object_id()

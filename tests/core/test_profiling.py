@@ -1,9 +1,15 @@
+import sys
 import time
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def dummy(n: int):
@@ -20,6 +26,7 @@ def busy_dummy(n: int):
 
 
 class TestProfiling(unittest.TestCase):
+    @override
     def setUp(self):
         setup_logger()
         logging_test_name(self)
@@ -28,6 +35,7 @@ class TestProfiling(unittest.TestCase):
         self.client = Client(address=self.address, profiling=True)
         self.client_off = Client(address=self.address, profiling=False)
 
+    @override
     def tearDown(self) -> None:
         self.client.disconnect()
         self.client_off.disconnect()

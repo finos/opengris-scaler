@@ -42,7 +42,7 @@ def call_sync(
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> T:
-    future: concurrent.futures.Future = concurrent.futures.Future()
+    future: concurrent.futures.Future[T] = concurrent.futures.Future()
 
     def callback(result: Union[T, BaseException]):
         if future.done():
@@ -58,8 +58,8 @@ def call_sync(
 
 
 def run_detached(
-    awaitable: Awaitable[Any], description: str, on_done_callback: Optional[Callable[[asyncio.Task], None]] = None
-) -> asyncio.Task:
+    awaitable: Awaitable[T], description: str, on_done_callback: Optional[Callable[[asyncio.Task[T]], None]] = None
+) -> asyncio.Task[T]:
     """Schedule an awaitable on the running event loop without waiting for its completion.
 
     This turns an otherwise blocking asyncio operation into a fire-and-forget one.
@@ -75,7 +75,7 @@ def run_detached(
 
     task = asyncio.ensure_future(awaitable)
 
-    def on_done(completed: asyncio.Task) -> None:
+    def on_done(completed: asyncio.Task[T]) -> None:
         if on_done_callback is not None:
             on_done_callback(completed)
 
@@ -100,13 +100,13 @@ def run_detached(
     return task
 
 
-def _safe_set_result(future: asyncio.Future, result: Any) -> None:
+def _safe_set_result(future: asyncio.Future[T], result: T) -> None:
     if future.done():
         return
     future.set_result(result)
 
 
-def _safe_set_exception(future: asyncio.Future, exc: BaseException) -> None:
+def _safe_set_exception(future: asyncio.Future[Any], exc: BaseException) -> None:
     if future.done():
         return
     future.set_exception(exc)

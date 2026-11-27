@@ -65,7 +65,7 @@ def detect_log_type(file_name: str) -> LogType:
     return LogType.File
 
 
-def __generate_log_config(process_name: str) -> typing.Dict:
+def __generate_log_config(process_name: str) -> typing.Dict[str, typing.Any]:
     standard_format = f"%(asctime)s %(levelname)s {process_name}[%(process)d]: %(message)s"
     verbose_format = (
         f"%(asctime)s %(levelname)s {process_name}[%(process)d] %(name)s:%(funcName)s:%(lineno)s: %(message)s"
@@ -135,7 +135,7 @@ def __create_time_rotating_file_handler(logging_level: str, file_path: str):
     }
 
 
-def __create_size_rotating_file_handler(log_path) -> typing.Dict:
+def __create_size_rotating_file_handler(log_path: str) -> typing.Dict[str, typing.Any]:
     return {
         "class": "logging.handlers.RotatingFileHandler",
         "level": "INFO",
@@ -147,7 +147,7 @@ def __create_size_rotating_file_handler(log_path) -> typing.Dict:
     }
 
 
-def __parse_logging_level(value):
+def __parse_logging_level(value: int):
     return LoggingLevel(value).value
 
 

@@ -22,7 +22,7 @@ class TCPConnection:
     remote_ip: str
     remote_port: int
 
-    def rewrite(self, pkt: IP, ack: Optional[int] = None, data=None):
+    def rewrite(self, pkt: IP, ack: Optional[int] = None, data: Optional[bytes] = None):
         """
         Rewrite a TCP/IP packet as a packet originating
         from (local_ip, local_port) and going to (remote_ip, remote_port)

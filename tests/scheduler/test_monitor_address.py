@@ -1,5 +1,6 @@
 import asyncio
 import socket
+import sys
 import unittest
 from typing import Optional
 from unittest import mock
@@ -15,6 +16,11 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 HOST = "127.0.0.1"
 
 # a scheduler that falls back to another monitor port starts serving, so the test stops waiting after this long
@@ -22,6 +28,7 @@ STARTUP_TIMEOUT_SECONDS = 10
 
 
 class TestDefaultMonitorAddress(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

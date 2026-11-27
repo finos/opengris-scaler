@@ -1,9 +1,16 @@
+import sys
 import unittest
 
 from scaler.utility.one_to_many_dict import OneToManyDict
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestOneToManyDict(unittest.TestCase):
+    @override
     def setUp(self):
         # Create an instance of OneToManyDict before each test
         self._dict: OneToManyDict[object, object] = OneToManyDict()

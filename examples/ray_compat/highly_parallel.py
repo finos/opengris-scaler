@@ -21,7 +21,7 @@ ray.init(address="auto")
 
 def main():
     @ray.remote
-    def pi4_sample(sample_count):
+    def pi4_sample(sample_count: int):
         """pi4_sample runs sample_count experiments, and returns the
         fraction of time it was inside the circle.
         """

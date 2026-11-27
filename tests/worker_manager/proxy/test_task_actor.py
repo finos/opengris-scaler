@@ -1,6 +1,7 @@
 import asyncio
+import sys
 import unittest
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.protocol.capnp import Task, TaskCancel, TaskCancelConfirmType
@@ -11,6 +12,11 @@ from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker_manager.proxy.mixins import ExecutionBackend
 from scaler.worker_manager.proxy.task_actor import TaskActor
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 # Yields with nothing to handle before _settle stops: a background execute() or on_cancel() posts within two.
 SETTLE_IDLE_YIELDS = 3
@@ -35,7 +41,11 @@ def _make_task_cancel(task_id: TaskID, force: bool = False) -> TaskCancel:
 
 def _make_backend() -> MagicMock:
     backend = MagicMock(spec=ExecutionBackend)
-    backend.execute = AsyncMock(side_effect=lambda _: asyncio.get_running_loop().create_future())
+
+    def execute(_: Task) -> asyncio.Future[Any]:
+        return asyncio.get_running_loop().create_future()
+
+    backend.execute = AsyncMock(side_effect=execute)
     backend.on_cancel = AsyncMock()
     backend.register = MagicMock()
     backend.on_cleanup = MagicMock()
@@ -45,12 +55,13 @@ def _make_backend() -> MagicMock:
 class _TaskActorTestCase(unittest.IsolatedAsyncioTestCase):
     BASE_CONCURRENCY = 1
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         self.backend = _make_backend()
         self.confirms: List[Tuple[TaskID, TaskCancelConfirmType]] = []
-        self.reported: List[Tuple[Task, asyncio.Future]] = []
+        self.reported: List[Tuple[Task, asyncio.Future[Any]]] = []
 
         async def send_cancel_confirm(task_id: TaskID, confirm_type: TaskCancelConfirmType) -> None:
             self.confirms.append((task_id, confirm_type))
@@ -73,18 +84,18 @@ class _TaskActorTestCase(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0)
                 idle_yields += 1
 
-    async def _start_task(self, task: Task) -> asyncio.Future:
-        future: asyncio.Future = asyncio.get_running_loop().create_future()
+    async def _start_task(self, task: Task) -> asyncio.Future[Any]:
+        future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self.backend.execute = AsyncMock(return_value=future)
         self.actor.post_task_new(task)
         await self._settle()
         return future
 
-    async def _start_task_with_slow_execute(self, task: Task) -> Tuple[asyncio.Event, asyncio.Future]:
+    async def _start_task_with_slow_execute(self, task: Task) -> Tuple[asyncio.Event, asyncio.Future[Any]]:
         release = asyncio.Event()
-        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
 
-        async def slow_execute(_: Task) -> asyncio.Future:
+        async def slow_execute(_: Task) -> asyncio.Future[Any]:
             await release.wait()
             return future
 
@@ -102,6 +113,7 @@ class _TaskActorTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class TestTaskActorInit(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -476,6 +488,7 @@ class TestTaskActorCancel(_TaskActorTestCase):
 
 
 class TestTaskActorGetTaskPriority(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

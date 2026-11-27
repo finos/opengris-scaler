@@ -36,9 +36,16 @@ import http.server
 import os
 import re
 import socketserver
+import sys
 import threading
 import unittest
 from pathlib import Path
+from typing import Any, ClassVar
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_HTML = REPO_ROOT / "docs" / "build" / "html"
@@ -57,10 +64,11 @@ DOCS_HTML = REPO_ROOT / "docs" / "build" / "html"
 class JupyterLiteTests(unittest.TestCase):
     """Headless test for the docs-site JupyterLite build."""
 
-    server: socketserver.TCPServer
-    server_thread: threading.Thread
-    port: int
+    server: ClassVar[socketserver.TCPServer]
+    server_thread: ClassVar[threading.Thread]
+    port: ClassVar[int]
 
+    @override
     @classmethod
     def setUpClass(cls) -> None:
         if not (DOCS_HTML / "lite" / "lab" / "index.html").is_file():
@@ -79,6 +87,7 @@ class JupyterLiteTests(unittest.TestCase):
         cls.server_thread = threading.Thread(target=cls.server.serve_forever, daemon=True, name="jupyterlite-http")
         cls.server_thread.start()
 
+    @override
     @classmethod
     def tearDownClass(cls) -> None:
         cls.server.shutdown()
@@ -93,7 +102,7 @@ class JupyterLiteTests(unittest.TestCase):
 
     def _run_notebook(self, notebook: str) -> None:
         try:
-            from playwright.sync_api import sync_playwright
+            from playwright.sync_api import ConsoleMessage, Error, sync_playwright
         except ImportError:
             self.skipTest("playwright not installed; pip install playwright && playwright install chromium")
 
@@ -105,8 +114,15 @@ class JupyterLiteTests(unittest.TestCase):
             page = context.new_page()
 
             console_messages: list[str] = []
-            page.on("console", lambda msg: console_messages.append(msg.text))
-            page.on("pageerror", lambda exc: console_messages.append(f"PAGEERROR: {exc}"))
+
+            def on_console(msg: ConsoleMessage) -> None:
+                console_messages.append(msg.text)
+
+            def on_page_error(exc: Error) -> None:
+                console_messages.append(f"PAGEERROR: {exc}")
+
+            page.on("console", on_console)
+            page.on("pageerror", on_page_error)
 
             page.goto(url, wait_until="load", timeout=120_000)
 
@@ -209,10 +225,11 @@ def _make_handler(directory: str):
     """Build a SimpleHTTPRequestHandler bound to ``directory``."""
 
     class Handler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any):
             super().__init__(*args, directory=directory, **kwargs)
 
-        def log_message(self, format, *args):  # noqa: A002
+        @override
+        def log_message(self, format: str, *args: Any):  # noqa: A002
             # Suppress per-request stderr noise during the test.
             pass
 

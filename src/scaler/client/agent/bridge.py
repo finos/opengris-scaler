@@ -43,6 +43,11 @@ from scaler.protocol.capnp import BaseMessage, ClientHeartbeat, Resource
 from scaler.utility.exceptions import ClientQuitException
 from scaler.utility.identifiers import ClientID
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 T = TypeVar("T")
 
 
@@ -197,7 +202,7 @@ _YMQ_HEADER_FORMAT: str = "<Q"
 # ``client_timeout_seconds`` so a few missed ticks don't trip eviction.
 _HEARTBEAT_INTERVAL_MS: int = 5000
 
-_js_heartbeat_state: dict = {
+_js_heartbeat_state: dict[str, Any] = {
     # JS ``setInterval`` handle, returned by the install factory.
     "timer_id": None,
     # The ``ConnectorSocket`` instance the timer is attached to. Held so
@@ -336,7 +341,7 @@ def _uninstall_js_heartbeat_timer() -> None:
     _js_heartbeat_state["js_state"] = None
 
 
-def heartbeat_diagnostic() -> dict:
+def heartbeat_diagnostic() -> dict[str, Any]:
     """Snapshot Python + JS heartbeat counters as a plain dict.
 
     Safe to call from any environment (returns just the Python state when
@@ -353,7 +358,7 @@ def heartbeat_diagnostic() -> dict:
     # Read every counter via attribute access. Any None or missing field
     # comes back as ``None`` rather than raising, so the snapshot is always
     # printable.
-    js_view: dict = {}
+    js_view: dict[str, Any] = {}
     for name in (
         "fire_count",
         "send_count",
@@ -487,15 +492,15 @@ def _uninstall_time_sleep_jspi_patch() -> None:
 # and is idempotent.
 
 _concurrent_futures_patched: bool = False
-_original_wait: Optional[Callable[..., concurrent.futures._base.DoneAndNotDoneFutures]] = None
-_original_as_completed: Optional[Callable[..., Iterator[concurrent.futures.Future]]] = None
+_original_wait: Optional[Callable[..., concurrent.futures._base.DoneAndNotDoneFutures[Any]]] = None
+_original_as_completed: Optional[Callable[..., Iterator[concurrent.futures.Future[Any]]]] = None
 
 
 def jspi_wait(
-    fs: Iterable[concurrent.futures.Future],
+    fs: Iterable[concurrent.futures.Future[T]],
     timeout: Optional[float] = None,
     return_when: str = concurrent.futures.ALL_COMPLETED,
-) -> concurrent.futures._base.DoneAndNotDoneFutures:
+) -> concurrent.futures._base.DoneAndNotDoneFutures[T]:
     fs = list(fs)
     if not fs:
         return concurrent.futures._base.DoneAndNotDoneFutures(set(), set())
@@ -520,8 +525,8 @@ def jspi_wait(
 
     _run_sync(_await())
 
-    done: set = set()
-    not_done: set = set()
+    done: set[concurrent.futures.Future[T]] = set()
+    not_done: set[concurrent.futures.Future[T]] = set()
     for f in fs:
         if f.done():
             done.add(f)
@@ -531,8 +536,8 @@ def jspi_wait(
 
 
 def jspi_as_completed(
-    fs: Iterable[concurrent.futures.Future], timeout: Optional[float] = None
-) -> Iterator[concurrent.futures.Future]:
+    fs: Iterable[concurrent.futures.Future[T]], timeout: Optional[float] = None
+) -> Iterator[concurrent.futures.Future[T]]:
     fs = list(fs)
     pending = set(fs)
     # Yield any already-completed futures up front, mirroring stdlib semantics.
@@ -731,10 +736,12 @@ class _InProcessFuture(concurrent.futures.Future[T]):
         self._task = asyncio.ensure_future(coroutine)
         self._task.add_done_callback(self.__on_task_done)
 
+    @override
     def result(self, timeout: Optional[float] = None) -> T:
         self.__wait(timeout)
         return super().result(timeout=0)
 
+    @override
     def exception(self, timeout: Optional[float] = None) -> Optional[BaseException]:
         self.__wait(timeout)
         return super().exception(timeout=0)
@@ -747,7 +754,7 @@ class _InProcessFuture(concurrent.futures.Future[T]):
         # reported by the base class' methods below.
         _run_sync(asyncio.wait([self._task], timeout=timeout))
 
-    def __on_task_done(self, task: "asyncio.Future") -> None:
+    def __on_task_done(self, task: "asyncio.Future[T]") -> None:
         if task.cancelled():
             super().cancel()
             return
@@ -819,7 +826,7 @@ class InProcessAgentBridge(ClientAgentBridge):
             security_config=security_config,
         )
 
-        self._task: Optional[asyncio.Task] = None
+        self._task: Optional[asyncio.Task[None]] = None
         self._running = False
 
     def start(self) -> None:

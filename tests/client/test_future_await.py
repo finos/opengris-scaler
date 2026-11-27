@@ -8,6 +8,7 @@ exercise only the await bridge.
 """
 
 import asyncio
+import sys
 import unittest
 from typing import Any
 from unittest.mock import Mock
@@ -18,6 +19,11 @@ from scaler.client.serializer.default import DefaultSerializer
 from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def _make_future(is_delayed: bool = False) -> ScalerFuture:
@@ -100,6 +106,7 @@ class ScalerFutureEmscriptenResultTest(unittest.TestCase):
     so the behaviour can be exercised on a regular CPython interpreter.
     """
 
+    @override
     def setUp(self) -> None:
         import sys as _sys
 
@@ -117,7 +124,7 @@ class ScalerFutureEmscriptenResultTest(unittest.TestCase):
         import types as _types
 
         def _fake_run_sync(awaitable: Any) -> Any:
-            holder: dict = {}
+            holder: dict[str, Any] = {}
 
             def _runner() -> None:
                 try:
@@ -142,6 +149,7 @@ class ScalerFutureEmscriptenResultTest(unittest.TestCase):
         _sys.modules["pyodide"] = fake_pkg
         _sys.modules["pyodide.ffi"] = fake_ffi
 
+    @override
     def tearDown(self) -> None:
         import sys as _sys
 

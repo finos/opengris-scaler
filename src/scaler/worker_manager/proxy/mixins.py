@@ -31,7 +31,7 @@ class TaskInputLoader(ABC):
 
 class ExecutionBackend(ABC):
     @abstractmethod
-    async def execute(self, task: Task) -> asyncio.Future: ...
+    async def execute(self, task: Task) -> asyncio.Future[Any]: ...
 
     @abstractmethod
     async def on_cancel(self, task_cancel: TaskCancel) -> None:

@@ -21,15 +21,15 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     RESPONSE_HEADER_LENGTH = 80
 
     def __init__(self, context: IOContext, identity: bytes):
-        self._ymq_context = context
+        self._ymq_context: Optional[IOContext] = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
 
         self._connected_event = asyncio.Event()
 
         self._next_request_id = 0
-        self._pending_get_requests: Dict[ObjectID, asyncio.Future] = {}
-        self._pending_info_request: Optional[asyncio.Future] = None
+        self._pending_get_requests: Dict[ObjectID, asyncio.Future[bytes]] = {}
+        self._pending_info_request: Optional[asyncio.Future[ObjectStorageTotals]] = None
 
         self._lock = asyncio.Lock()
         self._socket: Optional[ConnectorSocket] = None

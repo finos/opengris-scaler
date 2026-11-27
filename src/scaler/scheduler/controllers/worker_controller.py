@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import (
@@ -124,7 +124,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     @staticmethod
     def __worker_status_from_heartbeat(
-        worker_id: WorkerID, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
+        worker_id: WorkerID, worker_task_numbers: Dict[str, Any], last: float, info: WorkerHeartbeat
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
         suspended = min(len([p for p in info.processors if p.suspended]), UINT8_MAX)

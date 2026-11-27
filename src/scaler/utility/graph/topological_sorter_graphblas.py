@@ -8,6 +8,7 @@ from bidict import bidict
 try:
     import graphblas as gb
     import numpy as np  # noqa
+    import numpy.typing as npt
 except ImportError:
     raise ImportError("Please use 'pip install python-graphblas' to have graph blas support")
 
@@ -25,8 +26,8 @@ class TopologicalSorter(Generic[GraphKeyType]):
         self._matrix = gb.Matrix(gb.dtypes.BOOL)
         self._key_to_id: bidict[GraphKeyType, int] = bidict()
 
-        self._graph_matrix_mask: np.ndarray
-        self._visited_vertices_mask: np.ndarray
+        self._graph_matrix_mask: npt.NDArray[np.bool_]
+        self._visited_vertices_mask: npt.NDArray[np.bool_]
         self._ready_nodes: Optional[List[GraphKeyType]] = None
 
         self._n_done = 0
@@ -164,11 +165,11 @@ class TopologicalSorter(Generic[GraphKeyType]):
         )
 
     @classmethod
-    def _get_zero_degree_mask(cls, masked_matrix: gb.Matrix) -> np.ndarray:
+    def _get_zero_degree_mask(cls, masked_matrix: gb.Matrix) -> npt.NDArray[np.bool_]:
         degrees = masked_matrix.reduce_rowwise(gb.monoid.lor)
         indices, _ = degrees.to_coo(indices=True, values=False, sort=False)
         return np.logical_not(np.isin(np.arange(masked_matrix.nrows), indices))
 
     @staticmethod
-    def _get_mask_diff(old_mask: np.ndarray, new_mask: np.ndarray) -> List[int]:
+    def _get_mask_diff(old_mask: npt.NDArray[np.bool_], new_mask: npt.NDArray[np.bool_]) -> List[int]:
         return np.argwhere(old_mask != new_mask).ravel().tolist()

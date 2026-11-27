@@ -1,12 +1,18 @@
+import sys
 from asyncio import Queue
-from typing import Any, Tuple, Union
+from typing import Any, Sequence, Tuple, Union
 
 from scaler.utility.queues.stable_priority_queue import StablePriorityQueue
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 PriorityType = Union[int, Tuple["PriorityType", ...]]
 
 
-class AsyncPriorityQueue(Queue):
+class AsyncPriorityQueue(Queue[Sequence[Any]]):
     """A subclass of Queue; retrieves entries in priority order (lowest first).
 
     Input entries are typically list of the form: [priority, data].
@@ -15,23 +21,26 @@ class AsyncPriorityQueue(Queue):
     def __len__(self):
         return len(self._queue)
 
-    def _init(self, maxsize):
+    @override
+    def _init(self, maxsize: int):
         self._queue: StablePriorityQueue[PriorityType, Any] = StablePriorityQueue()
 
-    def _put(self, item):
+    @override
+    def _put(self, item: Sequence[Any]):
         if not isinstance(item, list):
             item = list(item)
 
         priority, data = item
         self._queue.put(priority, data)
 
+    @override
     def _get(self):
         return self._queue.get()
 
-    def remove(self, data):
+    def remove(self, data: Any):
         self._queue.remove(data)
 
-    def decrease_priority(self, data):
+    def decrease_priority(self, data: Any):
         # Decrease the priority *value* of an item in the queue, effectively move data closer to the front.
         # Notes:
         #     - *priority* in the signature means the priority *value* of the item.

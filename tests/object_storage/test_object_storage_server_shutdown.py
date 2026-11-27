@@ -1,5 +1,6 @@
 import socket
 import struct
+import sys
 import time
 import unittest
 
@@ -14,6 +15,11 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 # More than loopback's socket buffers hold, so a response to a client that does not read stays in flight.
 LARGE_OBJECT_BYTES = 64 * 1024 * 1024
 RESPONSE_SETTLE_SECONDS = 0.5
@@ -25,6 +31,7 @@ def _ymq_frame(payload: bytes) -> bytes:
 
 
 class TestObjectStorageServerShutdown(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

@@ -7,7 +7,7 @@ from scaler.worker_manager.native.worker_manager import NativeWorkerProvisioner
 
 def _make_provisioner(max_task_concurrency: int = -1) -> NativeWorkerProvisioner:
     config = MagicMock()
-    config.worker_config.per_worker_capabilities.capabilities = {}
+    config.worker_config.per_worker_capabilities.capabilities = dict[str, int]()
     config.worker_manager_config.max_task_concurrency = max_task_concurrency
     config.worker_manager_config.worker_manager_id = "test-wm"
     config.worker_type = "NAT"

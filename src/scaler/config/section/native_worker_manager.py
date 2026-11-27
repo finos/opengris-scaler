@@ -1,5 +1,6 @@
 import argparse
 import dataclasses
+import sys
 from typing import ClassVar, Optional
 
 from scaler.config.common.logging import LoggingConfig
@@ -8,6 +9,11 @@ from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.address import AddressConfig
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 @dataclasses.dataclass
@@ -42,6 +48,7 @@ class NativeWorkerManagerConfig(ConfigClass):
         if (self.parent_address is None) != (self.unit_id is None):
             raise ValueError("parent_address and unit_id must be set together.")
 
+    @override
     @classmethod
     def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
         super().configure_parser(parser)

@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from typing import Any, Coroutine
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.protocol.capnp import (
@@ -15,7 +16,7 @@ from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskContro
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 
 
-def _run(coro):
+def _run(coro: Coroutine[Any, Any, None]) -> None:
     return asyncio.new_event_loop().run_until_complete(coro)
 
 

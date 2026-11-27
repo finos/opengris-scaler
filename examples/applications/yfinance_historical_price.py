@@ -10,7 +10,7 @@ Usage:
 
 import datetime
 import os
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import pandas as pd
 import psutil
@@ -28,7 +28,7 @@ def get_option_data(stock_symbol: str, expiration_date: Optional[str], option_ty
     return option_data
 
 
-def get_option_history_data(contract_symbol, days_before_expiration: int = 30):
+def get_option_history_data(contract_symbol: str, days_before_expiration: int = 30):
     option = yf.Ticker(contract_symbol)
     option_info = option.info
     option_expiration_date = datetime.datetime.fromtimestamp(option_info["expireDate"])
@@ -38,7 +38,7 @@ def get_option_history_data(contract_symbol, days_before_expiration: int = 30):
     return option_history
 
 
-def get_option_close_prices_with_strike(strike):
+def get_option_close_prices_with_strike(strike: int) -> List[Tuple[str, float, pd.Timestamp]]:
     # from yfinance.base import YFRateLimitError
     # stock_symbol = "AAPL"
     # expiration_date = None  # User may wish to specify expiration_date

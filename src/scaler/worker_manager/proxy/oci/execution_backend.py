@@ -66,7 +66,7 @@ class OCIExecutionBackend(TaskInputLoader, ExecutionBackend):
 
         self._task_id_to_instance_id: Dict[TaskID, str] = {}
         self._task_id_to_input_key: Dict[TaskID, str] = {}
-        self._monitor_tasks: Set[asyncio.Task] = set()
+        self._monitor_tasks: Set[asyncio.Task[None]] = set()
 
         self._container_instances_client: Any = None
         self._object_storage_client: Any = None
@@ -105,10 +105,10 @@ class OCIExecutionBackend(TaskInputLoader, ExecutionBackend):
             f"bucket={self._object_storage_bucket}"
         )
 
-    async def execute(self, task: Task) -> asyncio.Future:
+    async def execute(self, task: Task) -> asyncio.Future[Any]:
         function, arg_objects = await self.load_task_inputs(task)
 
-        future: Future = Future()
+        future: Future[Any] = Future()
         future.set_running_or_notify_cancel()
 
         try:
@@ -219,7 +219,7 @@ class OCIExecutionBackend(TaskInputLoader, ExecutionBackend):
         )
         return response.data.id, input_key
 
-    async def _monitor_container_instance(self, instance_id: str, future: Future, task_id: TaskID) -> None:
+    async def _monitor_container_instance(self, instance_id: str, future: Future[Any], task_id: TaskID) -> None:
         loop = asyncio.get_running_loop()
         start_time = loop.time()
         unexpected_state_count = 0

@@ -1,14 +1,21 @@
 import ipaddress
+import sys
 import unittest
 from unittest import mock
 
 from scaler.config.types.address import AddressConfig
 from scaler.utility.network_util import get_hostname, resolve_port_zero
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 BOUND = AddressConfig.from_string("tcp://0.0.0.0:45605")
 
 
 class TestGetHostname(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         get_hostname.cache_clear()
         self.addCleanup(get_hostname.cache_clear)

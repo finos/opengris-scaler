@@ -1,8 +1,14 @@
+import sys
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 N_TASKS = 30
 N_WORKERS = 3
@@ -10,12 +16,14 @@ assert N_TASKS >= N_WORKERS
 
 
 class TestNestedTask(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         self.cluster = SchedulerClusterCombo(n_workers=N_WORKERS, event_loop="builtin")
         self.address = self.cluster.get_address()
 
+    @override
     def tearDown(self) -> None:
         self.cluster.shutdown()
 

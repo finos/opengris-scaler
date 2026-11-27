@@ -1,9 +1,16 @@
+import sys
 import unittest
 
 from scaler.utility.many_to_many_dict import ManyToManyDict
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestManyToManyDict(unittest.TestCase):
+    @override
     def setUp(self):
         self._dict = ManyToManyDict[str, int]()
 

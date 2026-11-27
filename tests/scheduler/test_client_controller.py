@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from typing import List, Tuple
+from typing import Any, Coroutine, List, Tuple
 from unittest.mock import MagicMock
 
 from scaler.protocol.capnp import TaskCancel
@@ -8,7 +8,7 @@ from scaler.scheduler.controllers.client_controller import VanillaClientControll
 from scaler.utility.identifiers import ClientID, TaskID
 
 
-def _run(coro):
+def _run(coro: Coroutine[Any, Any, None]) -> None:
     return asyncio.new_event_loop().run_until_complete(coro)
 
 

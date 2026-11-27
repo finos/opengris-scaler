@@ -64,75 +64,75 @@ class ClientAgentBridge(abc.ABC):
 
 class HeartbeatManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def send_heartbeat(self):
+    async def send_heartbeat(self) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_heartbeat_echo(self, heartbeat: ClientHeartbeatEcho):
+    async def on_heartbeat_echo(self, heartbeat: ClientHeartbeatEcho) -> None:
         raise NotImplementedError()
 
 
 class TimeoutManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def update_last_seen_time(self):
+    def update_last_seen_time(self) -> None:
         raise NotImplementedError()
 
 
 class ObjectManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def on_object_instruction(self, object_instruction: ObjectInstruction):
+    async def on_object_instruction(self, object_instruction: ObjectInstruction) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_result(self, result: TaskResult):
+    def on_task_result(self, result: TaskResult) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def clear_all_objects(self, clear_serializer: bool):
+    async def clear_all_objects(self, clear_serializer: bool) -> None:
         raise NotImplementedError()
 
 
 class TaskManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def on_new_task(self, task: Task):
+    async def on_new_task(self, task: Task) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_new_graph_task(self, task: GraphTask):
+    async def on_new_graph_task(self, task: GraphTask) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_result(self, result: TaskResult):
+    async def on_task_result(self, result: TaskResult) -> None:
         raise NotImplementedError()
 
 
 class FutureManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def add_future(self, future: Future):
+    def add_future(self, future: Future[Any]) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def cancel_all_futures(self):
+    def cancel_all_futures(self) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def set_all_futures_with_exception(self, exception: Exception):
+    def set_all_futures_with_exception(self, exception: Exception) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_result(self, result: TaskResult):
+    def on_task_result(self, result: TaskResult) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_cancel_confirm(self, cancel_confirm: TaskCancelConfirm):
+    def on_task_cancel_confirm(self, cancel_confirm: TaskCancelConfirm) -> None:
         raise NotImplementedError()
 
 
 class DisconnectManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def on_client_disconnect(self, disconnect: ClientDisconnect):
+    async def on_client_disconnect(self, disconnect: ClientDisconnect) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_shutdown_response(self, response: ClientShutdownResponse):
+    async def on_client_shutdown_response(self, response: ClientShutdownResponse) -> None:
         raise NotImplementedError()

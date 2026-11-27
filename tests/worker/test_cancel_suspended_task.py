@@ -1,11 +1,18 @@
 import os
+import sys
 import tempfile
 import time
 import unittest
+from typing import List
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 CHILD_SECONDS = 3
 POLL_SECONDS = 0.1
@@ -34,6 +41,7 @@ def parent_task(log_path: str) -> float:
 
 
 class TestCancelSuspendedTask(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -44,7 +52,7 @@ class TestCancelSuspendedTask(unittest.TestCase):
         os.close(log_fd)
         self.addCleanup(os.unlink, self.log_path)
 
-    def __lines(self) -> list:
+    def __lines(self) -> List[str]:
         with open(self.log_path) as log:
             return log.readlines()
 

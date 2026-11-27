@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Callable, Optional, Union
 
 from scaler.io.ymq import _ymq
 from scaler.io.ymq.utils import call_async, call_sync
@@ -67,7 +67,7 @@ class ConnectorSocket:
     ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
-        def create(callback, *args, **kwargs):
+        def create(callback: Callable[[Optional[Exception]], None], *args: Any, **kwargs: Any):
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.connect(callback, *args, **kwargs)
 
@@ -87,7 +87,7 @@ class ConnectorSocket:
     ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
-        def create(callback, *args, **kwargs):
+        def create(callback: Callable[[Optional[Exception]], None], *args: Any, **kwargs: Any):
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.connect(callback, *args, **kwargs)
 
@@ -102,7 +102,7 @@ class ConnectorSocket:
     ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
-        def create(callback, *args, **kwargs):
+        def create(callback: Callable[[Union[_ymq.Address, Exception]], None], *args: Any, **kwargs: Any):
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.bind(callback, *args, **kwargs)
 

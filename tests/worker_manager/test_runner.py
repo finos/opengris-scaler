@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 import unittest
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -30,15 +31,25 @@ from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 TASK_CONCURRENCY_PER_UNIT = 4
 
 
 class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         provisioner = MagicMock(spec=UnitProvisioner)
-        provisioner.create_unit = AsyncMock(side_effect=lambda unit_id: unit_id)
+
+        def create_unit(unit_id: str) -> str:
+            return unit_id
+
+        provisioner.create_unit = AsyncMock(side_effect=create_unit)
         provisioner.max_units.return_value = -1
         provisioner.task_concurrency_per_unit.return_value = TASK_CONCURRENCY_PER_UNIT
         provisioner.startup_timeout_seconds.return_value = 60
@@ -98,6 +109,7 @@ class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
 
 
 class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -181,6 +193,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
 
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

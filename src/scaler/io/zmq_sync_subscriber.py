@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 class ZMQSyncSubscriber(SyncSubscriber):
     def __init__(
         self,
-        context: zmq.Context,
+        # quoted: pyzmq < 26 has no SyncContext at runtime
+        context: "zmq.SyncContext",
         identity: bytes,
         address: AddressConfig,
         callback: Callable[[BaseMessage], None],
@@ -26,7 +27,7 @@ class ZMQSyncSubscriber(SyncSubscriber):
 
         self._stop_event = threading.Event()
 
-        self._zmq_context: zmq.Context = context
+        self._zmq_context: zmq.SyncContext = context
         self._identity = identity
         self._address = address
         self._callback = callback

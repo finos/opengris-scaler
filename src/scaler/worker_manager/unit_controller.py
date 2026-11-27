@@ -70,7 +70,7 @@ class UnitController(Looper, Reporter):
         # The event loop keeps only a weak reference to a task: without this set, a provisioner call could be
         # collected mid-flight and leak the resource it was creating. A call leaves it only after its done
         # callback ran, so terminate() never sees it empty while a follow-up call is about to start.
-        self._tasks: Set[asyncio.Task] = set()
+        self._tasks: Set[asyncio.Task[Any]] = set()
 
         self._consecutive_unit_losses = 0
         self._create_not_before = 0.0  # time.monotonic()
@@ -210,7 +210,7 @@ class UnitController(Looper, Reporter):
         logger.info(f"creating unit {unit.unit_id!r}")
         self._start_task(self._provisioner.create_unit(unit.unit_id), functools.partial(self._on_create_done, unit))
 
-    def _on_create_done(self, unit: Unit, task: asyncio.Task) -> None:
+    def _on_create_done(self, unit: Unit, task: asyncio.Task[UnitHandle]) -> None:
         error = _failure_of(task)
         if error is not None:
             logger.error(f"failed to create unit {unit.unit_id!r}: {error!r}")
@@ -232,7 +232,7 @@ class UnitController(Looper, Reporter):
                 self._provisioner.destroy_unit(unit.handle), functools.partial(self._on_destroy_done, unit)
             )
 
-    def _on_destroy_done(self, unit: Unit, task: asyncio.Task) -> None:
+    def _on_destroy_done(self, unit: Unit, task: asyncio.Task[None]) -> None:
         error = _failure_of(task)
         if error is not None and self._terminating:
             logger.error(f"failed to destroy unit {unit.unit_id!r}: {error!r}")
@@ -246,12 +246,12 @@ class UnitController(Looper, Reporter):
         self._units.pop(unit.unit_id, None)
         logger.info(f"destroyed unit {unit.unit_id!r}")
 
-    def _start_task(self, call: Awaitable[Any], on_done: Callable[[asyncio.Task], None]) -> None:
+    def _start_task(self, call: Awaitable[Any], on_done: Callable[[asyncio.Task[Any]], None]) -> None:
         task = asyncio.ensure_future(call)
         self._tasks.add(task)
         task.add_done_callback(functools.partial(self._on_task_done, on_done))
 
-    def _on_task_done(self, on_done: Callable[[asyncio.Task], None], task: asyncio.Task) -> None:
+    def _on_task_done(self, on_done: Callable[[asyncio.Task[Any]], None], task: asyncio.Task[Any]) -> None:
         """Run `on_done` before forgetting `task`, so a call it starts is in flight before this one leaves."""
         try:
             on_done(task)
@@ -277,7 +277,7 @@ class UnitController(Looper, Reporter):
         return [unit for unit in self._units.values() if unit.state in states]
 
 
-def _failure_of(task: asyncio.Task) -> Optional[BaseException]:
+def _failure_of(task: asyncio.Task[Any]) -> Optional[BaseException]:
     if task.cancelled():
         return asyncio.CancelledError()
     return task.exception()

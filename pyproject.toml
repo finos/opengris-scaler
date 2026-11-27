@@ -151,17 +151,18 @@ cmake.define.CMAKE_CXX_COMPILER = ""
 python-version = "3.10"
 # src holds scaler, the root holds the tests package
 search-path = ["src", "."]
-project-excludes = ["benchmarks", "docs", "scripts", "**/*object_storage*", "**/*.ipynb"]
-preset = "legacy"
-check-unannotated-defs = true
+# the 11 example notebooks hold 1249 strict errors
+project-excludes = ["**/*.ipynb"]
+preset = "strict"
 ignore-missing-imports = ["*"]
+# packages that ship no types, like psutil, read as Any
+replace-untyped-imports-with-any = ["*"]
 # scaler.compat.ray replaces ray's API at runtime, so ray's own types do not describe the calls that run
 replace-imports-with-any = ["ray", "ray.*"]
 
 [tool.pyrefly.errors]
-# psutil ships no type information
+# replace-untyped-imports-with-any reads those packages as Any on purpose
 untyped-import = "ignore"
-unused-ignore = "error"
 unused-type-ignore = "error"
 
 [tool.ruff]

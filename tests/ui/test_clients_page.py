@@ -5,6 +5,7 @@ The GUI joins the two to say who a task belongs to and how much work each client
 """
 
 import unittest
+from typing import Any
 
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import (
@@ -39,7 +40,7 @@ def make_status(*clients: ClientManagerStatus.ClientStatus) -> StateScheduler:
     )
 
 
-def make_task(**kwargs) -> StateTask:
+def make_task(**kwargs: Any) -> StateTask:
     """A StateTask as the GUI receives it: capability reads need a deserialized struct."""
     return StateTask.from_bytes(StateTask(**kwargs).to_bytes())
 

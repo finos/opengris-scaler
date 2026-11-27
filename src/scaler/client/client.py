@@ -5,7 +5,8 @@ import sys
 import threading
 from collections import Counter
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from types import TracebackType
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, TypeVar, Union
 
 from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -41,7 +42,7 @@ _T = TypeVar("_T")
 
 @dataclasses.dataclass
 class _CallNode:
-    func: Callable
+    func: Callable[..., Any]
     args: Tuple[str, ...]
 
     def __post_init__(self):
@@ -175,10 +176,12 @@ class Client:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]
+    ):
         self.disconnect()
 
-    def __getstate__(self) -> dict:
+    def __getstate__(self) -> Dict[str, Any]:
         """
         Serializes the client object's state.
 
@@ -215,7 +218,7 @@ class Client:
             "capabilities": self._capabilities,
         }
 
-    def __setstate__(self, state: dict) -> None:
+    def __setstate__(self, state: Dict[str, Any]) -> None:
         # TODO: fix copy the serializer
         self.__initialize__(
             address=state["address"],
@@ -226,7 +229,7 @@ class Client:
             capabilities=state["capabilities"],
         )
 
-    def submit(self, fn: Callable, *args, **kwargs) -> ScalerFuture:
+    def submit(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> ScalerFuture:
         """
         Submit a single task (function with arguments) to the scheduler, and return a future.
 
@@ -244,7 +247,7 @@ class Client:
 
     def submit_verbose(
         self,
-        fn: Callable,
+        fn: Callable[..., Any],
         args: Tuple[Any, ...],
         kwargs: Dict[str, Any],
         capabilities: Optional[Dict[str, int]] = None,
@@ -388,7 +391,7 @@ class Client:
 
     def get(
         self,
-        graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]],
+        graph: Dict[str, Union[Any, Tuple[Union[Callable[..., Any], str], ...]]],
         keys: List[str],
         block: bool = True,
         capabilities: Optional[Dict[str, int]] = None,
@@ -629,7 +632,9 @@ class Client:
         return task, future
 
     @staticmethod
-    def __convert_kwargs_to_args(fn: Callable, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Tuple[Any, ...]:
+    def __convert_kwargs_to_args(
+        fn: Callable[..., Any], args: Tuple[Any, ...], kwargs: Dict[str, Any]
+    ) -> Tuple[Any, ...]:
         all_params = [p for p in signature(fn).parameters.values()]
 
         params = [p for p in all_params if p.kind in {p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD}]
@@ -656,10 +661,10 @@ class Client:
         return tuple(args_list)
 
     def __split_data_and_graph(
-        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]], reserialize: bool
+        self, graph: Dict[str, Union[Any, Tuple[Union[Callable[..., Any], str], ...]]], reserialize: bool
     ) -> Tuple[Dict[str, Tuple[ObjectID, Any]], Dict[str, _CallNode]]:
         call_graph = {}
-        node_name_to_argument: Dict[str, Tuple[ObjectID, Union[Any, Tuple[Union[Callable, Any], ...]]]] = dict()
+        node_name_to_argument: Dict[str, Tuple[ObjectID, Any]] = dict()
 
         for node_name, node in graph.items():
             if isinstance(node, tuple) and len(node) > 0 and callable(node[0]):

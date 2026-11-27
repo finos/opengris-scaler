@@ -1,5 +1,6 @@
 """Which capabilities the tasks of a client carry: the client's, a submission's own, or the parent task's."""
 
+import sys
 import unittest
 from typing import Dict, Optional
 
@@ -9,6 +10,11 @@ from scaler.protocol.helpers import capabilities_to_dict
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.processor.processor import Processor
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 GPU = {"gpu": 1}
 
@@ -34,6 +40,7 @@ def serialized_client_task_capabilities(client: Client) -> Dict[str, int]:
 
 
 class TestClientCapabilities(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -45,6 +52,7 @@ class TestClientCapabilities(unittest.TestCase):
         )
         self.address = self.combo.get_address()
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
 

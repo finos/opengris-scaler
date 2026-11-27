@@ -14,7 +14,12 @@ logger = logging.getLogger(__name__)
 
 class ZMQSyncConnector(SyncConnector):
     def __init__(
-        self, context: zmq.Context, identity: bytes, address: AddressConfig, connector_remote_type: ConnectorRemoteType
+        self,
+        # quoted: pyzmq < 26 has no SyncContext at runtime
+        context: "zmq.SyncContext",
+        identity: bytes,
+        address: AddressConfig,
+        connector_remote_type: ConnectorRemoteType,
     ):
         self._zmq_context = context
         self._identity = identity

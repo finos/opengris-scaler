@@ -1,13 +1,20 @@
 import dataclasses
+import sys
 import unittest
+from typing import Dict
 
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 @dataclasses.dataclass
-class Sample(ObjectUsage):
+class Sample(ObjectUsage[str]):
     key: str
     value: str
     size: int = 0
@@ -24,6 +31,7 @@ def sample_ready(obj: Sample):
 
 
 class TestObjectUsage(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -56,7 +64,7 @@ class TestLargestObjects(unittest.TestCase):
     """`largest` walks whole size classes, so it never sorts the store to answer."""
 
     @staticmethod
-    def tracker_holding(sizes) -> ObjectTracker[str, str, Sample]:
+    def tracker_holding(sizes: Dict[str, int]) -> ObjectTracker[str, str, Sample]:
         tracker: ObjectTracker[str, str, Sample] = ObjectTracker("sample", sample_ready)
         for name, size in sizes.items():
             tracker.add_object(Sample(name, "value", size))

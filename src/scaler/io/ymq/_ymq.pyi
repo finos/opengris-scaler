@@ -1,6 +1,7 @@
 # NOTE: NOT IMPLEMENTATION, TYPE INFORMATION ONLY
 # This file contains type stubs for the YMQ Python C Extension module
 
+import sys
 from enum import IntEnum
 from typing import Callable, Optional, SupportsBytes, Union
 
@@ -8,6 +9,11 @@ try:
     from collections.abc import Buffer
 except ImportError:
     from typing_extensions import Buffer
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 DEFAULT_MAX_RETRY_TIMES: int
 DEFAULT_INIT_RETRY_DELAY: int
@@ -180,7 +186,9 @@ class YMQException(Exception):
     """Error message"""
 
     def __init__(self, /, code: ErrorCode, message: str) -> None: ...
+    @override
     def __repr__(self) -> str: ...
+    @override
     def __str__(self) -> str: ...
 
 class InvalidPortFormatError(YMQException): ...

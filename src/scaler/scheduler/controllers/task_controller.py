@@ -211,8 +211,8 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
         await self.__route(event)
 
-    async def on_task_result(self, worker_id: WorkerID, task_result: TaskResult):
-        await self.__route(TaskResultReceived(task_id=task_result.taskId, worker_id=worker_id, task_result=task_result))
+    async def on_task_result(self, worker_id: WorkerID, result: TaskResult):
+        await self.__route(TaskResultReceived(task_id=result.taskId, worker_id=worker_id, task_result=result))
 
     async def on_worker_connect(self, worker_id: WorkerID):
         await self.__retry_unassignable()

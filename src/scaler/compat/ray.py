@@ -46,7 +46,7 @@ from scaler.config.defaults import (
 from scaler.config.section.scheduler import PolicyConfig
 
 
-def _not_implemented(*args, **kwargs) -> None:
+def _not_implemented(*args: Any, **kwargs: Any) -> None:
     raise NotImplementedError
 
 
@@ -55,7 +55,7 @@ def _no_op(*_args, **_kwargs) -> None:
 
 
 class NotImplementedMock(Mock):
-    def __getattr__(self, _name):
+    def __getattr__(self, name: str):
         raise NotImplementedError("this module is not supported in Scaler compatibility layer.")
 
 
@@ -322,7 +322,7 @@ class RayRemote(Generic[P, T]):
 
     _num_returns: int
 
-    def __init__(self, fn: Callable[P, T], num_returns: int = 1, **kwargs) -> None:
+    def __init__(self, fn: Callable[P, T], num_returns: int = 1, **kwargs: Any) -> None:
         """
         Initializes the remote function wrapper.
 
@@ -335,7 +335,7 @@ class RayRemote(Generic[P, T]):
         self._set_options(num_returns=num_returns)
         self._fn = fn
 
-    def _set_options(self, **kwargs) -> None:
+    def _set_options(self, **kwargs: Any) -> None:
         if "num_returns" in kwargs:
             self._set_num_returns(kwargs["num_returns"])
 
@@ -348,7 +348,7 @@ class RayRemote(Generic[P, T]):
 
         self._num_returns = num_returns
 
-    def remote(self, *args: P.args, **kwargs: P.kwargs) -> Union[RayObjectReference, List[RayObjectReference]]:
+    def remote(self, *args: P.args, **kwargs: P.kwargs) -> Union[RayObjectReference[T], List[RayObjectReference[Any]]]:
         """
         Executes the wrapped function remotely.
 
@@ -375,7 +375,7 @@ class RayRemote(Generic[P, T]):
 
         return [RayObjectReference(future, index=i) for i in range(self._num_returns)]
 
-    def options(self, *args, **kwargs) -> "RayRemote[P, T]":
+    def options(self, *args: Any, **kwargs: Any) -> "RayRemote[P, T]":
         return RayRemote(self._fn, *args, **kwargs)
 
 
@@ -420,7 +420,9 @@ def put(obj: Any) -> ObjectReference:
 patch("ray.put", new=put).start()
 
 
-def remote(*args, **kwargs) -> Union[RayRemote, Callable]:
+def remote(
+    *args: Any, **kwargs: Any
+) -> Union[RayRemote[..., Any], Callable[[Callable[..., Any]], RayRemote[..., Any]]]:
     """
     A decorator that creates a `RayRemote` instance from a regular function.
 
@@ -434,7 +436,7 @@ def remote(*args, **kwargs) -> Union[RayRemote, Callable]:
         that produces a RayRemote instance.
     """
 
-    def _decorator(fn: Callable) -> RayRemote:
+    def _decorator(fn: Callable[P, T]) -> RayRemote[P, T]:
         if isinstance(fn, type):  # Check if 'fn' is a class
             raise NotImplementedError(
                 "Decorating classes with @ray.remote is not yet supported in Scaler compatibility layer."
@@ -452,7 +454,7 @@ def remote(*args, **kwargs) -> Union[RayRemote, Callable]:
 patch("ray.remote", new=remote).start()
 
 
-def cancel(ref: RayObjectReference) -> None:
+def cancel(ref: RayObjectReference[Any]) -> None:
     """
     Attempts to cancel the execution of a task. Mimics `ray.cancel()`.
 
@@ -475,8 +477,7 @@ class _RayUtil:
         for future in concurrent.futures.as_completed(future_to_ref.keys()):
             yield future_to_ref[cast(ScalerFuture, future)]
 
-    # python3.8 cannot handle giving real type hints to `fn`
-    def map_unordered(self, fn: RayRemote, values: List[V]) -> Iterator[T]:
+    def map_unordered(self, fn: RayRemote[[V], T], values: List[V]) -> Iterator[T]:
         """
         Applies a remote function to each value in a list and yields the results
         as they become available. Mimics `ray.util.map_unordered()`.
@@ -489,7 +490,7 @@ class _RayUtil:
         if fn._num_returns > 1:
             raise TypeError("map_unordered only supports remote functions with num_returns=1")
 
-        refs = [cast(RayObjectReference, fn.remote(v)) for v in values]
+        refs = [cast(RayObjectReference[T], fn.remote(v)) for v in values]
         for ref in self.as_completed(refs):
             yield ref.get()
 

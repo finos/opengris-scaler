@@ -37,6 +37,11 @@ from scaler.utility.exceptions import (
 )
 from scaler.utility.identifiers import ClientID
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -129,6 +134,7 @@ class ClientAgent(threading.Thread):
         )
         self._heartbeat_manager.register(connector_external=self._connector_external)
 
+    @override
     def run(self):
         run_task_forever(asyncio.new_event_loop(), self._run())
 

@@ -1,7 +1,7 @@
 import dataclasses
 import unittest
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import mock_open, patch
 
 from scaler.config.config_class import ConfigClass
@@ -22,12 +22,12 @@ except ImportError:
 
 
 class MockArgParser:
-    args: List[Tuple[Tuple, Dict]]
+    args: List[Tuple[Tuple[str, ...], Dict[str, Any]]]
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.args = []
 
-    def add_argument(self, *args, **kwargs) -> None:
+    def add_argument(self, *args: str, **kwargs: Any) -> None:
         self.args.append((args, kwargs))
 
 

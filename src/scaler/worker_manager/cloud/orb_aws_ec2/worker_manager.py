@@ -6,7 +6,7 @@ import logging
 import math
 import os
 import shlex
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
 try:
@@ -174,7 +174,7 @@ class ORBAWSEC2WorkerManager:
             requirements_content = load_requirements_content(requirements_txt)
             self._validate_requirements(requirements_content)
 
-    def _build_app_config(self) -> dict:
+    def _build_app_config(self) -> Dict[str, Any]:
         region = self._config.aws_region
         return {
             "provider": {
@@ -327,7 +327,7 @@ class ORBAWSEC2WorkerManager:
     def __del__(self) -> None:
         self._cleanup()
 
-    def _dump_debug_state(self, dump_dir: str, template_id: str, template_kwargs: dict) -> None:
+    def _dump_debug_state(self, dump_dir: str, template_id: str, template_kwargs: Dict[str, Any]) -> None:
         config_path = os.path.join(dump_dir, f"orb_debug_config_{template_id}.json")
         template_path = os.path.join(dump_dir, f"orb_debug_template_{template_id}.json")
         with open(config_path, "w") as f:
@@ -461,7 +461,7 @@ set +e
             ],
             Owners=["amazon"],
         )
-        images = response.get("Images", [])
+        images: List[Dict[str, Any]] = response.get("Images", [])
         if not images:
             raise RuntimeError("No AL2023 AMI found in the current region.")
         images.sort(key=lambda img: img["CreationDate"], reverse=True)

@@ -4,6 +4,7 @@ import os
 import signal
 import sys
 import time
+from multiprocessing.synchronize import Event as EventType
 from typing import Optional, Tuple
 
 import psutil
@@ -42,10 +43,10 @@ class ProcessorHolder:
         self._suspended = False
 
         self._hard_suspend = hard_suspend
-        self._suspend_trigger = None
+        self._suspend_trigger: Optional[EventType] = None
         if hard_suspend:
-            self._resume_event = None
-            self._resumed_event = None
+            self._resume_event: Optional[EventType] = None
+            self._resumed_event: Optional[EventType] = None
         else:
             context = multiprocessing.get_context("spawn")
             self._resume_event = context.Event()

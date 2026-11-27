@@ -4,7 +4,7 @@ import multiprocessing
 import signal
 import sys
 from collections import deque
-from typing import Callable, Dict, Optional
+from typing import Callable, Deque, Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
@@ -29,6 +29,11 @@ from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_manager.proxy.heartbeat_manager import HeartbeatManager
 from scaler.worker_manager.proxy.mixins import ExecutionBackend, ProcessorStatusProvider
 from scaler.worker_manager.proxy.task_manager import TaskManager
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 logger = logging.getLogger(__name__)
 
@@ -93,12 +98,13 @@ class WorkerProcess(_SpawnProcess):
         self._heartbeat_manager: HeartbeatManager
 
         self._heartbeat_received: bool = False
-        self._backoff_message_queue: deque = deque()
+        self._backoff_message_queue: Deque[BaseMessage] = deque()
 
     @property
     def identity(self) -> WorkerID:
         return self._ident
 
+    @override
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
         exit_code = run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)

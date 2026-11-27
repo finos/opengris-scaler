@@ -3,7 +3,7 @@ import logging
 import typing
 from collections import OrderedDict, defaultdict
 from itertools import takewhile
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 from sortedcontainers import SortedList
 
@@ -180,7 +180,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         #
         # Time complexity is O(n_workers * log(n_workers))
 
-        sorted_workers: SortedList[_WorkerHolder] = SortedList(workers, key=lambda worker: worker.n_tasks())
+        sorted_workers: SortedList[_WorkerHolder] = SortedList(workers, key=_WorkerHolder.n_tasks)
 
         # Finally, we repeatedly remove one task from the most loaded worker until either:
         #
@@ -286,7 +286,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
     def has_available_worker(self, capabilities: Optional[Dict[str, int]] = None) -> bool:
         return len(self.__get_available_workers_for_capabilities(capabilities or {})) > 0
 
-    def statistics(self) -> Dict:
+    def statistics(self) -> Dict[WorkerID, Dict[str, Any]]:
         return {
             worker.worker_id: {"free": worker.n_free(), "sent": worker.n_tasks(), "capabilities": worker.capabilities}
             for worker in self._worker_id_to_worker.values()

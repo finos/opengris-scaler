@@ -1,9 +1,16 @@
+import sys
 import unittest
+from typing import Dict
 from unittest.mock import MagicMock
 
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 MANAGER_ID = WorkerManagerID(b"manager")
 OTHER_MANAGER_ID = WorkerManagerID(b"other-manager")
@@ -35,6 +42,7 @@ class TestVanillaScalingPolicyLogging(unittest.TestCase):
     would bury everything else.
     """
 
+    @override
     def setUp(self) -> None:
         self.policy = VanillaScalingPolicy({})
         self.workers = [WorkerID(b"worker")]
@@ -66,11 +74,12 @@ class TestVanillaScalingPolicyLogging(unittest.TestCase):
 class TestCapabilityScalingPolicyLogging(unittest.TestCase):
     """A capability policy that never scales has to be diagnosable from what it asked for."""
 
+    @override
     def setUp(self) -> None:
         self.policy = CapabilityScalingPolicy()
         self.workers = [WorkerID(b"worker")]
 
-    def __decide(self, capabilities: dict, task_count: int) -> None:
+    def __decide(self, capabilities: Dict[str, int], task_count: int) -> None:
         snapshot = MagicMock()
         snapshot.tasks = {index: MagicMock(capabilities=capabilities) for index in range(task_count)}
         self.policy.get_scaling_commands(snapshot, _heartbeat(), self.workers, {})
@@ -108,7 +117,7 @@ class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
     """
 
     @staticmethod
-    def _snapshots(*manager_ids: WorkerManagerID) -> dict:
+    def _snapshots(*manager_ids: WorkerManagerID) -> Dict[WorkerManagerID, MagicMock]:
         return {manager_id: MagicMock() for manager_id in manager_ids}
 
     def test_vanilla_forgets_a_manager_the_scheduler_no_longer_knows(self):

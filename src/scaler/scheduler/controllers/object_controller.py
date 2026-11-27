@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
-class _ObjectCreation(ObjectUsage):
+class _ObjectCreation(ObjectUsage[ObjectID]):
     object_id: ObjectID
     object_creator: ClientID
     object_type: ObjectMetadata.ObjectContentType

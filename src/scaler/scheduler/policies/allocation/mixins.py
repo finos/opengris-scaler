@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import TaskID, WorkerID
@@ -57,5 +57,5 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def statistics(self) -> Dict:
+    def statistics(self) -> Dict[WorkerID, Dict[str, Any]]:
         raise NotImplementedError()

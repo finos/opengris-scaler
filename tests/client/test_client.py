@@ -8,6 +8,7 @@ import tempfile
 import time
 import unittest
 from concurrent.futures import CancelledError
+from typing import List, Tuple
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
@@ -22,6 +23,11 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.worker.preload import PreloadSpecError, _parse_preload_spec, execute_preload
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def noop(sec: int):
@@ -50,6 +56,7 @@ def get_preloaded_value():
 
 
 class TestClient(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -58,6 +65,7 @@ class TestClient(unittest.TestCase):
         self.address = self.combo.get_address()
         # self.address = f"tcp://127.0.0.1:2345"
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
         pass
@@ -217,7 +225,7 @@ class TestClient(unittest.TestCase):
                 client.submit(func_args2, a=3, b=4).result()
 
     def test_map(self):
-        def func(x, y):
+        def func(x: int, y: int):
             return x * y
 
         with Client(self.address) as client:
@@ -225,7 +233,7 @@ class TestClient(unittest.TestCase):
             self.assertEqual(result, [2, 12, 30, 56])
 
     def test_more_tasks(self):
-        def func(a):
+        def func(a: int):
             time.sleep(random.randint(1, 10))
             return a * 2
 
@@ -257,14 +265,14 @@ class TestClient(unittest.TestCase):
                 client.submit(func).result()
 
     def test_non_hashable_client(self):
-        def func(a):
+        def func(a: List[int]):
             return a * 2
 
         with Client(self.address) as client:
             client.submit(func, [1, 2, 3, 4, 5])
 
     def test_send_object(self):
-        def func(a):
+        def func(a: str):
             return len(a)
 
         with Client(self.address) as client:
@@ -275,7 +283,7 @@ class TestClient(unittest.TestCase):
             self.assertEqual(client.map(func, [ref1, ref2]), [6, 9])
 
     def test_send_object2(self):
-        def add(a, b):
+        def add(a: List[int], b: List[int]):
             return a + b
 
         with Client(address=self.address) as client:
@@ -360,15 +368,17 @@ class TestClient(unittest.TestCase):
 class TestClientPreload(unittest.TestCase):
     # Separate class for preload functionality with separate cluster to avoid interfering with time-sensitive tests
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         self.combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
 
-    def _create_preload_cluster(self, preload: str, logging_paths: tuple = ("/dev/stdout",)):
+    def _create_preload_cluster(self, preload: str, logging_paths: Tuple[str, ...] = ("/dev/stdout",)):
         base_config = self.combo._worker_manager.config
         base_worker_config = base_config.worker_config
         base_logging_config = base_config.logging_config

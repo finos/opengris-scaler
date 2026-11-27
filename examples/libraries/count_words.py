@@ -1,16 +1,20 @@
 import argparse
 from collections import Counter
-from typing import List
+from typing import Iterable, List
 
 import parfun as pf
 
 
+def sum_counters(counters: Iterable[Counter[str]]) -> Counter[str]:
+    return sum(counters, start=Counter())
+
+
 @pf.parallel(
     split=pf.per_argument(lines=pf.py_list.by_chunk),  # Parallelize by splitting the file content
-    combine_with=lambda results: sum(results, start=Counter()),  # Sum the result counters
+    combine_with=sum_counters,
 )
-def count_words(lines: List[str]) -> Counter:
-    counter: Counter = Counter()
+def count_words(lines: List[str]) -> Counter[str]:
+    counter: Counter[str] = Counter()
     for line in lines:
         for word in line.split():
             counter[word] += 1

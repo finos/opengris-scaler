@@ -1,6 +1,6 @@
 import abc
 import itertools
-from typing import Callable, Dict, Generator, Generic, List, Optional, Set, Tuple, TypeVar
+from typing import Any, Callable, Dict, Generator, Generic, List, Optional, Set, Tuple, TypeVar
 
 from scaler.utility.many_to_many_dict import ManyToManyDict
 
@@ -18,7 +18,7 @@ class ObjectUsage(Generic[ObjectKeyType], metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
 
-ObjectType = TypeVar("ObjectType", bound=ObjectUsage)
+ObjectType = TypeVar("ObjectType", bound=ObjectUsage[Any])
 
 
 class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):

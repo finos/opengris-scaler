@@ -27,7 +27,7 @@ def from_capnp_object_id(capnp_object_id: CapnpObjectID) -> ScalerObjectID:
     )
 
 
-def capabilities_to_dict(capabilities) -> Dict[str, int]:
+def capabilities_to_dict(capabilities: dict[str, int] | list[capnp.TaskCapability]) -> Dict[str, int]:
     if isinstance(capabilities, dict):
         return dict(capabilities)
 

@@ -29,6 +29,7 @@ import os
 import signal
 import sys
 import traceback
+import types
 import typing
 
 import cloudpickle
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 COMPRESSION_THRESHOLD_BYTES: int = 4096
 
 
-def signal_handler(signum, frame):
+def signal_handler(signum: int, frame: typing.Optional[types.FrameType]):
     """Log before exit on signal."""
     sig_name = signal.Signals(signum).name
     logger.error(f"Received signal {sig_name} ({signum})")
@@ -90,7 +91,7 @@ def build_oci_object_storage_client():
 
 
 def get_payload(
-    object_storage_client,
+    object_storage_client: typing.Any,
     namespace: str,
     bucket: str,
     object_key: typing.Optional[str],
@@ -129,7 +130,7 @@ def get_payload(
 
 
 def store_result(
-    object_storage_client, result_bytes: bytes, namespace: str, bucket: str, prefix: str, task_id: str
+    object_storage_client: typing.Any, result_bytes: bytes, namespace: str, bucket: str, prefix: str, task_id: str
 ) -> str:
     """
     Compress (if beneficial) and store the result in OCI Object Storage.

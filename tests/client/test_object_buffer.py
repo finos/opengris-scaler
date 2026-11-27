@@ -139,7 +139,7 @@ class TestObjectBufferDedup(unittest.TestCase):
     def test_function_dedup(self) -> None:
         buf, _agent, storage = _make_buffer()
 
-        def fn(x):  # noqa: D401
+        def fn(x: Any):  # noqa: D401
             return x
 
         c1 = buf.buffer_send_function(fn)
@@ -199,7 +199,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         buf, _agent, storage = _make_buffer()
 
         class _Box:
-            def __init__(self, v):
+            def __init__(self, v: List[int]):
                 self.v = v
 
         obj = _Box([1, 2, 3])
@@ -221,7 +221,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         buf, _agent, storage = _make_buffer()
 
         class _Box:
-            def __init__(self, v):
+            def __init__(self, v: List[int]):
                 self.v = v
 
         obj = _Box([1, 2, 3])
@@ -299,7 +299,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         buf, _agent, storage = _make_buffer()
 
         class _Box:
-            def __init__(self, v):
+            def __init__(self, v: bytes):
                 self.v = v
 
         obj = _Box(b"data")
@@ -346,7 +346,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         buf, _agent, storage = _make_buffer()
 
         class _Box:
-            def __init__(self, v):
+            def __init__(self, v: bytes):
                 self.v = v
 
         first = _Box(b"a" * 256)

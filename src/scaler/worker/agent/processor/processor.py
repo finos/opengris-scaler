@@ -9,6 +9,7 @@ import time
 from contextlib import redirect_stderr, redirect_stdout
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
+from types import FrameType
 from typing import IO, Callable, List, Optional, Tuple, TypeVar, cast
 
 import tblib.pickling_support
@@ -182,12 +183,12 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         else:
             self.__register_signal(SUSPEND_SIGNAL, self.__suspend)
 
-    def __interrupt(self, *args):
+    def __interrupt(self, *args: object):
         self._interrupted = True
         self._connector_agent.destroy()  # interrupts any blocking socket.
         self._connector_storage.destroy()
 
-    def __suspend(self, *args):
+    def __suspend(self, *args: object):
         assert self._resume_event is not None
         assert self._resumed_event is not None
 
@@ -438,7 +439,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             attempt += 1
 
     @staticmethod
-    def __set_current_processor(context: Optional["Processor"]) -> Token:
+    def __set_current_processor(context: Optional["Processor"]) -> Token[Optional["Processor"]]:
         if context is not None and _current_processor.get() is not None:
             raise ValueError("cannot override a previously set processor context.")
 
@@ -453,7 +454,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self.__set_current_processor(None)
 
     @staticmethod
-    def __register_signal(signal_name: str, handler: Callable) -> None:
+    def __register_signal(signal_name: str, handler: Callable[[int, Optional[FrameType]], None]) -> None:
         signal_instance = getattr(signal, signal_name, None)
         if signal_instance is None:
             raise RuntimeError(f"unsupported platform, signal not available: {signal_name}.")

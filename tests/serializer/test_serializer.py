@@ -1,6 +1,7 @@
 import enum
 import functools
 import random
+import sys
 import unittest
 from typing import Any
 
@@ -10,6 +11,11 @@ from scaler import Client, SchedulerClusterCombo, Serializer
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def noop(sec: int):
@@ -50,6 +56,7 @@ class MySerializer(Serializer):
 
 
 class TestSerializer(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -57,6 +64,7 @@ class TestSerializer(unittest.TestCase):
         self.cluster = SchedulerClusterCombo(n_workers=self._workers, event_loop="builtin")
         self.address = self.cluster.get_address()
 
+    @override
     def tearDown(self) -> None:
         self.cluster.shutdown()
         pass

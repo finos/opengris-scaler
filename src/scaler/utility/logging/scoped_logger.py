@@ -1,24 +1,27 @@
 import datetime
 import logging
 import time
-from typing import Optional
+from types import TracebackType
+from typing import Optional, Type
 
 _DEFAULT_LOGGER = logging.getLogger(__name__)
 
 
 class ScopedLogger:
-    def __init__(self, message: str, logging_level=logging.INFO, logger: Optional[logging.Logger] = None):
+    def __init__(self, message: str, logging_level: int = logging.INFO, logger: Optional[logging.Logger] = None):
         self.timer = TimedLogger(message=message, logging_level=logging_level, logger=logger)
 
     def __enter__(self):
         self.timer.begin()
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]
+    ):
         self.timer.end()
 
 
 class TimedLogger:
-    def __init__(self, message: str, logging_level=logging.INFO, logger: Optional[logging.Logger] = None):
+    def __init__(self, message: str, logging_level: int = logging.INFO, logger: Optional[logging.Logger] = None):
         self.message = message
         self.logging_level = logging_level
         self.logger = logger if logger is not None else _DEFAULT_LOGGER

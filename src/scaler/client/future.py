@@ -17,8 +17,13 @@ if sys.version_info >= (3, 11):
 else:
     from typing_extensions import assert_never
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
-class ScalerFuture(concurrent.futures.Future):
+
+class ScalerFuture(concurrent.futures.Future[Any]):
     """
     A drop-in replacement for Python's `concurrent.futures.Future`.
 
@@ -56,7 +61,7 @@ class ScalerFuture(concurrent.futures.Future):
         self._result_received = False
 
         # Set as soon as the result object's fetching starts, ensuring the object is never fetched more than once.
-        self._result_object_future: Optional[concurrent.futures.Future] = None
+        self._result_object_future: Optional[concurrent.futures.Future[Any]] = None
 
         self._task_result_type: Optional[TaskResultType] = None
         self._cancel_requested: bool = False
@@ -175,24 +180,29 @@ class ScalerFuture(concurrent.futures.Future):
 
         self._invoke_callbacks()  # type: ignore[attr-defined]
 
+    @override
     def set_result(self, result: Any, profiling_info: Optional[ProfileResult] = None) -> None:
         self._set_result_or_exception(result=result, profiling_info=profiling_info)
 
+    @override
     def set_exception(self, exception: Optional[BaseException], profiling_info: Optional[ProfileResult] = None) -> None:
         self._set_result_or_exception(exception=exception, profiling_info=profiling_info)
 
+    @override
     def result(self, timeout: Optional[float] = None) -> Any:
         with self._condition:
             self._wait_result_object(timeout)
 
             return super().result()
 
+    @override
     def exception(self, timeout: Optional[float] = None) -> Optional[BaseException]:
         with self._condition:
             self._wait_result_object(timeout)
 
             return super().exception()
 
+    @override
     def cancel(self, timeout: Optional[float] = None) -> bool:
         with self._condition:
             if self.cancelled():
@@ -235,6 +245,7 @@ class ScalerFuture(concurrent.futures.Future):
         """
         return asyncio.wrap_future(self).__await__()
 
+    @override
     def add_done_callback(self, fn: Callable[["ScalerFuture"], Any]) -> None:
         with self._condition:
             if self.done():
@@ -249,7 +260,7 @@ class ScalerFuture(concurrent.futures.Future):
             concurrent.futures._base.LOGGER.exception(f"exception calling callback for {self!r}")
             raise
 
-    def _on_waiters_updated(self, waiters: EventList):
+    def _on_waiters_updated(self, waiters: EventList[concurrent.futures._base._Waiter]):
         with self._condition:
             # if it's delayed future, get the result when waiter gets added
             if self._is_delayed and len(self._waiters) > 0:
@@ -391,7 +402,7 @@ class ScalerFuture(concurrent.futures.Future):
         else:
             return "GraphSubTask"
 
-    def __jspi_wait_future_settled(self, future: concurrent.futures.Future, timeout: Optional[float]) -> None:
+    def __jspi_wait_future_settled(self, future: concurrent.futures.Future[Any], timeout: Optional[float]) -> None:
         """
         Suspends the WebAssembly stack until `future` settles, or until `timeout` seconds elapsed.
 
