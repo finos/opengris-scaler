@@ -2,7 +2,7 @@
 
 # resource and span attributes
 SERVICE_NAMESPACE = "scaler"
-# a user tag may not start with this: Scaler's own attributes do
+# a user baggage key may not start with this: Scaler's own attributes do
 RESERVED_ATTRIBUTE_PREFIX = "scaler."
 # also baggage, so every span of a task carries the client that submitted it
 CLIENT_ID_ATTRIBUTE = "scaler.client.id"

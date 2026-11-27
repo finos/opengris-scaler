@@ -39,7 +39,7 @@ SCALER_LOGGER_NAME = "scaler"
 
 
 class BaggageSpanProcessor(SpanProcessor):
-    """Copies the baggage of a span's parent context onto the span as attributes, so a user tag reaches every span."""
+    """Copies the baggage of a span's parent context onto the span as attributes, so user baggage reaches every span."""
 
     def on_start(self, span: Span, parent_context: Optional[Context] = None) -> None:
         for key, value in baggage.get_all(parent_context).items():

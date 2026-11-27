@@ -169,11 +169,11 @@ class TestTelemetry(unittest.TestCase):
         (nested_submit_span,) = self.receiver.spans_named("scaler.client.submit")
         self.assertEqual(nested_submit_span.span.parent_span_id, parent_execute.span.span_id)
 
-    def test_client_tags_reach_every_span_with_block_tags_over_client_tags(self) -> None:
-        """A client's tags reach every span of its tasks; a tags() block adds to and overrides them for its submits."""
-        with Client(address=self.cluster.get_address(), tags={"team": "rates", "job": "backtest-42"}) as client:
+    def test_client_baggage_reaches_every_span_with_block_baggage_over_client_baggage(self) -> None:
+        """A client's baggage reaches every span of its tasks; a baggage() block adds to and overrides it."""
+        with Client(address=self.cluster.get_address(), baggage={"team": "rates", "job": "backtest-42"}) as client:
             self.assertEqual(client.submit(traced_work, 1).result(), 2)
-            with client.tags(job="rerun", stage="aggregate"):
+            with client.baggage(job="rerun", stage="aggregate"):
                 self.assertEqual(client.submit(traced_work, 2).result(), 3)
             self.assertEqual(client.submit(traced_work, 3).result(), 4)
 
@@ -182,20 +182,20 @@ class TestTelemetry(unittest.TestCase):
 
         expected = [("rates", "backtest-42", None), ("rates", "rerun", "aggregate"), ("rates", "backtest-42", None)]
         for name in span_names:
-            tags = sorted(
+            span_baggage = sorted(
                 (span.attributes.get("team"), span.attributes.get("job"), span.attributes.get("stage"))
                 for span in self.receiver.spans_named(name)
             )
-            self.assertEqual(tags, sorted(expected, key=str), name)
+            self.assertEqual(span_baggage, sorted(expected, key=str), name)
 
-    def test_tag_keys_under_the_scaler_prefix_are_refused(self) -> None:
-        """A tag may not spoof one of Scaler's own attributes, on the client or in a block."""
+    def test_baggage_keys_under_the_scaler_prefix_are_refused(self) -> None:
+        """Baggage may not spoof one of Scaler's own attributes, on the client or in a block."""
         with self.assertRaises(ValueError):
-            Client(address=self.cluster.get_address(), tags={"scaler.client.id": "spoofed"})
+            Client(address=self.cluster.get_address(), baggage={"scaler.client.id": "spoofed"})
 
         with Client(address=self.cluster.get_address()) as client:
             with self.assertRaises(ValueError):
-                with client.tags(**{"scaler.task.id": "spoofed"}):
+                with client.baggage(**{"scaler.task.id": "spoofed"}):
                     pass
 
     def test_queue_waits_are_spans_under_the_scheduler_and_worker_spans(self) -> None:

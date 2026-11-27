@@ -109,30 +109,30 @@ Each change of a worker manager's desired concurrency is one trace, with a span 
 - Those calls carry the span's context to AWS in the ``X-Amzn-Trace-Id`` header.
 - OCI API calls have no spans: the OCI SDK has no OpenTelemetry support.
 
-Tags
-----
+Baggage
+-------
 
-Tag a client's tasks, and every span of those tasks carries the tags as attributes:
+Give a client's tasks `baggage <https://opentelemetry.io/docs/concepts/signals/baggage/>`_, and every span of those tasks carries it as attributes:
 
 .. code-block:: python
 
-    with Client(address=address, tags={"team": "rates", "job": "backtest-42"}) as client:
+    with Client(address=address, baggage={"team": "rates", "job": "backtest-42"}) as client:
         results = client.map(simulate, range(1000))
 
-        with client.tags(stage="aggregate"):
+        with client.baggage(stage="aggregate"):
             client.submit(aggregate, results)
 
-- ``tags`` on the client tags everything it submits; a ``client.tags()`` block adds tags to the submits inside it.
-- A task's tags are, lowest first: the `baggage <https://opentelemetry.io/docs/concepts/signals/baggage/>`_ current when it is submitted, the client's tags, its ``tags()`` blocks with the innermost winning, and ``scaler.client.id``.
-- A ``tags()`` block applies to that client only, in the thread or asyncio task that entered it.
+- ``baggage`` on the client applies to everything it submits; a ``client.baggage()`` block adds baggage to the submits inside it.
+- A task's baggage is, lowest first: the baggage current when it is submitted, the client's baggage, its ``baggage()`` blocks with the innermost winning, and ``scaler.client.id``.
+- A ``baggage()`` block applies to that client only, in the thread or asyncio task that entered it.
 - Values are sent as strings, and keys starting with ``scaler.`` are reserved.
-- A client created inside a task inherits the task's tags, and adds its own over them.
-- Tags travel as W3C baggage: user code that calls other services through instrumented HTTP libraries sends them on, so a tag must never hold a secret.
+- A client created inside a task inherits the task's baggage, and adds its own over it.
+- Baggage travels in the W3C ``baggage`` header: user code that calls other services through instrumented HTTP libraries sends it on, so baggage must never hold a secret.
 
 Spans in task code
 ------------------
 
-A task function creates spans with the OpenTelemetry API; they nest under ``scaler.processor.execute`` and carry the task's tags:
+A task function creates spans with the OpenTelemetry API; they nest under ``scaler.processor.execute`` and carry the task's baggage:
 
 .. code-block:: python
 
