@@ -6,7 +6,7 @@ from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 
-def add(x, y):
+def add(x: int, y: int) -> int:
     return x + y
 
 

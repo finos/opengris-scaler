@@ -4,7 +4,7 @@ import multiprocessing
 import signal
 import sys
 from collections import deque
-from typing import Callable, Dict, Optional
+from typing import Callable, Deque, Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
@@ -30,6 +30,11 @@ from scaler.worker_manager.proxy.heartbeat_manager import HeartbeatManager
 from scaler.worker_manager.proxy.mixins import ExecutionBackend, ProcessorStatusProvider
 from scaler.worker_manager.proxy.task_manager import TaskManager
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 logger = logging.getLogger(__name__)
 
 # YMQ errors that mean the scheduler connection is already gone.
@@ -40,7 +45,7 @@ _EXPECTED_TEARDOWN_ERROR_CODES = frozenset(
 _SpawnProcess = multiprocessing.get_context("spawn").Process
 
 
-class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
+class WorkerProcess(_SpawnProcess):
     def __init__(
         self,
         name: str,
@@ -88,17 +93,18 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_manager: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._execution_backend: Optional[ExecutionBackend] = None
-        self._task_manager: Optional[TaskManager] = None
-        self._heartbeat_manager: Optional[HeartbeatManager] = None
+        self._execution_backend: ExecutionBackend
+        self._task_manager: TaskManager
+        self._heartbeat_manager: HeartbeatManager
 
         self._heartbeat_received: bool = False
-        self._backoff_message_queue: deque = deque()
+        self._backoff_message_queue: Deque[BaseMessage] = deque()
 
     @property
     def identity(self) -> WorkerID:
         return self._ident
 
+    @override
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
         exit_code = run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
@@ -259,6 +265,9 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
 
     async def __main_loop(self) -> None:
+        assert self._connector_external is not None and self._connector_manager is not None
+        assert self._connector_storage is not None
+
         await self._connector_external.connect(
             self._address, ConnectorRemoteType.Binder, security_config=self._security_config
         )

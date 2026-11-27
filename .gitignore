@@ -13,7 +13,6 @@ eggs/
 .idea/
 *.egg-info/
 *.egg
-.mypy_cache/
 .cache
 
 .venv/

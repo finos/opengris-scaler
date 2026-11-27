@@ -5,6 +5,7 @@ import sys
 import time
 import unittest
 from concurrent.futures import CancelledError, TimeoutError
+from typing import List
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
@@ -18,6 +19,11 @@ from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 # The task has to still be running when its worker is interrupted, so it must outlast the pause
 # that lets it reach worker A -- which in turn has to cover spawning manager A, its worker and its
@@ -69,12 +75,14 @@ def _build_worker_manager(combo: SchedulerClusterCombo, manager_id: str) -> Nati
 
 
 class TestClusterDisconnect(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         self.combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
         self.address = self.combo.get_address()
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
         pass
@@ -128,6 +136,7 @@ class TestClusterDisconnect(unittest.TestCase):
     "graceful shutdown via SIGINT is POSIX-only.",
 )
 class TestGracefulWorkerShutdown(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -136,8 +145,9 @@ class TestGracefulWorkerShutdown(unittest.TestCase):
         )
         self.address = self.combo.get_address()
         self.client = Client(self.address)
-        self._manager_processes: list = []
+        self._manager_processes: List[multiprocessing.Process] = []
 
+    @override
     def tearDown(self) -> None:
         for proc in self._manager_processes:
             if proc.is_alive():
@@ -163,6 +173,7 @@ class TestGracefulWorkerShutdown(unittest.TestCase):
         # Graceful SIGINT: manager sends SIGTERM to worker -> worker sends WDN -> scheduler
         # re-queues the task immediately. Without WDN the task would stay assigned to the
         # dead worker until the heartbeat timeout (_HEARTBEAT_TIMEOUT_SECONDS).
+        assert proc_a.pid is not None
         os.kill(proc_a.pid, signal.SIGINT)
 
         self._start_manager("manager_b")  # worker B picks up the re-queued task

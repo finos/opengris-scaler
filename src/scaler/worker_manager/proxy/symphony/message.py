@@ -1,4 +1,5 @@
 import array
+from typing import Any
 
 try:
     import soamapi
@@ -16,9 +17,9 @@ class SoamMessage(soamapi.Message):
     def get_payload(self) -> bytes:
         return self.__payload
 
-    def on_serialize(self, stream):
+    def on_serialize(self, stream: Any):
         payload_array = array.array("b", self.get_payload())
         stream.write_byte_array(payload_array, 0, len(payload_array))
 
-    def on_deserialize(self, stream):
+    def on_deserialize(self, stream: Any):
         self.set_payload(stream.read_byte_array("b"))

@@ -8,7 +8,7 @@ import time
 import unittest
 from concurrent.futures import Future
 from concurrent.futures import wait as wait_futures
-from typing import List
+from typing import Any, List
 
 import psutil
 
@@ -19,6 +19,11 @@ from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def sleep_and_return_pid(sec: int):
@@ -53,6 +58,7 @@ def _wait_for_log_marker(log_path: str, marker: str, timeout_seconds: float) -> 
 
 
 class TestBalance(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -137,7 +143,7 @@ class TestBalance(unittest.TestCase):
         client = Client(address=address)
         second_manager_process = None
         try:
-            futures: List[Future] = [
+            futures: List[Future[Any]] = [
                 client.submit(sleep_and_return_pid, TASK_SLEEP_SECONDS),
                 client.submit(sleep_and_return_pid, TASK_SLEEP_SECONDS),
             ]
@@ -146,7 +152,7 @@ class TestBalance(unittest.TestCase):
 
             _signal_process_tree(
                 combo._worker_manager_process,
-                signal.SIGSTOP,  # type: ignore[attr-defined, unused-ignore]
+                signal.SIGSTOP,  # pyrefly: ignore[missing-attribute, unused-ignore]
             )
 
             base_config = combo._worker_manager.config
@@ -188,7 +194,7 @@ class TestBalance(unittest.TestCase):
             # never be delivered to a stopped process.
             _signal_process_tree(
                 combo._worker_manager_process,
-                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
+                signal.SIGKILL,  # pyrefly: ignore[missing-attribute, unused-ignore]
             )
             combo._worker_manager_process.join()
 
@@ -248,7 +254,7 @@ class TestBalance(unittest.TestCase):
         client = Client(address=address)
         second_manager_process = None
         try:
-            futures: List[Future] = [
+            futures: List[Future[Any]] = [
                 client.submit_verbose(sleep_and_return_pid, (TASK_SLEEP_SECONDS,), {}, capabilities=CAPABILITIES),
                 client.submit_verbose(sleep_and_return_pid, (TASK_SLEEP_SECONDS,), {}, capabilities=CAPABILITIES),
             ]
@@ -259,7 +265,7 @@ class TestBalance(unittest.TestCase):
             # the timeout far off the scheduler still lists it, so the balancer will send a cancel to it.
             _signal_process_tree(
                 combo._worker_manager_process,
-                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
+                signal.SIGKILL,  # pyrefly: ignore[missing-attribute, unused-ignore]
             )
 
             base_config = combo._worker_manager.config
@@ -304,7 +310,7 @@ class TestBalance(unittest.TestCase):
 
             _signal_process_tree(
                 combo._worker_manager_process,
-                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
+                signal.SIGKILL,  # pyrefly: ignore[missing-attribute, unused-ignore]
             )
             combo._worker_manager_process.join()
 

@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import unittest
 from typing import Any, List, Tuple
 from unittest.mock import AsyncMock, MagicMock
@@ -23,12 +24,18 @@ from scaler.worker_manager.proxy.task_manager import TaskManager
 from tests.utility.utility import logging_test_name
 from tests.worker_manager.proxy.test_task_actor import SETTLE_IDLE_YIELDS, _make_backend, _make_task, _make_task_cancel
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 UPLOAD_TIMEOUT_SECONDS = 1.0
 
 
 class _TaskManagerTestCase(unittest.IsolatedAsyncioTestCase):
     BASE_CONCURRENCY = 1
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -53,8 +60,8 @@ class _TaskManagerTestCase(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0)
                 idle_yields += 1
 
-    async def _start_task(self, task: Task) -> asyncio.Future:
-        future: asyncio.Future = asyncio.get_running_loop().create_future()
+    async def _start_task(self, task: Task) -> asyncio.Future[Any]:
+        future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self.backend.execute = AsyncMock(return_value=future)
         await self.tm.on_task_new(task)
         await self._settle()
@@ -72,6 +79,7 @@ class _TaskManagerTestCase(unittest.IsolatedAsyncioTestCase):
 
 
 class TestTaskManagerRegister(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -245,6 +253,7 @@ class TestTaskManagerOnObjectInstruction(_TaskManagerTestCase):
 
 
 class TestExecutionBackendSentinel(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -262,7 +271,7 @@ class TestExecutionBackendSentinel(unittest.IsolatedAsyncioTestCase):
             async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]:
                 return await self._loader(task)
 
-            async def execute(self, task: Task) -> asyncio.Future:
+            async def execute(self, task: Task) -> asyncio.Future[Any]:
                 return asyncio.get_running_loop().create_future()
 
             async def on_cancel(self, task_cancel: TaskCancel) -> None:

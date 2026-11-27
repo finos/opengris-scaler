@@ -1,10 +1,16 @@
 import asyncio
+import sys
 import unittest
 
 from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker.agent.task_manager import _TaskState, _TaskTable
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 NEXT_TIMEOUT_SECONDS = 1
 LOW_PRIORITY = 0
@@ -23,6 +29,7 @@ def _task(name: str, priority: int) -> Task:
 
 
 class TestTaskTable(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         self.table = _TaskTable()
 

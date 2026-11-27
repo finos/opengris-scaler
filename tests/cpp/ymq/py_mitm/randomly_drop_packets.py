@@ -25,7 +25,7 @@ class RandomlyDropPacketsMITM(MITM):
 
     def proxy(
         self,
-        tuntap: MITMInterface,
+        interface: MITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],
@@ -39,12 +39,12 @@ class RandomlyDropPacketsMITM(MITM):
                 return False
 
             self._client_consecutive_drops = 0
-            tuntap.send(server_conn.rewrite(pkt))
+            interface.send(server_conn.rewrite(pkt))
         elif sender == server_conn:
             if self.can_drop_server and drop:
                 self._server_consecutive_drops += 1
                 return False
 
             self._server_consecutive_drops == 0
-            tuntap.send(client_conn.rewrite(pkt))
+            interface.send(client_conn.rewrite(pkt))
         return True

@@ -26,7 +26,7 @@ class ConfigController(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def update_config(self, path: str, value: Any):
+    def update_config(self, path: str, value: Any) -> None:
         raise NotImplementedError()
 
 
@@ -43,7 +43,7 @@ class ObjectDetail:
 
 class ObjectController(Reporter):
     @abc.abstractmethod
-    async def on_object_instruction(self, source: bytes, request: ObjectInstruction):
+    async def on_object_instruction(self, source: bytes, instruction: ObjectInstruction) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -54,15 +54,15 @@ class ObjectController(Reporter):
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
         object_size: int,
-    ):
+    ) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_del_objects(self, client_id: ClientID, object_ids: Set[ObjectID]):
+    def on_del_objects(self, client_id: ClientID, object_ids: Set[ObjectID]) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def clean_client(self, client_id: ClientID):
+    def clean_client(self, client_id: ClientID) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -100,7 +100,7 @@ class ClientController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_begin(self, client_id: ClientID, task_id: TaskID):
+    def on_task_begin(self, client_id: ClientID, task_id: TaskID) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -108,11 +108,11 @@ class ClientController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
+    async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def notice_client_activity(self, client_id: ClientID):
+    def notice_client_activity(self, client_id: ClientID) -> None:
         """Refresh the liveness timestamp of an already-tracked client.
 
         Called for every inbound message from a known client so that the
@@ -126,25 +126,25 @@ class ClientController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_disconnect(self, client_id: ClientID, request: ClientDisconnect):
+    async def on_client_disconnect(self, client_id: ClientID, request: ClientDisconnect) -> None:
         raise NotImplementedError()
 
 
 class GraphTaskController(Reporter):
     @abc.abstractmethod
-    async def on_graph_task(self, client_id: ClientID, graph_task: GraphTask):
+    async def on_graph_task(self, client_id: ClientID, graph_task: GraphTask) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_graph_task_cancel(self, graph_task_cancel: TaskCancel):
+    async def on_graph_task_cancel(self, graph_task_cancel: TaskCancel) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_graph_sub_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
+    async def on_graph_sub_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_graph_sub_task_result(self, result: TaskResult) -> bool:
+    async def on_graph_sub_task_result(self, result: TaskResult) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -154,7 +154,7 @@ class GraphTaskController(Reporter):
 
 class TaskController(Reporter):
     @abc.abstractmethod
-    async def on_task_new(self, task: Task):
+    async def on_task_new(self, task: Task) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -162,33 +162,33 @@ class TaskController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_cancel(self, client_id: ClientID, task_cancel: TaskCancel):
+    async def on_task_cancel(self, client_id: ClientID, task_cancel: TaskCancel) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_balance_cancel(self, task_id: TaskID):
+    async def on_task_balance_cancel(self, task_id: TaskID) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_cancel_confirm(self, worker_id: WorkerID, task_cancel_confirm: TaskCancelConfirm):
+    async def on_task_cancel_confirm(self, worker_id: WorkerID, task_cancel_confirm: TaskCancelConfirm) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_result(self, worker_id: WorkerID, result: TaskResult):
+    async def on_task_result(self, worker_id: WorkerID, result: TaskResult) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_worker_connect(self, worker_id: WorkerID):
+    async def on_worker_connect(self, worker_id: WorkerID) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_worker_disconnect(self, task_id: TaskID, worker_id: WorkerID):
+    async def on_worker_disconnect(self, task_id: TaskID, worker_id: WorkerID) -> None:
         raise NotImplementedError()
 
 
 class WorkerController(Reporter):
     @abc.abstractmethod
-    def acquire_worker(self, task: Task) -> Optional[WorkerID]:
+    def acquire_worker(self, task: Task) -> WorkerID:
         """this acquires worker should be atomic, means it cannot be async decorated, otherwise it will create gap that
         get worker but task is not send to worker, and cannot find task in the worker state"""
 
@@ -203,19 +203,19 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_done(self, task_id: TaskID):
+    async def on_task_done(self, task_id: TaskID) -> WorkerID:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
+    async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_shutdown(self, client_id: ClientID):
+    async def on_client_shutdown(self, client_id: ClientID) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification):
+    async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -238,5 +238,5 @@ class WorkerController(Reporter):
 
 class InformationController(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def on_request(self, request: InformationRequest):
+    async def on_request(self, request: InformationRequest) -> None:
         raise NotImplementedError()

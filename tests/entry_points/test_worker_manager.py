@@ -1057,7 +1057,7 @@ def _make_orb_config(
 class TestORBAWSEC2CreateUserData(unittest.TestCase):
     """Tests for ORBAWSEC2WorkerManager._create_user_data covering the two environment modes."""
 
-    def _make_worker_manager(self, **kwargs):
+    def _make_worker_manager(self, **kwargs: str):
         from scaler.worker_manager.cloud.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
 
         return ORBAWSEC2WorkerManager(_make_orb_config(**kwargs))

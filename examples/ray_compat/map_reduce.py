@@ -5,6 +5,7 @@ Like in `highly_parallel.py`, only minimal changes are needed for the example to
 """
 
 import subprocess
+from typing import Iterator, List, Tuple
 
 import ray
 
@@ -19,15 +20,15 @@ chunk = len(corpus) // num_partitions
 partitions = [corpus[i * chunk : (i + 1) * chunk] for i in range(num_partitions)]
 
 
-def map_function(document):
+def map_function(document: bytes) -> Iterator[Tuple[bytes, int]]:
     for word in document.lower().split():
         yield word, 1
 
 
 def main():
     @ray.remote
-    def apply_map(corpus, num_partitions=3):
-        map_results = [list() for _ in range(num_partitions)]  # type: ignore[var-annotated]
+    def apply_map(corpus: List[bytes], num_partitions: int = 3):
+        map_results = [list() for _ in range(num_partitions)]
         for document in corpus:
             for result in map_function(document):
                 first_letter = result[0].decode("utf-8")[0]
@@ -43,7 +44,7 @@ def main():
             print(f"Mapper {i}, return value {j}: {result[:2]}")
 
     @ray.remote
-    def apply_reduce(*results):
+    def apply_reduce(*results: List[Tuple[bytes, int]]):
         reduce_results = dict()
         for res in results:
             for key, value in res:

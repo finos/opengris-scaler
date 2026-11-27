@@ -19,7 +19,7 @@ from scaler.utility.network_util import get_hostname
 
 
 class ClientHeartbeatManager(Looper, HeartbeatManager):
-    def __init__(self, death_timeout_seconds: int, storage_address_future: Future):
+    def __init__(self, death_timeout_seconds: int, storage_address_future: Future[AddressConfig]):
         self._death_timeout_seconds = death_timeout_seconds
         self._object_storage_address = storage_address_future
 
@@ -30,7 +30,7 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         self._latency_microseconds = 0
         self._connected = False
 
-        self._connector_external: Optional[AsyncConnector] = None
+        self._connector_external: AsyncConnector
         self._object_manager: Optional[ObjectManager] = None
 
     def register(self, connector_external: AsyncConnector):

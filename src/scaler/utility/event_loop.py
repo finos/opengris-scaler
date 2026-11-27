@@ -38,7 +38,7 @@ def register_event_loop(event_loop_type: str):
 
 
 def create_async_loop_routine(
-    routine: Callable[[], Awaitable], interval_seconds: int, swallow_routine_errors: bool = False
+    routine: Callable[[], Awaitable[None]], interval_seconds: int, swallow_routine_errors: bool = False
 ) -> Awaitable[None]:
     """create async loop routine,
 

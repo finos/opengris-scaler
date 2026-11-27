@@ -1,7 +1,7 @@
 import dataclasses
 import unittest
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import mock_open, patch
 
 from scaler.config.config_class import ConfigClass
@@ -11,23 +11,23 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.type_utils import parse_bool
 
 try:
-    from typing import override  # type: ignore[attr-defined]
+    from typing import override
 except ImportError:
     from typing_extensions import override
 
 try:
-    from typing import Self  # type: ignore[attr-defined]
+    from typing import Self
 except ImportError:
     from typing_extensions import Self
 
 
 class MockArgParser:
-    args: List[Tuple[Tuple, Dict]]
+    args: List[Tuple[Tuple[str, ...], Dict[str, Any]]]
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.args = []
 
-    def add_argument(self, *args, **kwargs) -> None:
+    def add_argument(self, *args: str, **kwargs: Any) -> None:
         self.args.append((args, kwargs))
 
 

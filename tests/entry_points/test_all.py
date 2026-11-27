@@ -1,6 +1,6 @@
 import dataclasses
 import unittest
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from unittest.mock import patch
 
 from scaler.config.config_class import ConfigClass
@@ -31,7 +31,7 @@ class _SectionTestConfig(ConfigClass):
 class TestSectionMetadata(unittest.TestCase):
     """Tests the section= metadata path in ConfigClass / _from_args."""
 
-    def _build(self, toml_data):
+    def _build(self, toml_data: Dict[str, Any]):
         return _from_args(_SectionTestConfig, {}, toml_data)
 
     def test_single_table_populates_optional(self) -> None:
@@ -85,7 +85,7 @@ class _StubScalerAllConfig(ConfigClass):
 class TestScalerAllEndToEnd(unittest.TestCase):
     """End-to-end tests for the section= flow through ConfigClass.parse."""
 
-    def _make_toml_data(self, data):
+    def _make_toml_data(self, data: Dict[str, Any]):
         """Return a mock _load_toml that yields the given data dict."""
         return patch("scaler.config.config_class._load_toml", return_value=data)
 
@@ -140,7 +140,7 @@ class TestScalerMain(unittest.TestCase):
 class TestScalerAllConfigShape(unittest.TestCase):
     """Tests that ScalerAllConfig reads the [[worker_manager]] sections."""
 
-    def _parse(self, toml_data):
+    def _parse(self, toml_data: Dict[str, Any]):
         from scaler.entry_points.scaler import ScalerAllConfig
 
         with (
@@ -197,7 +197,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
         config = self._parse(toml)
         self.assertEqual(len(config.worker_managers), 2)
 
-    def _native_base(self, **extra):
+    def _native_base(self, **extra: Any):
         return {
             "worker_manager": {
                 "type": "baremetal_native",
@@ -244,6 +244,8 @@ class TestScalerAllConfigShape(unittest.TestCase):
         self.assertIsInstance(config.worker_managers[0], ORBAWSEC2WorkerManagerConfig)
 
     def test_orb_aws_ec2_fields_from_toml(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
+
         toml = {
             "worker_manager": {
                 "type": "orb_aws_ec2",
@@ -256,9 +258,11 @@ class TestScalerAllConfigShape(unittest.TestCase):
             }
         }
         config = self._parse(toml)
-        self.assertEqual(config.worker_managers[0].image_id, "ami-0528819f94f4f5fa5")
-        self.assertEqual(config.worker_managers[0].instance_type, "t3.medium")
-        self.assertEqual(config.worker_managers[0].aws_region, "eu-west-1")
+        worker_manager = config.worker_managers[0]
+        assert isinstance(worker_manager, ORBAWSEC2WorkerManagerConfig)
+        self.assertEqual(worker_manager.image_id, "ami-0528819f94f4f5fa5")
+        self.assertEqual(worker_manager.instance_type, "t3.medium")
+        self.assertEqual(worker_manager.aws_region, "eu-west-1")
 
     def test_mixed_native_and_orb_aws_ec2_worker_managers(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
@@ -327,7 +331,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
 class TestRunWorkerManager(unittest.TestCase):
     """Tests that _run_worker_manager calls register_event_loop and bootstrap_process from the per-manager config."""
 
-    def _make_native_config(self, event_loop="builtin", logging_level="INFO"):
+    def _make_native_config(self, event_loop: str = "builtin", logging_level: str = "INFO"):
         from scaler.config.common.logging import LoggingConfig
         from scaler.config.common.worker import WorkerConfig
         from scaler.config.common.worker_manager import WorkerManagerConfig
@@ -377,7 +381,7 @@ class TestRunWorkerManager(unittest.TestCase):
             config.logging_config.paths, config.logging_config.config_file, "WARNING", process_name=config._tag
         )
 
-    def _make_orb_aws_ec2_config(self, event_loop="builtin", logging_level="INFO"):
+    def _make_orb_aws_ec2_config(self, event_loop: str = "builtin", logging_level: str = "INFO"):
         from scaler.config.common.logging import LoggingConfig
         from scaler.config.common.worker import WorkerConfig
         from scaler.config.common.worker_manager import WorkerManagerConfig

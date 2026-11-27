@@ -7,6 +7,7 @@ connector pair can be driven from plain CPython (no JSPI required).
 """
 
 import asyncio
+import sys
 import threading
 import unittest
 from typing import Any, List
@@ -22,8 +23,13 @@ from scaler.client.agent.bridge import (
     create_default_bridge,
 )
 from scaler.config.types.address import AddressConfig, SocketType
-from scaler.protocol.capnp import ClientDisconnect
+from scaler.protocol.capnp import BaseMessage, ClientDisconnect
 from scaler.utility.identifiers import ClientID
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 class _ImmediateRunSync:
@@ -50,6 +56,7 @@ def _patched_run_sync(driver: _ImmediateRunSync):
 
 
 class InProcessConnectorPairTest(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self._driver = _ImmediateRunSync()
         self._loop = self._driver.loop
@@ -57,6 +64,7 @@ class InProcessConnectorPairTest(unittest.TestCase):
         # time; make sure that's the loop we drive in these tests.
         asyncio.set_event_loop(self._loop)
 
+    @override
     def tearDown(self) -> None:
         self._driver.close()
         asyncio.set_event_loop(None)
@@ -69,7 +77,7 @@ class InProcessConnectorPairTest(unittest.TestCase):
 
         received: List[Any] = []
 
-        async def callback(msg):
+        async def callback(msg: BaseMessage):
             received.append(msg)
 
         async_conn = _InProcessAsyncConnector(
@@ -300,7 +308,7 @@ class CheckBrowserRuntimeTest(unittest.TestCase):
 
         real_import = builtins.__import__
 
-        def fake_import(name, *args, **kwargs):
+        def fake_import(name: str, *args: Any, **kwargs: Any):
             if name == "pyodide.ffi" or name.startswith("pyodide"):
                 raise ImportError("simulated: no pyodide module")
             return real_import(name, *args, **kwargs)

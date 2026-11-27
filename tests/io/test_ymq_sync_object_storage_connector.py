@@ -5,6 +5,7 @@ Both the read and the write side translate it, so a caller sees a failure of the
 than a raw YMQ error, which names no socket and reads as a failure of whatever else the caller handles.
 """
 
+import sys
 import unittest
 from typing import Any
 from unittest import mock
@@ -15,6 +16,11 @@ from scaler.io.ymq import SocketStopRequestedError
 from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def _make_connector() -> Any:
@@ -29,10 +35,12 @@ def _make_connector() -> Any:
 
 
 class SyncObjectStorageConnectorSendFailureTest(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.connector = _make_connector()
         self.object_id = ObjectID.generate_object_id(ClientID.generate_client_id("test"))
 
+    @override
     def tearDown(self) -> None:
         # the connector's __del__ would otherwise shut down the mocked socket during garbage collection
         self.connector._socket = None

@@ -23,7 +23,7 @@ class BatchJobCallback:
 
     def __init__(self) -> None:
         self._callback_lock = threading.Lock()
-        self._task_id_to_future: Dict[str, concurrent.futures.Future] = {}
+        self._task_id_to_future: Dict[str, concurrent.futures.Future[Any]] = {}
         self._task_id_to_batch_job_id: Dict[str, str] = {}
         self._batch_job_id_to_task_id: Dict[str, str] = {}
 
@@ -91,7 +91,7 @@ class BatchJobCallback:
             self._task_id_to_batch_job_id.clear()
             self._batch_job_id_to_task_id.clear()
 
-    def submit_task(self, task_id: str, batch_job_id: str, future: concurrent.futures.Future) -> None:
+    def submit_task(self, task_id: str, batch_job_id: str, future: concurrent.futures.Future[Any]) -> None:
         """
         Register a task submission for callback tracking.
 

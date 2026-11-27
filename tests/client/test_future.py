@@ -1,10 +1,11 @@
 import math
+import sys
 import threading
 import time
 import unittest
 from concurrent.futures import CancelledError, Future, InvalidStateError, TimeoutError, as_completed
 from threading import Event
-from typing import Tuple
+from typing import Any, Tuple
 from unittest.mock import Mock
 
 from scaler import Client, SchedulerClusterCombo
@@ -19,12 +20,18 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.serialization import deserialize_failure
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 def noop_sleep(sec: int):
     time.sleep(sec)
 
 
 class TestFuture(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -32,13 +39,14 @@ class TestFuture(unittest.TestCase):
         self.cluster = SchedulerClusterCombo(n_workers=self._workers, event_loop="builtin")
         self.address = self.cluster.get_address()
 
+    @override
     def tearDown(self) -> None:
         self.cluster.shutdown()
 
     def test_callback(self):
         done_called_event = Event()
 
-        def on_done_callback(fut):
+        def on_done_callback(fut: ScalerFuture):
             self.assertTrue(fut.done())
             self.assertAlmostEqual(fut.result(), 4.0)
             done_called_event.set()
@@ -269,16 +277,18 @@ class TestFuture(unittest.TestCase):
         self.assertTrue(finished.cancelled())
 
     @staticmethod
-    def __create_mocked_future(future_result, is_delayed: bool = True) -> Tuple[ClientID, ScalerFuture, Mock, Mock]:
+    def __create_mocked_future(
+        future_result: Any, is_delayed: bool = True
+    ) -> Tuple[ClientID, ScalerFuture, Mock, Mock]:
         client_id = ClientID.generate_client_id()
         connector_agent = Mock(spec=SyncConnector)
         object_buffer = Mock(spec=ObjectBuffer)
 
-        def fetch_object(object_id: ObjectID, is_exception: bool, delete_after_fetch: bool) -> Future:
+        def fetch_object(object_id: ObjectID, is_exception: bool, delete_after_fetch: bool) -> Future[Any]:
             # The object storage server is not available, the serialized result is returned immediately.
             payload = DefaultSerializer.serialize(future_result)
 
-            fetched: Future = Future()
+            fetched: Future[Any] = Future()
             fetched.set_result(deserialize_failure(payload) if is_exception else DefaultSerializer.deserialize(payload))
             return fetched
 

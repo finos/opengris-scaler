@@ -5,6 +5,7 @@ The scheduler describes an object from these fields alone.
 """
 
 import unittest
+from typing import List, Tuple
 from unittest.mock import AsyncMock
 
 from scaler.client.agent.object_manager import ClientObjectManager
@@ -12,7 +13,9 @@ from scaler.protocol.capnp import ObjectInstruction, ObjectMetadata
 from scaler.utility.identifiers import ClientID, ObjectID
 
 
-def make_create(client_id: ClientID, objects) -> ObjectInstruction:
+def make_create(
+    client_id: ClientID, objects: List[Tuple[ObjectID, ObjectMetadata.ObjectContentType, bytes]]
+) -> ObjectInstruction:
     """A create instruction as the agent receives it, deserialized like a real one."""
     return ObjectInstruction.from_bytes(
         ObjectInstruction(

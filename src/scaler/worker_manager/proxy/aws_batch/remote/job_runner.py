@@ -17,6 +17,8 @@ import os
 import signal
 import sys
 import traceback
+from types import FrameType
+from typing import Any, Dict, Optional
 
 import boto3
 import cloudpickle
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 COMPRESSION_THRESHOLD_BYTES: int = 4096
 
 
-def signal_handler(signum, frame):
+def signal_handler(signum: int, frame: Optional[FrameType]):
     """Handle signals to log before crash."""
     sig_name = signal.Signals(signum).name
     logger.error(f"Received signal {sig_name} ({signum})")
@@ -47,7 +49,7 @@ def setup_logging():
     signal.signal(signal.SIGINT, signal_handler)
 
 
-def parse_args() -> dict:
+def parse_args() -> Dict[str, Any]:
     """Parse command line arguments from job parameters."""
     parser = argparse.ArgumentParser(description="AWS Batch Job Runner for Scaler")
     parser.add_argument("--task_id", default="unknown", help="Task ID")
@@ -76,7 +78,7 @@ def parse_args() -> dict:
     return args
 
 
-def get_payload(args: dict) -> bytes:
+def get_payload(args: Dict[str, Any]) -> bytes:
     """Fetch task payload from job parameters or S3.
 
     For array jobs, the s3_key contains 'ARRAY_INDEX' which is replaced
@@ -151,6 +153,9 @@ def main():
     logger.info(f"Starting task {task_id[:8]}...")
     logger.info(f"Args: task_id={task_id[:8]}, s3_bucket={s3_bucket}, s3_prefix={s3_prefix}")
 
+    if s3_bucket is None:
+        raise ValueError("--s3_bucket is required to store the result")
+
     try:
         # Get payload
         payload_bytes = get_payload(args)
@@ -184,7 +189,7 @@ def main():
             try:
                 import resource
 
-                usage = resource.getrusage(resource.RUSAGE_SELF)  # type: ignore[attr-defined, unused-ignore]
+                usage = resource.getrusage(resource.RUSAGE_SELF)  # pyrefly: ignore[missing-attribute, unused-ignore]
                 mem_before = usage.ru_maxrss
                 logger.info(f"Memory before execution: {mem_before} KB")
             except Exception:

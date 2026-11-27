@@ -1,12 +1,19 @@
 import os
+import sys
 import tempfile
 import unittest
+from typing import Optional
 from unittest import mock
 
 import psutil
 
 from scaler.utility import memory
 from scaler.utility.memory import get_memory_limit_and_available, get_process_memory
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 class TestGetProcessMemory(unittest.TestCase):
@@ -44,6 +51,7 @@ class TestGetProcessMemory(unittest.TestCase):
 
 
 class TestGetMemoryLimitAndAvailable(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
@@ -54,7 +62,13 @@ class TestGetMemoryLimitAndAvailable(unittest.TestCase):
             handle.write(content)
         return path
 
-    def _patch_cgroup_paths(self, v2_max=None, v2_current=None, v1_limit=None, v1_usage=None):
+    def _patch_cgroup_paths(
+        self,
+        v2_max: Optional[str] = None,
+        v2_current: Optional[str] = None,
+        v1_limit: Optional[str] = None,
+        v1_usage: Optional[str] = None,
+    ):
         missing = os.path.join(self._tmp.name, "does_not_exist")
         return mock.patch.multiple(
             memory,

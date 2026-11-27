@@ -14,6 +14,11 @@ import psutil
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 STARTUP_TIMEOUT_SECONDS = 60
 SHUTDOWN_TIMEOUT_SECONDS = 30
 DESCENDANT_EXIT_TIMEOUT_SECONDS = 15
@@ -54,6 +59,7 @@ class TestScalerShutdown(unittest.TestCase):
     signalled, including when only the main process receives the signal (e.g. `kill <pid>`) and
     when the signal arrives while the cluster is still starting up."""
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -81,14 +87,15 @@ max_task_concurrency = 1
 """)
 
         self._log_path = os.path.join(self._temp_dir.name, "scaler.log")
-        self._process: Optional[subprocess.Popen] = None
+        self._process: Optional[subprocess.Popen[bytes]] = None
 
+    @override
     def tearDown(self) -> None:
         if self._process is not None:
             self._kill_process_tree(self._process)
         self._temp_dir.cleanup()
 
-    def _start_scaler(self) -> subprocess.Popen:
+    def _start_scaler(self) -> subprocess.Popen[bytes]:
         with open(self._log_path, "wb") as log_file:
             self._process = subprocess.Popen(
                 [sys.executable, "-m", "scaler.entry_points.scaler", self._config_path],
@@ -98,12 +105,12 @@ max_task_concurrency = 1
             )
         return self._process
 
-    def _kill_process_tree(self, process: subprocess.Popen) -> None:
+    def _kill_process_tree(self, process: subprocess.Popen[bytes]) -> None:
         try:
-            descendants = psutil.Process(process.pid).children(recursive=True)
+            descendants: List[psutil.Process] = psutil.Process(process.pid).children(recursive=True)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             descendants = []
-        # The platform check is for mypy on Windows; the whole test class is POSIX-only.
+        # The platform check is for pyrefly on Windows; the whole test class is POSIX-only.
         if sys.platform != "win32":
             try:
                 os.killpg(os.getpgid(process.pid), signal.SIGKILL)
@@ -116,7 +123,7 @@ max_task_concurrency = 1
                 pass
         process.wait(timeout=10)
 
-    def _wait_for_startup(self, process: subprocess.Popen) -> None:
+    def _wait_for_startup(self, process: subprocess.Popen[bytes]) -> None:
         deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             if process.poll() is not None:
@@ -132,13 +139,13 @@ max_task_concurrency = 1
         with open(self._log_path) as log_file:
             return log_file.read()
 
-    def _descendants(self, process: subprocess.Popen) -> List[psutil.Process]:
+    def _descendants(self, process: subprocess.Popen[bytes]) -> List[psutil.Process]:
         try:
             return psutil.Process(process.pid).children(recursive=True)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return []
 
-    def _assert_clean_exit(self, process: subprocess.Popen, descendants: List[psutil.Process]) -> None:
+    def _assert_clean_exit(self, process: subprocess.Popen[bytes], descendants: List[psutil.Process]) -> None:
         try:
             process.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:

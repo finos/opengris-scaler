@@ -11,7 +11,7 @@ from scaler.utility.exceptions import CapnpDeserializationError
 logger = logging.getLogger(__name__)
 
 try:
-    from collections.abc import Buffer  # type: ignore[attr-defined]
+    from collections.abc import Buffer
 except ImportError:
     from typing_extensions import Buffer
 

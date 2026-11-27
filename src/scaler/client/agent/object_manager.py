@@ -13,25 +13,25 @@ class ClientObjectManager(ObjectManager):
 
         self._identity = identity
 
-        self._connector_internal: Optional[AsyncConnector] = None
-        self._connector_external: Optional[AsyncConnector] = None
+        self._connector_internal: AsyncConnector
+        self._connector_external: AsyncConnector
 
     def register(self, connector_internal: AsyncConnector, connector_external: AsyncConnector):
         self._connector_internal = connector_internal
         self._connector_external = connector_external
 
-    async def on_object_instruction(self, instruction: ObjectInstruction):
-        if instruction.instructionType == ObjectInstruction.ObjectInstructionType.create:
-            await self.__send_object_creation(instruction)
-        elif instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete:
-            await self.__delete_objects(instruction)
-        elif instruction.instructionType == ObjectInstruction.ObjectInstructionType.clear:
+    async def on_object_instruction(self, object_instruction: ObjectInstruction):
+        if object_instruction.instructionType == ObjectInstruction.ObjectInstructionType.create:
+            await self.__send_object_creation(object_instruction)
+        elif object_instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete:
+            await self.__delete_objects(object_instruction)
+        elif object_instruction.instructionType == ObjectInstruction.ObjectInstructionType.clear:
             await self.clear_all_objects(clear_serializer=False)
 
-    def on_task_result(self, task_result: TaskResult):
-        self._sent_object_ids.update((ObjectID(object_id_bytes) for object_id_bytes in task_result.results))
+    def on_task_result(self, result: TaskResult):
+        self._sent_object_ids.update((ObjectID(object_id_bytes) for object_id_bytes in result.results))
 
-    async def clear_all_objects(self, clear_serializer):
+    async def clear_all_objects(self, clear_serializer: bool):
         cleared_object_ids = self._sent_object_ids.copy()
 
         if clear_serializer:

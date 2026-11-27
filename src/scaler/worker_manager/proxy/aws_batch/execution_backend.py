@@ -50,7 +50,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
 
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aws-batch")
 
-        self._batch_pending: List[Tuple[Task, Any, List[Any], Future]] = []
+        self._batch_pending: List[Tuple[Task, Any, List[Any], Future[Any]]] = []
         self._batch_window_start: float = 0.0
 
     def register(self, load_task_inputs: TaskDeserializer) -> None:
@@ -85,10 +85,10 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
             batch_job_id = self._task_id_to_batch_job_id[task_cancel.taskId]
             await self._cancel_batch_job(batch_job_id)
 
-    async def execute(self, task: Task) -> asyncio.Future:
+    async def execute(self, task: Task) -> asyncio.Future[Any]:
         function, arg_objects = await self.load_task_inputs(task)
 
-        future: Future = Future()
+        future: Future[Any] = Future()
         future.set_running_or_notify_cancel()
 
         self._batch_pending.append((task, function, arg_objects, future))
@@ -108,11 +108,13 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
         self._batch_pending.clear()
 
         batch = [(t, f, a) for t, f, a, _ in pending]
-        futures_map: Dict[TaskID, Future] = {t.taskId: fut for t, _, _, fut in pending}
+        futures_map: Dict[TaskID, Future[Any]] = {t.taskId: fut for t, _, _, fut in pending}
 
         await self._flush_batch(batch, futures_map)
 
-    async def _flush_batch(self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future]) -> None:
+    async def _flush_batch(
+        self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future[Any]]
+    ) -> None:
         try:
             if len(batch) >= ARRAY_JOB_MIN_BATCH_SIZE:
                 await self._submit_array_job(batch, futures_map)
@@ -135,7 +137,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
         return await loop.run_in_executor(self._executor, lambda: func(*args, **kwargs))
 
     async def _submit_array_job(
-        self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future]
+        self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future[Any]]
     ) -> None:
         """Submit multiple tasks as a single AWS Batch array job and monitor child results."""
         import gzip
@@ -211,7 +213,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
         self,
         parent_job_id: str,
         index_to_task_id: Dict[int, TaskID],
-        futures_map: Dict[TaskID, Future],
+        futures_map: Dict[TaskID, Future[Any]],
         s3_prefix_array: str,
     ) -> None:
         """Poll child job statuses and resolve each task future as jobs complete or fail."""
@@ -358,7 +360,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
 
         return response["jobId"]
 
-    async def _monitor_batch_job(self, job_id: str, future: Future, task_id: TaskID) -> None:
+    async def _monitor_batch_job(self, job_id: str, future: Future[Any], task_id: TaskID) -> None:
         """Poll a single Batch job until it succeeds or fails, then resolve the future."""
         import gzip
 

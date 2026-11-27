@@ -63,7 +63,7 @@ Python Guidelines
 -----------------
 
  * We follow PEP 8 closely, with the exception of a 120-character line width. Refer to PEP 8 for the remaining details.
- * Python type hints are mandatory for all function arguments and return types, and mypy will check them.
+ * Python type hints are mandatory for all function arguments and return types, and pyrefly will check them.
  * We use the ruff formatter and linter; run `ruff check --fix` and `ruff format`.
  * All Python imports must be absolute.
  * We do not allow any content in `__init__.py` files unless a special case (such as the project root)

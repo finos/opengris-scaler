@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable, Optional, TypeVar, Union
 try:
     from typing import Concatenate, ParamSpec
 except ImportError:
-    from typing_extensions import Concatenate, ParamSpec  # type: ignore[assignment]
+    from typing_extensions import Concatenate, ParamSpec
 
 from scaler.config.common.security import SecurityConfig
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, TLSConfig
@@ -36,14 +36,13 @@ async def call_async(
     return await future
 
 
-# mypy rejects the keyword-only timeout argument that sits between P.args and P.kwargs, hence the ignore below
-def call_sync(  # type: ignore[valid-type]
+def call_sync(
     func: Callable[Concatenate[Callable[[Union[T, BaseException]], None], P], None],
+    timeout: Optional[float],
     *args: P.args,
-    timeout: Optional[float] = None,
     **kwargs: P.kwargs,
 ) -> T:
-    future: concurrent.futures.Future = concurrent.futures.Future()
+    future: concurrent.futures.Future[T] = concurrent.futures.Future()
 
     def callback(result: Union[T, BaseException]):
         if future.done():
@@ -59,8 +58,8 @@ def call_sync(  # type: ignore[valid-type]
 
 
 def run_detached(
-    awaitable: Awaitable[Any], description: str, on_done_callback: Optional[Callable[[asyncio.Task], None]] = None
-) -> asyncio.Task:
+    awaitable: Awaitable[T], description: str, on_done_callback: Optional[Callable[[asyncio.Task[T]], None]] = None
+) -> asyncio.Task[T]:
     """Schedule an awaitable on the running event loop without waiting for its completion.
 
     This turns an otherwise blocking asyncio operation into a fire-and-forget one.
@@ -76,7 +75,7 @@ def run_detached(
 
     task = asyncio.ensure_future(awaitable)
 
-    def on_done(completed: asyncio.Task) -> None:
+    def on_done(completed: asyncio.Task[T]) -> None:
         if on_done_callback is not None:
             on_done_callback(completed)
 
@@ -101,13 +100,13 @@ def run_detached(
     return task
 
 
-def _safe_set_result(future: asyncio.Future, result: Any) -> None:
+def _safe_set_result(future: asyncio.Future[T], result: T) -> None:
     if future.done():
         return
     future.set_result(result)
 
 
-def _safe_set_exception(future: asyncio.Future, exc: BaseException) -> None:
+def _safe_set_exception(future: asyncio.Future[Any], exc: BaseException) -> None:
     if future.done():
         return
     future.set_exception(exc)
@@ -116,7 +115,7 @@ def _safe_set_exception(future: asyncio.Future, exc: BaseException) -> None:
 def to_tls_config(security_config: Optional[SecurityConfig]) -> Optional[TLSConfig]:
     """Convert a Scaler ``SecurityConfig`` into a YMQ ``TLSConfig``."""
 
-    if security_config is None or not security_config.has_credentials():
+    if security_config is None or security_config.tls_cert is None or security_config.tls_key is None:
         return None
 
     return TLSConfig(cert_chain=security_config.tls_cert, private_key=security_config.tls_key)

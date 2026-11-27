@@ -77,7 +77,11 @@ def _parse_preload_spec(spec: str) -> Tuple[str, str, Optional[List[Any]], Optio
         func_name = expression.func.id
         try:
             args = [ast.literal_eval(arg) for arg in expression.args]
-            kwargs = {kw.arg: ast.literal_eval(kw.value) for kw in expression.keywords}
+            kwargs = {}
+            for keyword in expression.keywords:
+                if keyword.arg is None:
+                    raise PreloadSpecError(f"Keyword arguments must be named, not unpacked with **: {obj_expr!r}")
+                kwargs[keyword.arg] = ast.literal_eval(keyword.value)
         except ValueError:
             raise PreloadSpecError(f"Failed to parse arguments as literal values: {obj_expr!r}")
     else:

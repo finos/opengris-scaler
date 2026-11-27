@@ -8,7 +8,7 @@ from scaler.utility.logging.utility import LoggingLevel, LogType, detect_log_typ
 
 logger = logging.getLogger(__name__)
 
-_faulthandler_file: typing.Optional[typing.IO] = None
+_faulthandler_file: typing.Optional[typing.IO[str]] = None
 
 
 def bootstrap_process(

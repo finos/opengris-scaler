@@ -1,7 +1,7 @@
 import argparse
 import enum
 import typing
-from typing import Any, Dict, Type
+from typing import Any, Dict, List, Tuple, Type
 
 from scaler.config.mixins import ConfigType
 
@@ -23,6 +23,16 @@ def parse_enum(s: str, enumm: Type[enum.Enum]) -> Any:
         raise argparse.ArgumentTypeError(f"'{s}' is not a valid {enumm.__name__}") from e
 
 
+def parse_comma_separated_list(s: str) -> List[str]:
+    """parse "a,b" into ["a", "b"], skipping empty items"""
+    return [x for x in s.split(",") if x]
+
+
+def parse_comma_separated_dict(s: str) -> Dict[str, str]:
+    """parse "a=1,b=2" into {"a": "1", "b": "2"}, skipping items without '='"""
+    return dict(kv.split("=", 1) for kv in s.split(",") if "=" in kv)
+
+
 def is_optional(ty: Any) -> bool:
     """determines if `ty` is typing.Optional"""
     return typing.get_origin(ty) is typing.Union and typing.get_args(ty)[1] is type(None)
@@ -35,7 +45,7 @@ def is_union(ty: Any) -> bool:
     return type(None) not in typing.get_args(ty)
 
 
-def get_union_args(ty: Any) -> tuple:
+def get_union_args(ty: Any) -> Tuple[Any, ...]:
     """get the args of a typing.Union[...]"""
     return typing.get_args(ty)
 

@@ -8,7 +8,7 @@ job definition, and S3 bucket required for the Scaler AWS Batch worker manager.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -432,14 +432,14 @@ class AWSBatchInfrastructureProvisioner:
                     "Ref::s3_key",
                 ],
                 "jobRoleArn": role_arn,
-                "vcpus": int(vcpus),  # EC2 requires integer vCPUs
+                "vcpus": vcpus,  # EC2 requires integer vCPUs
                 "memory": effective_memory,  # 90% of multiple of 2048MB
             },
             timeout={"attemptDurationSeconds": job_timeout_seconds},
         )
 
         job_def_arn = response["jobDefinitionArn"]
-        logger.info(f"Registered job definition: {job_def_name} (vcpus={int(vcpus)}, memory={effective_memory}MB)")
+        logger.info(f"Registered job definition: {job_def_name} (vcpus={vcpus}, memory={effective_memory}MB)")
 
         # Cleanup old job definition revisions, keep only latest N
         self._cleanup_old_job_definitions(job_def_name, keep_latest=JOB_DEFINITION_REVISIONS_TO_KEEP)
@@ -453,7 +453,7 @@ class AWSBatchInfrastructureProvisioner:
         try:
             response = self._batch.describe_job_definitions(jobDefinitionName=job_def_name, status="ACTIVE")
 
-            job_defs = response.get("jobDefinitions", [])
+            job_defs: List[Dict[str, Any]] = response.get("jobDefinitions", [])
             if len(job_defs) <= keep_latest:
                 return
 

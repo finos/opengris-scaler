@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import unittest
 from typing import Dict, List, Set
 
@@ -7,6 +8,11 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController, UnitState
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 TASK_CONCURRENCY_PER_UNIT = 2
 RESTART_BACKOFF_SECONDS = 60
@@ -64,6 +70,7 @@ class _FakeProvisioner(UnitProvisioner):
 
 
 class TestUnitController(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -146,7 +153,9 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
     async def test_a_silent_active_unit_is_destroyed_and_counts_as_lost(self) -> None:
         """A unit that exists but stopped sending heartbeats, such as a deadlocked worker, is replaced."""
         (unit_id,) = await self.__active_units(1)
-        self.controller._units[unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
+        unit = self.controller._units[unit_id]
+        assert unit.last_heartbeat is not None
+        unit.last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
 
         await self.__tick(self.controller)
         self.assertEqual(self.provisioner.destroyed, [unit_id])
@@ -158,7 +167,9 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_unit_that_sends_heartbeats_is_not_silent(self) -> None:
         (unit_id,) = await self.__active_units(1)
-        self.controller._units[unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
+        unit = self.controller._units[unit_id]
+        assert unit.last_heartbeat is not None
+        unit.last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
         self.__heartbeat_all(self.controller, self.provisioner)
 
         await self.__tick(self.controller)
@@ -166,7 +177,9 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_lost_unit_is_removed_and_replaced_after_the_backoff(self) -> None:
         (lost_unit_id,) = await self.__active_units(1)
-        self.controller._units[lost_unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
+        unit = self.controller._units[lost_unit_id]
+        assert unit.last_heartbeat is not None
+        unit.last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
 
         await self.__tick(self.controller)
         self.assertNotIn(lost_unit_id, self.controller._units)
@@ -194,6 +207,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         for unit_id in unit_ids:
             unit = self.controller._units[unit_id]
             unit.state_since -= WORKER_MANAGER_UNIT_STABLE_SECONDS + 1
+            assert unit.last_heartbeat is not None
             unit.last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
 
         await self.__tick(self.controller)

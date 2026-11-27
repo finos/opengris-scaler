@@ -57,7 +57,7 @@ def headers(table_id: str) -> List[str]:
     return re.findall(r"<th[^>]*>(.*?)</th>", table)
 
 
-def worker_row() -> Dict:
+def worker_row() -> Dict[str, Any]:
     app = make_app()
     status = StateScheduler(
         binder=BinderStatus(received=[], sent=[]),
@@ -103,7 +103,7 @@ def worker_row() -> Dict:
     return app._workers_data["Worker|one"]
 
 
-def task_rows() -> Dict[str, Dict]:
+def task_rows() -> Dict[str, Dict[str, Any]]:
     """A finished task, as the task list and the task log each hold it."""
     app = make_app()
     state = StateTask.from_bytes(
@@ -123,7 +123,7 @@ def task_rows() -> Dict[str, Dict]:
     return {"task_log": app._task_log[0], "task_events": app._task_events[0]}
 
 
-def object_row() -> Dict:
+def object_row() -> Dict[str, Any]:
     app = make_app()
     app._process_objects(
         StateObject.from_bytes(

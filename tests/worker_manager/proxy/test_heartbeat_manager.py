@@ -1,8 +1,9 @@
+import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.capnp import WorkerHeartbeat
+from scaler.protocol.capnp import ProcessorStatus, WorkerHeartbeat
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.mixins import TimeoutManager
@@ -11,10 +12,15 @@ from scaler.worker_manager.proxy.mixins import ProcessorStatusProvider
 from scaler.worker_manager.proxy.task_manager import TaskManager
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 def _make_heartbeat_manager() -> HeartbeatManager:
     provider = MagicMock(spec=ProcessorStatusProvider)
-    provider.get_processor_statuses.return_value = []
+    provider.get_processor_statuses.return_value = list[ProcessorStatus]()
     return HeartbeatManager(
         object_storage_address=None,
         capabilities={},
@@ -25,6 +31,7 @@ def _make_heartbeat_manager() -> HeartbeatManager:
 
 
 class TestHeartbeatManagerTaskLock(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

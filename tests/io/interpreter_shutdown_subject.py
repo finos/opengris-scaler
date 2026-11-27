@@ -29,9 +29,13 @@ PENDING_RECEIVE_DELAY_SECONDS = 0.5
 LEAKED: Dict[str, object] = {}
 
 
+async def ignore_message(*_: object) -> None:
+    """Never runs: every scenario leaves its receive pending."""
+
+
 async def binder_with_pending_receive() -> None:
     """A bound binder holding a pending receive callback, left alive at interpreter exit."""
-    binder = YMQAsyncBinder(IOContext(), b"binder-under-test", lambda *_: None)
+    binder = YMQAsyncBinder(IOContext(), b"binder-under-test", ignore_message)
     await binder.bind(AddressConfig.from_string(LOOPBACK_ANY_PORT))
 
     LEAKED["routine"] = asyncio.create_task(binder.routine())
@@ -58,10 +62,11 @@ async def connector_with_pending_receive() -> None:
     ``PyConnectorSocket_dealloc`` has the same blocking-shutdown shape as the binder, so the
     connector needs its own coverage rather than being assumed to follow.
     """
-    binder = YMQAsyncBinder(IOContext(), b"binder-under-test", lambda *_: None)
+    binder = YMQAsyncBinder(IOContext(), b"binder-under-test", ignore_message)
     await binder.bind(AddressConfig.from_string(LOOPBACK_ANY_PORT))
 
-    connector = YMQAsyncConnector(IOContext(), b"connector-under-test", lambda *_: None)
+    connector = YMQAsyncConnector(IOContext(), b"connector-under-test", ignore_message)
+    assert binder.address is not None
     await connector.connect(binder.address, ConnectorRemoteType.Binder)
 
     LEAKED["routine"] = asyncio.create_task(connector.routine())

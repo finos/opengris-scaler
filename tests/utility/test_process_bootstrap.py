@@ -6,8 +6,14 @@ from unittest import mock
 
 from scaler.utility.process_bootstrap import bootstrap_process
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestBootstrapProcessEnablesFaulthandler(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.mock_enable = mock.patch("scaler.utility.process_bootstrap.faulthandler.enable").start()
         mock.patch("scaler.utility.process_bootstrap.setup_logger").start()

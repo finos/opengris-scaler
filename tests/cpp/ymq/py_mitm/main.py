@@ -149,7 +149,7 @@ def signal_ready(pid: int) -> None:
         win32api.CloseHandle(handle)
     elif system in ("Linux", "Darwin"):
         if pid > 0:
-            os.kill(pid, signal.SIGUSR1)  # type: ignore[attr-defined, unused-ignore]
+            os.kill(pid, signal.SIGUSR1)  # pyrefly: ignore[missing-attribute, unused-ignore]
 
 
 TESTCASES = {

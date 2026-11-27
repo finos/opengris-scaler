@@ -57,7 +57,7 @@ class SymphonyExecutionBackend(TaskInputLoader, ExecutionBackend):
     async def routine(self) -> None:
         pass
 
-    async def execute(self, task: Task) -> asyncio.Future:
+    async def execute(self, task: Task) -> asyncio.Future[Any]:
         function, arg_objects = await self.load_task_inputs(task)
 
         input_message = SoamMessage()
@@ -69,7 +69,7 @@ class SymphonyExecutionBackend(TaskInputLoader, ExecutionBackend):
         with self._session_callback.get_callback_lock():
             symphony_task = self._ibm_soam_session.send_task_input(task_attr)
 
-            future: Future = Future()
+            future: Future[Any] = Future()
             future.set_running_or_notify_cancel()
 
             self._session_callback.submit_task(symphony_task.get_id(), future)

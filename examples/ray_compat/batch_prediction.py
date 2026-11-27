@@ -4,6 +4,8 @@ This example was copied from https://docs.ray.io/en/latest/ray-core/examples/bat
 Like in `highly_parallel.py`, only minimal changes are needed for the example to work on Scaler.
 """
 
+from typing import Callable
+
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
@@ -26,7 +28,7 @@ def load_model():
 
 def main():
     @ray.remote
-    def make_prediction(model, shard_path):
+    def make_prediction(model: Callable[[pd.DataFrame], pd.DataFrame], shard_path: str):
         df = pq.read_table(shard_path).to_pandas()
         result = model(df)
 

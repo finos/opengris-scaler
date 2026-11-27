@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Callable, Optional, Union
 
 from scaler.io.ymq import _ymq
 from scaler.io.ymq.utils import call_async, call_sync
@@ -22,7 +22,7 @@ class BinderSocket:
     def bind_to_sync(
         self, address: str, tls_config: Optional[_ymq.TLSConfig] = None, /, timeout: Optional[float] = None
     ) -> _ymq.Address:
-        return call_sync(self._base.bind_to, address, tls_config, timeout=timeout)
+        return call_sync(self._base.bind_to, timeout, address, tls_config)
 
     async def send_message(self, remote_identity: str, message_payload: _ymq.Bytes) -> None:
         await call_async(self._base.send_message, remote_identity, message_payload)
@@ -30,7 +30,7 @@ class BinderSocket:
     def send_message_sync(
         self, remote_identity: str, message_payload: _ymq.Bytes, /, timeout: Optional[float] = None
     ) -> None:
-        call_sync(self._base.send_message, remote_identity, message_payload, timeout=timeout)
+        call_sync(self._base.send_message, timeout, remote_identity, message_payload)
 
     def send_multicast_message(self, message_payload: _ymq.Bytes, remote_prefix: Optional[str] = None) -> None:
         self._base.send_multicast_message(message_payload, remote_prefix)
@@ -39,7 +39,7 @@ class BinderSocket:
         return await call_async(self._base.recv_message)
 
     def recv_message_sync(self, /, timeout: Optional[float] = None) -> _ymq.Message:
-        return call_sync(self._base.recv_message, timeout=timeout)
+        return call_sync(self._base.recv_message, timeout)
 
     def close_connection(self, remote_identity: str) -> None:
         self._base.close_connection(remote_identity)
@@ -67,11 +67,11 @@ class ConnectorSocket:
     ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
-        def create(callback, *args, **kwargs):
+        def create(callback: Callable[[Optional[Exception]], None], *args: Any, **kwargs: Any):
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.connect(callback, *args, **kwargs)
 
-        call_sync(create, context, identity, address, max_retry_times, init_retry_delay, tls_config)
+        call_sync(create, None, context, identity, address, max_retry_times, init_retry_delay, tls_config)
         assert base_socket is not None
 
         return ConnectorSocket(base_socket)
@@ -87,7 +87,7 @@ class ConnectorSocket:
     ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
-        def create(callback, *args, **kwargs):
+        def create(callback: Callable[[Optional[Exception]], None], *args: Any, **kwargs: Any):
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.connect(callback, *args, **kwargs)
 
@@ -102,11 +102,11 @@ class ConnectorSocket:
     ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
-        def create(callback, *args, **kwargs):
+        def create(callback: Callable[[Union[_ymq.Address, Exception]], None], *args: Any, **kwargs: Any):
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.bind(callback, *args, **kwargs)
 
-        call_sync(create, context, identity, address, tls_config)
+        call_sync(create, None, context, identity, address, tls_config)
         assert base_socket is not None
 
         return ConnectorSocket(base_socket)
@@ -119,13 +119,13 @@ class ConnectorSocket:
         await call_async(self._base.send_message, message_payload)
 
     def send_message_sync(self, message_payload: _ymq.Bytes, /, timeout: Optional[float] = None) -> None:
-        call_sync(self._base.send_message, message_payload, timeout=timeout)
+        call_sync(self._base.send_message, timeout, message_payload)
 
     async def recv_message(self) -> _ymq.Message:
         return await call_async(self._base.recv_message)
 
     def recv_message_sync(self, /, timeout: Optional[float] = None) -> _ymq.Message:
-        return call_sync(self._base.recv_message, timeout=timeout)
+        return call_sync(self._base.recv_message, timeout)
 
     def shutdown(self) -> None:
         self._base.shutdown()

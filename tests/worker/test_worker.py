@@ -11,7 +11,7 @@ nonzero exit code.
 
 import asyncio
 import unittest
-from typing import Any, Awaitable, Callable, Tuple
+from typing import Any, Awaitable, Callable, List, Tuple
 from unittest import mock
 
 import scaler.worker.worker as worker_module
@@ -33,7 +33,7 @@ class _StubCollaborator:
     def __init__(self, routine_behavior: Callable[[], Awaitable[None]] = _hang) -> None:
         self._routine_behavior = routine_behavior
         self.destroyed = False
-        self.sent_messages: list = []
+        self.sent_messages: List[object] = []
 
     async def routine(self) -> None:
         await self._routine_behavior()
@@ -244,7 +244,11 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
         error = SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "binder socket shut down mid-send")
         worker = self._build_worker(error)
         worker._loop = asyncio.get_running_loop()
-        worker._connector_external.send = lambda *_args, **_kwargs: _hang()
+
+        async def hang_on_send(*_args: object, **_kwargs: object) -> None:
+            await _hang()
+
+        worker._connector_external.send = hang_on_send
 
         with mock.patch.object(worker_module, "WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS", 0.05):
             with mock.patch.object(worker_module, "logger") as mock_logger:

@@ -1,4 +1,5 @@
 import unittest
+from typing import Any
 
 from scaler.protocol.capnp import ScalingManagerStatus, StateTask, StateWorker, TaskCapability, TaskState, WorkerState
 from scaler.protocol.helpers import capabilities_to_dict
@@ -6,12 +7,12 @@ from scaler.scheduler.controllers.worker_manager_utilities import build_scaling_
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 
 
-def _roundtrip_state_task(**kwargs) -> StateTask:
+def _roundtrip_state_task(**kwargs: Any) -> StateTask:
     """Build a StateTask and return a deserialized copy (simulates ZMQ path)."""
     return StateTask.from_bytes(StateTask(**kwargs).to_bytes())
 
 
-def _roundtrip_state_worker(**kwargs) -> StateWorker:
+def _roundtrip_state_worker(**kwargs: Any) -> StateWorker:
     """Build a StateWorker and return a deserialized copy (simulates ZMQ path)."""
     return StateWorker.from_bytes(StateWorker(**kwargs).to_bytes())
 

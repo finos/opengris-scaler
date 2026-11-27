@@ -54,7 +54,7 @@ class ObjectBuffer:
 
         self._serializer_object_id = self.__send_serializer()
 
-    def buffer_send_function(self, fn: Callable) -> ObjectCache:
+    def buffer_send_function(self, fn: Callable[..., Any]) -> ObjectCache:
         cached = self.__lookup_dedup(fn, ignore_persistent=False)
         if cached is not None:
             return cached
@@ -123,7 +123,7 @@ class ObjectBuffer:
 
     def fetch_object(
         self, object_id: ObjectID, is_exception: bool, delete_after_fetch: bool
-    ) -> concurrent.futures.Future:
+    ) -> concurrent.futures.Future[Any]:
         """
         Starts fetching and deserializing an object from the object storage server.
 
@@ -192,7 +192,7 @@ class ObjectBuffer:
 
         return serializer_cache
 
-    def __construct_function(self, fn: Callable) -> ObjectCache:
+    def __construct_function(self, fn: Callable[..., Any]) -> ObjectCache:
         function_payload = self._serializer.serialize(fn)
         object_id = self.__object_id_for_payload(function_payload)
         function_cache = ObjectCache(

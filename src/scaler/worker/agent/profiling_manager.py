@@ -67,6 +67,7 @@ class VanillaProfilingManager(ProfilingManager, Looper):
             raise ValueError(f"task {task_id=!r} is not the current task task_id={process_profiler.current_task_id!r}.")
 
         assert process_profiler.start_time is not None
+        assert process_profiler.start_cpu_time is not None
         assert process_profiler.init_memory_rss is not None
         assert process_profiler.peak_memory_rss is not None
 
@@ -93,6 +94,7 @@ class VanillaProfilingManager(ProfilingManager, Looper):
     async def routine(self):
         for process_profiler in self._process_profiler_by_pid.values():
             if process_profiler.current_task_id is not None:
+                assert process_profiler.peak_memory_rss is not None
                 try:
                     process_profiler.peak_memory_rss = max(
                         process_profiler.peak_memory_rss, self.__process_memory_rss(process_profiler.process)

@@ -1,7 +1,7 @@
 # PYTHON_ARGCOMPLETE_OK
 import curses
 import functools
-from typing import Dict, List, Literal, Union
+from typing import Any, Dict, List, Literal, TypedDict
 
 from scaler.config.section.top import TopConfig
 from scaler.io.network_backends import get_network_backend_from_env
@@ -30,15 +30,22 @@ SORT_BY_OPTIONS = {
     ord("l"): "lag",
 }
 
-SORT_BY_STATE: Dict[str, Union[str, bool]] = {"sort_by": "cpu", "sort_by_previous": "cpu", "sort_reverse": True}
+
+class SortState(TypedDict):
+    sort_by: str
+    sort_by_previous: str
+    sort_reverse: bool
+
+
+SORT_BY_STATE: SortState = {"sort_by": "cpu", "sort_by_previous": "cpu", "sort_reverse": True}
 
 
 def main():
     curses.wrapper(poke, TopConfig.parse("A Top-like Application for Scaler Monitoring", "top"))
 
 
-def poke(screen, config: TopConfig):
-    screen.nodelay(1)
+def poke(screen: curses.window, config: TopConfig):
+    screen.nodelay(True)
 
     identity = generate_identity_from_name("top")
     backend = get_network_backend_from_env()
@@ -58,7 +65,7 @@ def poke(screen, config: TopConfig):
         backend.destroy()
 
 
-def show_status(status: BaseMessage, screen):
+def show_status(status: BaseMessage, screen: curses.window):
     if not isinstance(status, StateScheduler):
         return
 
@@ -140,10 +147,14 @@ def show_status(status: BaseMessage, screen):
 
     screen.clear()
     try:
-        new_row, max_cols = __print_table(screen, 0, table1, padding=1)
+        table1_end = __print_table(screen, 0, table1, padding=1)
     except curses.error:
         __print_too_small(screen)
         return
+
+    # table1 is never empty: every keyword table has a title row
+    assert table1_end is not None
+    new_row, max_cols = table1_end
 
     try:
         screen.addstr(new_row, 0, "-" * max_cols)
@@ -163,10 +174,12 @@ def show_status(status: BaseMessage, screen):
     screen.refresh()
 
 
-def __generate_keyword_data(title, data, key_col_length: int = 0, format_integer_flag: bool = False):
+def __generate_keyword_data(
+    title: str, data: Dict[str, Any], key_col_length: int = 0, format_integer_flag: bool = False
+):
     table = [[title, ""]]
 
-    def format_integer_func(value):
+    def format_integer_func(value: Any):
         if format_integer_flag:
             return format_integer(value)
 
@@ -176,14 +189,14 @@ def __generate_keyword_data(title, data, key_col_length: int = 0, format_integer
     return table
 
 
-def __generate_worker_manager_table(wm_data: List[Dict], manager_length: int, worker_length: int) -> List[List[str]]:
+def __generate_worker_manager_table(
+    wm_data: List[Dict[str, Any]], manager_length: int, worker_length: int
+) -> List[List[str]]:
     if not wm_data:
         headers = [["No workers"]]
         return headers
 
-    wm_data = sorted(
-        wm_data, key=lambda item: item[SORT_BY_STATE["sort_by"]], reverse=bool(SORT_BY_STATE["sort_reverse"])
-    )
+    wm_data = sorted(wm_data, key=lambda item: item[SORT_BY_STATE["sort_by"]], reverse=SORT_BY_STATE["sort_reverse"])
 
     for row in wm_data:
         row["manager"] = __truncate(row["manager"], manager_length, how="left")
@@ -203,7 +216,7 @@ def __generate_worker_manager_table(wm_data: List[Dict], manager_length: int, wo
     return worker_manager_table
 
 
-def __print_table(screen, line_number, data, padding: int = 1):
+def __print_table(screen: curses.window, line_number: int, data: List[List[Any]], padding: int = 1):
     if not data:
         return
 
@@ -219,7 +232,7 @@ def __print_table(screen, line_number, data, padding: int = 1):
     return line_number + len(data), sum(col_widths) + (padding * len(col_widths))
 
 
-def __merge_tables(left: List[List], right: List[List], padding: str = "") -> List[List]:
+def __merge_tables(left: List[List[Any]], right: List[List[Any]], padding: str = "") -> List[List[Any]]:
     if not left:
         return right
 
@@ -247,7 +260,7 @@ def __merge_tables(left: List[List], right: List[List], padding: str = "") -> Li
     return result
 
 
-def __concat_tables(up: List[List], down: List[List], padding: int = 1) -> List[List]:
+def __concat_tables(up: List[List[Any]], down: List[List[Any]], padding: int = 1) -> List[List[Any]]:
     max_cols = max([len(row) for row in up] + [len(row) for row in down])
     for row in up:
         row.extend([""] * (max_cols - len(row)))
@@ -273,7 +286,7 @@ def __truncate(string: str, number: int, how: Literal["left", "right"] = "left")
         return f"+{string[-number:]}"
 
 
-def __print_too_small(screen):
+def __print_too_small(screen: curses.window):
     screen.clear()
     screen.addstr(0, 0, "Your terminal is too small to show")
     screen.refresh()

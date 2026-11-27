@@ -4,7 +4,7 @@ from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 
-def minus(a, b):
+def minus(a: int, b: int) -> int:
     return a - b
 
 

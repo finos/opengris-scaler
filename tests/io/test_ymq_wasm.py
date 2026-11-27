@@ -7,9 +7,10 @@ WebSocket-like object so that we can drive the receive path directly.
 """
 
 import struct
+import sys
 import unittest
 import unittest.mock
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 from scaler.io.ymq import _ymq_wasm
 from scaler.io.ymq._ymq_wasm import (
@@ -26,6 +27,11 @@ from scaler.io.ymq._ymq_wasm import (
     SocketStopRequestedError,
     YMQException,
 )
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 _HEADER = "<Q"
 
@@ -148,8 +154,11 @@ class BinderSocketTest(unittest.TestCase):
 
 class ConnectorSocketSurfaceTest(unittest.TestCase):
     def test_bind_not_implemented(self) -> None:
+        def on_bind(result: Union[Address, Exception]) -> None:
+            pass
+
         with self.assertRaises(NotImplementedError):
-            ConnectorSocket.bind(lambda r: None, IOContext(), "id", "ws://host:1")
+            ConnectorSocket.bind(on_bind, IOContext(), "id", "ws://host:1")
 
     def test_invalid_scheme_raises(self) -> None:
         with self.assertRaises(InvalidAddressFormatError):
@@ -388,11 +397,13 @@ class _RunSyncShim:
 class SyncHelpersTest(unittest.TestCase):
     """Exercise ``send_message_sync`` / ``recv_message_sync`` via a patched JSPI."""
 
+    @override
     def setUp(self) -> None:
         self._driver = _RunSyncShim()
         self._patch = unittest.mock.patch.object(_ymq_wasm, "_run_sync_jspi", self._driver)
         self._patch.start()
 
+    @override
     def tearDown(self) -> None:
         self._patch.stop()
         self._driver.close()

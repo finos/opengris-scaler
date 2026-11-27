@@ -14,7 +14,7 @@ class TestOCIJobsWorkerManagerMaxTaskConcurrency(unittest.TestCase):
     def _run(self, max_task_concurrency: int) -> MagicMock:
         config = MagicMock()
         config.base_concurrency = 100
-        config.worker_config.per_worker_capabilities.capabilities = {}
+        config.worker_config.per_worker_capabilities.capabilities = dict[str, int]()
         config.worker_manager_config.max_task_concurrency = max_task_concurrency
         with patch("scaler.worker_manager.proxy.oci.worker_manager.WorkerManagerRunner") as runner:
             OCIJobsWorkerManager(config).run()

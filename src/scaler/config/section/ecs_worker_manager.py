@@ -6,6 +6,7 @@ from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
+from scaler.config.type_utils import parse_comma_separated_list
 
 
 @dataclasses.dataclass
@@ -29,9 +30,7 @@ class ECSWorkerManagerConfig(ConfigClass):
     ecs_subnets: List[str] = dataclasses.field(
         default_factory=list,
         metadata=dict(
-            type=lambda s: [x for x in s.split(",") if x],
-            required=True,
-            help="Comma-separated list of AWS subnet IDs for ECS tasks",
+            type=parse_comma_separated_list, required=True, help="Comma-separated list of AWS subnet IDs for ECS tasks"
         ),
     )
     ecs_cluster: str = dataclasses.field(default="scaler-cluster", metadata=dict(help="ECS cluster name"))

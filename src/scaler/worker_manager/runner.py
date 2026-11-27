@@ -60,8 +60,8 @@ class WorkerManagerRunner:
         self._capabilities = capabilities
         self._worker_manager_id = worker_manager_config.worker_manager_id
         self._create_provisioner = create_provisioner
-        self._provisioner: Optional[UnitProvisioner] = None
-        self._unit_controller: Optional[UnitController] = None
+        self._provisioner: UnitProvisioner
+        self._unit_controller: UnitController
         self._children_address = children_address
         self._io_threads = io_threads
         self._security_config = security_config
@@ -72,7 +72,7 @@ class WorkerManagerRunner:
         self._connector_parent: Optional[AsyncConnector] = None
         self._binder_children: Optional[AsyncBinder] = None
         self._ident: bytes = b""
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task[None]
 
     async def _initialize_network(self) -> None:
         # A child manager is known to its parent by the unit id the parent chose.
@@ -110,6 +110,7 @@ class WorkerManagerRunner:
         await self._task
 
     async def _send_heartbeat(self) -> None:
+        assert self._connector_parent is not None
         status = self._unit_controller.get_status()
         await self._connector_parent.send(
             WorkerManagerHeartbeat(
@@ -126,6 +127,7 @@ class WorkerManagerRunner:
 
     async def _get_loops(self) -> None:
         await self._initialize_network()
+        assert self._connector_parent is not None and self._binder_children is not None
         await self._connector_parent.connect(
             self._parent_address, ConnectorRemoteType.Binder, security_config=self._security_config
         )
@@ -186,13 +188,13 @@ class WorkerManagerRunner:
         if requests is None:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
-        assert self._unit_controller is not None
         self._unit_controller.set_desired_task_concurrency(extract_desired_count(list(requests), self._capabilities))
 
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:
         unit_id = source.decode()  # each unit dials with the unit id it was created with as its identity
 
         if isinstance(message, WorkerHeartbeat):
+            assert self._binder_children is not None
             busy_processors = sum(processor.hasTask for processor in message.processors)
             self._unit_controller.on_unit_heartbeat(
                 unit_id, self._provisioner.task_concurrency_per_unit(), message.queuedTasks + busy_processors
@@ -201,6 +203,7 @@ class WorkerManagerRunner:
             return
 
         if isinstance(message, WorkerManagerHeartbeat):
+            assert self._binder_children is not None
             self._unit_controller.on_unit_heartbeat(unit_id, message.activeTaskConcurrency, message.assignedTasks)
             await self._binder_children.send(source, WorkerManagerHeartbeatEcho(), detached=True)
             await self._binder_children.send(source, self._unit_command(), detached=True)

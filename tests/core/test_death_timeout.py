@@ -1,5 +1,6 @@
 import logging
 import socket
+import sys
 import time
 import unittest
 
@@ -21,10 +22,16 @@ from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker.worker import Worker
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 # This is a manual test because it can loop infinitely if it fails
 
 
 class TestDeathTimeout(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

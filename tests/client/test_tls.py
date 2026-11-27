@@ -1,10 +1,16 @@
 import pathlib
+import sys
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.security import SecurityConfig
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 # Reuse the self-signed certificate/key pair shipped for the C++ OpenSSL tests.
 _OPENSSL_TEST_DIR = pathlib.Path(__file__).resolve().parents[1] / "cpp" / "wrapper" / "openssl"
@@ -17,6 +23,7 @@ def increment(value: int) -> int:
 
 
 class TestClientTLS(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -30,6 +37,7 @@ class TestClientTLS(unittest.TestCase):
         )
         self.address = self.combo.get_address()
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
 

@@ -6,7 +6,7 @@ import logging
 import math
 import os
 import shlex
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
 try:
@@ -162,17 +162,19 @@ class ORBAWSEC2WorkerManager:
 
         self._runner: Optional[WorkerManagerRunner] = None
 
-        self._ec2: Optional[Any] = None
+        self._ec2: Any
         self._created_security_group_id: Optional[str] = None
         self._created_key_name: Optional[str] = None
         self._cleaned_up = False
         self._subnet_id: Optional[str] = None
 
         if config.image_id is None:
-            requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
+            requirements_txt = config.python_worker_environment.requirements_txt
+            assert requirements_txt is not None
+            requirements_content = load_requirements_content(requirements_txt)
             self._validate_requirements(requirements_content)
 
-    def _build_app_config(self) -> dict:
+    def _build_app_config(self) -> Dict[str, Any]:
         region = self._config.aws_region
         return {
             "provider": {
@@ -233,7 +235,7 @@ class ORBAWSEC2WorkerManager:
             tags=self._config.instance_tags,
         )
         if self._config.debug_dump_path is not None:
-            self._dump_debug_state(resource_id, template_kwargs)
+            self._dump_debug_state(self._config.debug_dump_path, resource_id, template_kwargs)
 
         def create_provisioner(children_address: AddressConfig) -> ORBWorkerProvisioner:
             return ORBWorkerProvisioner(
@@ -247,13 +249,15 @@ class ORBAWSEC2WorkerManager:
                 startup_timeout_seconds=self._config.cloud_children_config.unit_startup_timeout_seconds,
             )
 
+        children_address = self._config.worker_manager_config.children_address
+        assert children_address is not None
         self._runner = WorkerManagerRunner(
             name="worker_manager_orb_aws_ec2",
             worker_manager_config=self._config.worker_manager_config,
             heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
             capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
             create_provisioner=create_provisioner,
-            children_address=self._config.worker_manager_config.children_address,
+            children_address=children_address,
             io_threads=self._config.worker_config.io_threads,
         )
 
@@ -269,7 +273,7 @@ class ORBAWSEC2WorkerManager:
             from orb.infrastructure.di.container import get_container
 
             # Import from the typed submodule directly: the top-level orb package lacks py.typed,
-            # so mypy cannot see its __init__.py re-exports once the typed submodules are imported.
+            # so its __init__.py re-exports carry no types.
             from orb.sdk.client import ORBClient as orb
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
@@ -288,6 +292,7 @@ class ORBAWSEC2WorkerManager:
             # the root logger during __aenter__, which would otherwise suppress scaler log output.
             bootstrap_process(self._logging_paths, self._logging_config_file, self._logging_level)
             await self._setup(sdk)
+            assert self._runner is not None
             try:
                 await self._runner.run_in_loop(self._loop)
             except asyncio.CancelledError:
@@ -322,8 +327,7 @@ class ORBAWSEC2WorkerManager:
     def __del__(self) -> None:
         self._cleanup()
 
-    def _dump_debug_state(self, template_id: str, template_kwargs: dict) -> None:
-        dump_dir = self._config.debug_dump_path
+    def _dump_debug_state(self, dump_dir: str, template_id: str, template_kwargs: Dict[str, Any]) -> None:
         config_path = os.path.join(dump_dir, f"orb_debug_config_{template_id}.json")
         template_path = os.path.join(dump_dir, f"orb_debug_template_{template_id}.json")
         with open(config_path, "w") as f:
@@ -340,7 +344,9 @@ class ORBAWSEC2WorkerManager:
 
         if self._config.image_id is None:
             python_version = self._config.python_worker_environment.python_version
-            requirements_content = load_requirements_content(self._config.python_worker_environment.requirements_txt)
+            requirements_txt = self._config.python_worker_environment.requirements_txt
+            assert requirements_txt is not None
+            requirements_content = load_requirements_content(requirements_txt)
 
             # User data runs as root so no sudo is needed.
             # set -e ensures any install failure aborts the script rather than launching a broken worker.
@@ -455,7 +461,7 @@ set +e
             ],
             Owners=["amazon"],
         )
-        images = response.get("Images", [])
+        images: List[Dict[str, Any]] = response.get("Images", [])
         if not images:
             raise RuntimeError("No AL2023 AMI found in the current region.")
         images.sort(key=lambda img: img["CreationDate"], reverse=True)

@@ -15,7 +15,7 @@ class SendRSTToClientMITM(MITM):
 
     def proxy(
         self,
-        tuntap: MITMInterface,
+        interface: MITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],
@@ -32,14 +32,15 @@ class SendRSTToClientMITM(MITM):
                 # if self._client_pshack_counter == 2:
                 elif self._client_sent_identity == 1:
                     self._client_sent_identity = 2
+                    assert client_conn is not None
                     rst_pkt = IP(src=client_conn.local_ip, dst=client_conn.remote_ip) / TCP(
                         sport=client_conn.local_port, dport=client_conn.remote_port, flags="R", seq=pkt[TCP].ack
                     )
                     print(f"<- [{rst_pkt[TCP].flags}] (simulated)")
-                    tuntap.send(rst_pkt)
+                    interface.send(rst_pkt)
                     return False
 
-            tuntap.send(server_conn.rewrite(pkt))
+            interface.send(server_conn.rewrite(pkt))
         elif sender == server_conn:
-            tuntap.send(client_conn.rewrite(pkt))
+            interface.send(client_conn.rewrite(pkt))
         return True

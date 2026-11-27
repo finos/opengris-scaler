@@ -1,9 +1,15 @@
 import io
 import logging
+import sys
 
 from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import TaskLog
 from scaler.utility.identifiers import TaskID
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +23,7 @@ class StreamingBuffer(io.TextIOBase):
         self._log_type = log_type
         self._connector_agent = connector_agent
 
+    @override
     def write(self, content: str) -> int:
         if self.closed:
             return 0

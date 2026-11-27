@@ -1,11 +1,13 @@
 import asyncio
+import sys
 import time
 import unittest
+from typing import Any, Coroutine
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, ErrorCode
-from scaler.protocol.capnp import Task, WorkerDisconnectNotification, WorkerHeartbeat
+from scaler.protocol.capnp import BaseMessage, Task, WorkerDisconnectNotification, WorkerHeartbeat
 from scaler.scheduler.controllers.mixins import ConfigController, TaskController
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
@@ -14,6 +16,11 @@ from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 _WORKER_ID = WorkerID(b"worker_aaa")
 _MANAGER_ID = WorkerManagerID(b"manager_bbb")
@@ -28,6 +35,7 @@ def _received_heartbeat(draining: bool) -> WorkerHeartbeat:
 
 
 class TestVanillaWorkerControllerOnDrainingHeartbeat(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -69,13 +77,14 @@ class TestVanillaWorkerControllerOnDrainingHeartbeat(unittest.IsolatedAsyncioTes
 
 
 class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
 
         config_controller = MagicMock(spec=ConfigController)
         self.allocation_policy = MagicMock(spec=TaskAllocatePolicy)
-        self.allocation_policy.remove_worker.return_value = []
+        self.allocation_policy.remove_worker.return_value = list[TaskID]()
 
         self.controller = VanillaWorkerController(config_controller, self.allocation_policy)
 
@@ -121,7 +130,7 @@ class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsync
         self.task_controller.on_worker_disconnect.assert_awaited_once_with(_TASK_ID, _WORKER_ID)
 
 
-def _run(coro):
+def _run(coro: Coroutine[Any, Any, None]) -> None:
     return asyncio.new_event_loop().run_until_complete(coro)
 
 
@@ -131,15 +140,15 @@ class _DeadableBinder:
     def __init__(self):
         self.dead = set()
 
-    async def send(self, to, message, *, detached: bool = True):
-        if WorkerID(bytes(to)) in self.dead:
+    async def send(self, to: bytes, message: BaseMessage, *, detached: bool = True) -> None:
+        if WorkerID(to) in self.dead:
             raise ConnectorSocketClosedByRemoteEndError(
                 ErrorCode.ConnectorSocketClosedByRemoteEnd, "worker socket closed by remote end"
             )
 
 
 class _NullMonitor:
-    async def send(self, message):
+    async def send(self, message: BaseMessage) -> None:
         return None
 
 
@@ -168,7 +177,11 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
 
     def test_mass_eviction_is_handled_without_crashing(self):
         config = MagicMock()
-        config.get_config.side_effect = lambda key: 0 if key == "worker_timeout_seconds" else MagicMock()
+
+        def get_config(key: str) -> Any:
+            return 0 if key == "worker_timeout_seconds" else MagicMock()
+
+        config.get_config.side_effect = get_config
         allocation_policy, _ = create_policies("simple", "allocate=capability; scaling=vanilla")
         worker_controller = VanillaWorkerController(config, allocation_policy)
         task_controller = VanillaTaskController(config)
@@ -200,7 +213,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
         for i in range(self.N_WORKERS):
             worker_id = WorkerID(f"worker-{i}".encode())
             allocation_policy.add_worker(worker_id, {"capA": -1}, 10)
-            worker_controller._worker_alive_since[worker_id] = (time.time() - 3600, None)
+            worker_controller._worker_alive_since[worker_id] = (time.time() - 3600, _received_heartbeat(draining=False))
             worker_controller._worker_to_manager[worker_id] = manager_id
             worker_controller._manager_to_workers.setdefault(manager_id, set()).add(worker_id)
 

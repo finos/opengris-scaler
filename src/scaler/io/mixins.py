@@ -1,6 +1,7 @@
 import abc
 import dataclasses
 import struct
+import sys
 import threading
 from datetime import timedelta
 from enum import Enum
@@ -11,6 +12,11 @@ from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import BaseMessage, BinderStatus
 from scaler.utility.identifiers import ObjectID
 from scaler.utility.mixins import Looper, Reporter
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 class ConnectorRemoteType(Enum):
@@ -23,7 +29,7 @@ class ConnectorRemoteType(Enum):
 
 class NetworkBackend(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def destroy(self):
+    def destroy(self) -> None:
         raise NotImplementedError()
 
     @staticmethod
@@ -95,11 +101,11 @@ class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def destroy(self):
+    def destroy(self) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def send(self, to: bytes, message: BaseMessage, *, detached: bool):
+    async def send(self, to: bytes, message: BaseMessage, *, detached: bool) -> None:
         """Sends a message to one peer.
 
         A detached send returns once the send is scheduled and logs whatever failure follows, so a peer that
@@ -130,7 +136,7 @@ class AsyncConnector(Looper, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def destroy(self):
+    def destroy(self) -> None:
         raise NotImplementedError()
 
     @property
@@ -144,7 +150,7 @@ class AsyncConnector(Looper, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def send(self, message: BaseMessage, *, detached: bool):
+    async def send(self, message: BaseMessage, *, detached: bool) -> None:
         """Sends a message to the remote end.
 
         Detaching means the same here as it does for a binder, see ``AsyncBinder.send``.
@@ -162,7 +168,7 @@ class AsyncPublisher(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def destroy(self):
+    def destroy(self) -> None:
         raise NotImplementedError()
 
     @property
@@ -176,13 +182,13 @@ class AsyncPublisher(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def send(self, message: BaseMessage):
+    async def send(self, message: BaseMessage) -> None:
         raise NotImplementedError()
 
 
 class SyncConnector(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def destroy(self):
+    def destroy(self) -> None:
         raise NotImplementedError()
 
     @property
@@ -196,7 +202,7 @@ class SyncConnector(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def send(self, message: BaseMessage):
+    def send(self, message: BaseMessage) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -227,11 +233,11 @@ class ObjectStorageTotals:
 
 class AsyncObjectStorageConnector(Looper, metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def connect(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None):
+    async def connect(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def wait_until_connected(self):
+    async def wait_until_connected(self) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -239,7 +245,7 @@ class AsyncObjectStorageConnector(Looper, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def destroy(self):
+    def destroy(self) -> None:
         raise NotImplementedError()
 
     @property
@@ -270,7 +276,7 @@ class AsyncObjectStorageConnector(Looper, metaclass=abc.ABCMeta):
 
 class SyncObjectStorageConnector(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def destroy(self):
+    def destroy(self) -> None:
         raise NotImplementedError()
 
     @property
@@ -279,7 +285,7 @@ class SyncObjectStorageConnector(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def set_object(self, object_id: ObjectID, payload: bytes):
+    def set_object(self, object_id: ObjectID, payload: bytes) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -297,9 +303,10 @@ class SyncObjectStorageConnector(metaclass=abc.ABCMeta):
 
 class SyncSubscriber(threading.Thread, metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def destroy(self):
+    def destroy(self) -> None:
         raise NotImplementedError()
 
+    @override
     @abc.abstractmethod
     def run(self) -> None:
         raise NotImplementedError()

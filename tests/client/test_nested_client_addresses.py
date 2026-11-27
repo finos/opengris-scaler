@@ -3,12 +3,18 @@
 It takes its worker's address only when it takes its worker's scheduler too.
 """
 
+import sys
 import unittest
 from typing import Optional
 
 from scaler.client.client import Client
 from scaler.config.types.address import AddressConfig
 from scaler.worker.agent.processor.processor import _current_processor
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def resolve(scheduler_address: Optional[str], object_storage_address: Optional[str]) -> Optional[str]:
@@ -29,8 +35,9 @@ class _FakeProcessor:
 
 
 class TestNestedClientAddresses(unittest.TestCase):
+    @override
     def setUp(self) -> None:
-        self._token = _current_processor.set(_FakeProcessor("tcp://storage.inside:6379"))  # type: ignore[arg-type]
+        self._token = _current_processor.set(_FakeProcessor("tcp://storage.inside:6379"))
         self.addCleanup(_current_processor.reset, self._token)
 
     def test_a_client_taking_its_worker_scheduler_takes_its_worker_storage(self) -> None:

@@ -1,9 +1,15 @@
+import sys
 import unittest
 from typing import NoReturn
 
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.queues.indexed_queue import IndexedQueue
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 def _iterate_indexed_queue(queue: IndexedQueue[int]) -> NoReturn:
@@ -13,6 +19,7 @@ def _iterate_indexed_queue(queue: IndexedQueue[int]) -> NoReturn:
 
 
 class TestIndexedQueue(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

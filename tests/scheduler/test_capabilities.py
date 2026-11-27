@@ -1,4 +1,5 @@
 import multiprocessing
+import sys
 import unittest
 from concurrent.futures import TimeoutError
 from typing import Dict
@@ -17,6 +18,11 @@ from scaler.worker.agent.processor.processor import Processor
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 def task_capabilities() -> Dict[str, int]:
     """The capabilities of the running task, as its worker received them."""
@@ -30,6 +36,7 @@ def task_capabilities() -> Dict[str, int]:
 
 
 class TestCapabilities(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -41,6 +48,7 @@ class TestCapabilities(unittest.TestCase):
         )
         self.address = self.combo.get_address()
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
 
@@ -143,6 +151,7 @@ class TestCapabilities(unittest.TestCase):
 
 
 class TestWorkerReceivesCapabilities(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -153,6 +162,7 @@ class TestWorkerReceivesCapabilities(unittest.TestCase):
             scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=static"),
         )
 
+    @override
     def tearDown(self) -> None:
         self.combo.shutdown()
 

@@ -1,6 +1,7 @@
+import sys
 import threading
 import unittest
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from scaler.protocol.capnp import Task
 from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
@@ -8,10 +9,16 @@ from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 MAX_TASKS_PER_WORKER = 10
 
 
 class TestCapabilityAllocatePolicy(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -221,9 +228,11 @@ class TestCapabilityAllocatePolicy(unittest.TestCase):
         self.assertIsNotNone(advice, "balance() did not terminate -- the balancer is stuck in an infinite loop")
 
     @staticmethod
-    def __balance_with_timeout(allocator: CapabilityAllocatePolicy, timeout_seconds: float) -> Optional[Dict]:
+    def __balance_with_timeout(
+        allocator: CapabilityAllocatePolicy, timeout_seconds: float
+    ) -> Optional[Dict[WorkerID, List[TaskID]]]:
         """Runs balance() in a daemon thread; returns its result, or None if it did not finish in time."""
-        result: Dict[str, Dict] = {}
+        result: Dict[str, Dict[WorkerID, List[TaskID]]] = {}
 
         def run() -> None:
             result["advice"] = allocator.balance()

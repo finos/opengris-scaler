@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from typing import Callable
 
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException
@@ -8,7 +9,7 @@ from scaler.utility.exceptions import ClientShutdownException
 class _Routine:
     """Holds a bound ``routine`` method; create_async_loop_routine reads routine.__self__.__class__."""
 
-    def __init__(self, behavior):
+    def __init__(self, behavior: Callable[[int], None]):
         self.calls = 0
         self._behavior = behavior
 

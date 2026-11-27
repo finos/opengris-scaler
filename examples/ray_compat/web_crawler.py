@@ -5,19 +5,20 @@ Like in `highly_parallel.py`, only minimal changes are needed for the example to
 """
 
 import time
+from typing import Iterable, Set
 
 import ray
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 # changed line 1/2
 import scaler.compat.ray
 
 
-def extract_links(elements, base_url, max_results=100):
+def extract_links(elements: Iterable[Tag], base_url: str, max_results: int = 100) -> Set[str]:
     links = []
     for e in elements:
-        url = e["href"]
+        url = str(e["href"])
         if "https://" not in url:
             url = base_url + url
         if base_url in url:
@@ -25,7 +26,7 @@ def extract_links(elements, base_url, max_results=100):
     return set(links[:max_results])
 
 
-def find_links(start_url, base_url, depth=2):
+def find_links(start_url: str, base_url: str, depth: int = 2) -> Set[str]:
     if depth == 0:
         return set()
 
@@ -50,7 +51,7 @@ def main():
     scaler.compat.ray.scaler_init(n_workers=4)
 
     @ray.remote
-    def find_links_task(start_url, base_url, depth=2):
+    def find_links_task(start_url: str, base_url: str, depth: int = 2) -> Set[str]:
         return find_links(start_url, base_url, depth)
 
     start = time.time()

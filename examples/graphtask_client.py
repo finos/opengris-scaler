@@ -4,15 +4,15 @@ from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 
-def inc(i):
+def inc(i: int) -> int:
     return i + 1
 
 
-def add(a, b):
+def add(a: int, b: int) -> int:
     return a + b
 
 
-def minus(a, b):
+def minus(a: int, b: int) -> int:
     return a - b
 
 

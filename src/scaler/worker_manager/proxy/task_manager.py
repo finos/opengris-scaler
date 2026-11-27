@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Tuple, cast
 
 import cloudpickle
 
@@ -33,7 +33,7 @@ class TaskManager(Looper, TaskManagerMixin):
 
     def __init__(self, base_concurrency: int, execution_backend: ExecutionBackend) -> None:
         self._execution_backend = execution_backend
-        self._results: asyncio.Queue[Tuple[Task, asyncio.Future, ProfileResult]] = asyncio.Queue()
+        self._results: asyncio.Queue[Tuple[Task, asyncio.Future[Any], ProfileResult]] = asyncio.Queue()
         self._actor = TaskActor(
             base_concurrency=base_concurrency,
             execution_backend=execution_backend,
@@ -43,9 +43,9 @@ class TaskManager(Looper, TaskManagerMixin):
 
         self._serializers: Dict[bytes, Serializer] = dict()
 
-        self._connector_external: Optional[AsyncConnector] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._heartbeat_manager: Optional[HeartbeatManager] = None
+        self._connector_external: AsyncConnector
+        self._connector_storage: AsyncObjectStorageConnector
+        self._heartbeat_manager: HeartbeatManager
 
     def register(
         self,
@@ -94,7 +94,7 @@ class TaskManager(Looper, TaskManagerMixin):
         await self._send_task_result(task, future, profile_result)
         self._actor.post_result_sent(task.taskId)
 
-    async def _send_task_result(self, task: Task, future: asyncio.Future, profile_result: ProfileResult) -> None:
+    async def _send_task_result(self, task: Task, future: asyncio.Future[Any], profile_result: ProfileResult) -> None:
         if future.exception() is None:
             serializer_id = ObjectID.generate_serializer_object_id(task.source)
             serializer = self._serializers[serializer_id]

@@ -25,7 +25,12 @@ import struct
 import sys
 from collections import deque
 from enum import IntEnum
-from typing import Any, Callable, Deque, List, Optional, Union
+from typing import Any, Callable, ClassVar, Deque, List, Optional, Tuple, Union
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +80,7 @@ class YMQException(Exception):
         self.code = code
         self.message = message
 
+    @override
     def __repr__(self) -> str:
         return f"{type(self).__name__}(code={self.code!r}, message={self.message!r})"
 
@@ -144,7 +150,7 @@ def _drive_callback_sync(submit: Callable[[Callable[[Any], None]], None], timeou
     import asyncio
 
     loop = asyncio.get_event_loop()
-    future: asyncio.Future = loop.create_future()
+    future: asyncio.Future[Any] = loop.create_future()
 
     def _cb(result: Any) -> None:
         if future.done():
@@ -286,8 +292,7 @@ class IOContext:
 # ConnectorSocket
 
 
-# Type aliases for callbacks. We use ``Any`` because mypy can't see across
-# Pyodide's JS bridge. ``ConnectCallback`` receives ``None`` on success or an
+# Type aliases for callbacks. ``ConnectCallback`` receives ``None`` on success or an
 # Exception on failure; ``SendCallback`` is the same. ``RecvCallback`` receives
 # a Message on success or an Exception on failure.
 ConnectCallback = Callable[[Optional[Exception]], None]
@@ -328,7 +333,7 @@ class ConnectorSocket:
         self._recv_callbacks: Deque[RecvCallback] = deque()
 
         # send_message calls made before the WebSocket is open: (payload_bytes, callback).
-        self._pending_sends: List[tuple] = []
+        self._pending_sends: List[Tuple[bytes, SendCallback]] = []
 
         # Handshake state.
         self._handshake_complete: bool = False
@@ -437,7 +442,7 @@ class ConnectorSocket:
         import asyncio
 
         loop = asyncio.get_event_loop()
-        future: asyncio.Future = loop.create_future()
+        future: asyncio.Future[None] = loop.create_future()
 
         def _cb(result: Any) -> None:
             if future.done():
@@ -455,7 +460,7 @@ class ConnectorSocket:
         import asyncio
 
         loop = asyncio.get_event_loop()
-        future: asyncio.Future = loop.create_future()
+        future: asyncio.Future[Message] = loop.create_future()
 
         def _cb(result: Any) -> None:
             if future.done():
@@ -568,7 +573,7 @@ class ConnectorSocket:
     # without coupling the wasm IO backend to the agent. Filtering by
     # socket-instance identity is the hook's responsibility -- this class
     # fires it for every socket that opens.
-    _post_open_hook: Optional[Callable[["ConnectorSocket"], None]] = None
+    _post_open_hook: ClassVar[Optional[Callable[["ConnectorSocket"], None]]] = None
 
     def _on_open(self, _event: Any) -> None:
         if self._closed:
@@ -576,7 +581,8 @@ class ConnectorSocket:
         self._open = True
         self._send_handshake()
         # Drain queued sends.
-        pending, self._pending_sends = self._pending_sends, []
+        pending = self._pending_sends
+        self._pending_sends = []
         for framed, cb in pending:
             self._raw_send(framed, cb)
         hook = type(self)._post_open_hook
@@ -690,8 +696,8 @@ class ConnectorSocket:
     def _invoke(callback: Callable[[Any], None], arg: Any) -> None:
         try:
             callback(arg)
-        except Exception:  # noqa: BLE001 -- never let a user callback abort the IO loop
-            sys.excepthook(*sys.exc_info())
+        except Exception as e:  # noqa: BLE001 -- never let a user callback abort the IO loop
+            sys.excepthook(type(e), e, e.__traceback__)
 
 
 # ---------------------------------------------------------------------------

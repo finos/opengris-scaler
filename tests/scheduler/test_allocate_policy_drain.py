@@ -1,3 +1,4 @@
+import sys
 import unittest
 from typing import Callable, List
 
@@ -8,6 +9,11 @@ from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 QUEUE_SIZE = 10
 
@@ -26,6 +32,7 @@ def _task(name: str) -> Task:
 
 
 class TestAllocatePolicyDrain(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

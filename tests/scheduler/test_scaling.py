@@ -4,7 +4,7 @@ import signal
 import sys
 import time
 import unittest
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler import Client
@@ -46,8 +46,14 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestScaling(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -227,6 +233,7 @@ class TestAtCapacityEmission(unittest.TestCase):
     manager's current connected worker count -- the worker manager always receives the
     authoritative desired count."""
 
+    @override
     def setUp(self):
         setup_logger()
 
@@ -325,6 +332,7 @@ class TestAtCapacityEmission(unittest.TestCase):
 class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
     """Pending-worker reporting in WorkerManagerController.get_status."""
 
+    @override
     def setUp(self):
         setup_logger()
         config_controller = MagicMock()
@@ -335,7 +343,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
         binder = AsyncMock()
         task_controller = MagicMock()
-        task_controller._task_id_to_task = {}
+        task_controller._task_id_to_task = dict[TaskID, Task]()
         self.worker_controller = MagicMock()
         self.worker_controller._worker_alive_since = {
             WorkerID(b"w0"): (0.0, _create_mock_worker_heartbeat({})),
@@ -387,7 +395,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         self.scaling_policy.get_scaling_commands.return_value = [
             build_set_desired_command([({}, 2), ({"gpu": -1}, 4), ({"cpu": -1}, 3)])
         ]
-        self.worker_controller.get_workers_by_manager_id.return_value = []
+        self.worker_controller.get_workers_by_manager_id.return_value = list[WorkerID]()
 
         await self.controller.on_heartbeat(source, heartbeat)
         status = self.controller.get_status()
@@ -420,11 +428,13 @@ class TestManagerSnapshotsCountServingWorkers(unittest.IsolatedAsyncioTestCase):
             for workers in workers_by_manager.values()
             for worker_id, draining in workers.items()
         }
-        worker_controller.get_workers_by_manager_id.side_effect = lambda manager_id: [
-            WorkerID(worker_id) for worker_id in workers_by_manager[manager_id]
-        ]
+
+        def get_workers_by_manager_id(manager_id: WorkerManagerID) -> List[WorkerID]:
+            return [WorkerID(worker_id) for worker_id in workers_by_manager[manager_id]]
+
+        worker_controller.get_workers_by_manager_id.side_effect = get_workers_by_manager_id
         task_controller = MagicMock()
-        task_controller._task_id_to_task = {}
+        task_controller._task_id_to_task = dict[TaskID, Task]()
         binder = AsyncMock()
         controller.register(binder, task_controller, worker_controller)
 
@@ -443,7 +453,7 @@ class TestManagerSnapshotsCountServingWorkers(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.taskConcurrency, 1)
 
 
-def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
+def _create_mock_task(task_id: TaskID, capabilities: Dict[str, int]) -> Task:
     client_id = ClientID.generate_client_id()
     return Task(
         taskId=task_id,
@@ -455,7 +465,9 @@ def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
     )
 
 
-def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, draining: bool = False) -> WorkerHeartbeat:
+def _create_mock_worker_heartbeat(
+    capabilities: Dict[str, int], queued_tasks: int = 0, draining: bool = False
+) -> WorkerHeartbeat:
     return WorkerHeartbeat(
         agent=Resource(cpu=1, rss=1000000),
         rssFree=500000,

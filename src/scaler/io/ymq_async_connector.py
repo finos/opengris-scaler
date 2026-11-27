@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 class YMQAsyncConnector(AsyncConnector):
     def __init__(self, context: IOContext, identity: bytes, callback: Callable[[BaseMessage], Awaitable[None]]):
-        self._ymq_context = context
+        self._ymq_context: Optional[IOContext] = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
 
         self._callback: Callable[[BaseMessage], Awaitable[None]] = callback
         self._socket: Optional[ConnectorSocket] = None
 
-        self._pending_tasks: Set[asyncio.Task] = set()
+        self._pending_tasks: Set[asyncio.Task[None]] = set()
 
     def __del__(self):
         self.destroy()

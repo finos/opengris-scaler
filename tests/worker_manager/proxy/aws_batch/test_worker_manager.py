@@ -25,7 +25,7 @@ class TestAWSBatchWorkerManagerMaxTaskConcurrency(unittest.TestCase):
         config = MagicMock()
         config.backend = AWSHPCBackend.batch
         config.max_concurrent_jobs = 100
-        config.worker_config.per_worker_capabilities.capabilities = {}
+        config.worker_config.per_worker_capabilities.capabilities = dict[str, int]()
         config.worker_manager_config.max_task_concurrency = max_task_concurrency
         with patch("scaler.worker_manager.proxy.aws_batch.worker_manager.WorkerManagerRunner") as runner:
             AWSBatchWorkerManager(config).run()

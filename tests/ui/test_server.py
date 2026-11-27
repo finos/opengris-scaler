@@ -5,13 +5,14 @@ The GUI serves these from `http.server`, so each is exercised over a real socket
 
 import json
 import socket
+import sys
 import threading
 import time
 import unittest
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.config.types.address import AddressConfig
@@ -19,8 +20,14 @@ from scaler.ui.app import BROWSER_QUEUE_MAX_PAYLOADS, WebUIApp
 from scaler.ui.server import WebGUIServer
 from scaler.utility.network_util import OS_PICKED_PORT
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestWebGUIServer(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         config = WebGUIConfig(monitor_address=AddressConfig.from_string("tcp://127.0.0.1:6380"))
         self.app = WebUIApp(config)
@@ -29,6 +36,7 @@ class TestWebGUIServer(unittest.TestCase):
         self.base = f"http://127.0.0.1:{self.port}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
+    @override
     def tearDown(self) -> None:
         self.server.shutdown()
         self.server.server_close()
@@ -63,7 +71,9 @@ class TestWebGUIServer(unittest.TestCase):
 
             self.assertEqual(answer["type"], "view_update")
             self.assertEqual(answer["settings"]["stream_window"], 30)
-            self.assertEqual(self.app.get_browser(browser_id).view.stream_window_minutes, 30)
+            browser = self.app.get_browser(browser_id)
+            assert browser is not None
+            self.assertEqual(browser.view.stream_window_minutes, 30)
 
     def test_a_stream_opens_on_the_view_the_browser_saved(self) -> None:
         """A reload or a dropped stream reopens on what the browser was showing, not on the default view."""
@@ -90,6 +100,7 @@ class TestWebGUIServer(unittest.TestCase):
         with urllib.request.urlopen(f"{self.base}/events", timeout=10) as stream:
             browser_id = self.__next_event(stream)["browser_id"]
             browser = self.app.get_browser(browser_id)
+            assert browser is not None
 
             for _ in range(BROWSER_QUEUE_MAX_PAYLOADS + 1):
                 browser.offer(json.dumps({"type": "view_update"}))
@@ -106,16 +117,19 @@ class TestWebGUIServer(unittest.TestCase):
         with urllib.request.urlopen(f"{self.base}/events", timeout=10) as stream:
             browser_id = self.__next_event(stream)["browser_id"]
 
-            for body in (
+            malformed_bodies: Tuple[Dict[str, Any], ...] = (
                 {"browser_id": browser_id, "view": {"workers_page": "not-a-number"}},
                 {"browser_id": browser_id, "settings": {"stream_window": []}},
                 {"browser_id": "not-a-number"},
-            ):
+            )
+            for body in malformed_bodies:
                 with self.assertRaises(urllib.error.HTTPError) as raised:
                     self.__post_view(body)
                 self.assertEqual(raised.exception.code, 400)
 
-            self.assertEqual(self.app.get_browser(browser_id).view.workers_page, 0)
+            browser = self.app.get_browser(browser_id)
+            assert browser is not None
+            self.assertEqual(browser.view.workers_page, 0)
 
     def test_a_request_for_an_unknown_browser_is_refused(self) -> None:
         with self.assertRaises(urllib.error.HTTPError) as raised:

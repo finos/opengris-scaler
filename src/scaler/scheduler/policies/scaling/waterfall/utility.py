@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Set
 
 from scaler.scheduler.policies.scaling.waterfall.types import WaterfallRule
 from scaler.utility.identifiers import WorkerManagerID
@@ -63,7 +63,7 @@ def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:
     if not rules:
         raise ValueError("waterfall_v1 policy_content: no rules specified")
 
-    seen: set = set()
+    seen: Set[WorkerManagerID] = set()
     for rule in rules:
         if rule.worker_manager_id in seen:
             raise ValueError(f"waterfall_v1 policy_content: duplicate worker_manager_id {rule.worker_manager_id!r}")

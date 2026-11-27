@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import unittest
 from typing import List
 
@@ -20,6 +21,11 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.worker.worker import Worker
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 UNIT_ID = "unit-under-test"
 TIMEOUT_SECONDS = 60
@@ -84,6 +90,7 @@ def _worker(combo: SchedulerClusterCombo, manager: _FakeManager) -> Worker:
 
 
 class TestWorkerManagerLink(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

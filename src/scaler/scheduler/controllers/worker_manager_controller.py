@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
@@ -30,9 +30,9 @@ class WorkerManagerController(Looper, Reporter):
         self._config_controller = config_controller
         self._scaling_policy = scaling_policy
 
-        self._binder: Optional[AsyncBinder] = None
-        self._task_controller: Optional[TaskController] = None
-        self._worker_controller: Optional[WorkerController] = None
+        self._binder: AsyncBinder
+        self._task_controller: TaskController
+        self._worker_controller: WorkerController
 
         # Track worker manager heartbeats: source -> (last_seen_time, heartbeat)
         self._manager_alive_since: Dict[bytes, Tuple[float, WorkerManagerHeartbeat]] = {}

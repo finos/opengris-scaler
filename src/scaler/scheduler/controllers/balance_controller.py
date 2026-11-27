@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import StateBalanceAdvice
@@ -21,10 +21,10 @@ class VanillaBalanceController(Looper):
         self._last_balance_advice: Dict[WorkerID, List[TaskID]] = dict()
         self._same_load_balance_advice_count = 0
 
-        self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncPublisher] = None
+        self._binder: AsyncBinder
+        self._binder_monitor: AsyncPublisher
 
-        self._task_controller: Optional[TaskController] = None
+        self._task_controller: TaskController
 
     def register(self, binder: AsyncBinder, binder_monitor: AsyncPublisher, task_controller: TaskController):
         self._binder = binder

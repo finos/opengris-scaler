@@ -8,6 +8,7 @@ import json
 import logging
 import mimetypes
 import ssl
+import sys
 import urllib.parse
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +18,11 @@ from typing import Any, Dict, Optional, Tuple
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import MAX_VIEW_REQUEST_BYTES, STREAM_KEEPALIVE_SECONDS
 from scaler.ui.app import STATIC_DIR, BrowserView, WebUIApp
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +79,7 @@ class WebGUIRequestHandler(BaseHTTPRequestHandler):
         update["type"] = "view_update"
         self.__send_bytes(json.dumps(update).encode(), "application/json")
 
+    @override
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002, the base class names it
         logger.debug("%s %s", self.address_string(), format % args)
 
@@ -183,7 +190,7 @@ class WebGUIServer(ThreadingHTTPServer):
     def __init__(self, address: Tuple[str, int], app: WebUIApp, security: SecurityConfig) -> None:
         super().__init__(address, WebGUIRequestHandler)
         self.app = app
-        if security.has_credentials():
+        if security.tls_cert is not None and security.tls_key is not None:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             # TLS 1.0 and 1.1 are deprecated by RFC 8996 and the default context still offers them.
             context.minimum_version = ssl.TLSVersion.TLSv1_2

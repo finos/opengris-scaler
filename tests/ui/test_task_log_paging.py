@@ -5,6 +5,7 @@ Raising the retention grows what an operator can page back through, not what cro
 """
 
 import unittest
+from typing import Any
 
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import StateBalanceAdvice, StateTask, TaskState
@@ -17,7 +18,7 @@ def make_app(retained: int = 1000) -> WebUIApp:
     return WebUIApp(config)
 
 
-def make_task(**kwargs) -> StateTask:
+def make_task(**kwargs: Any) -> StateTask:
     """A StateTask as the GUI receives it: capability reads need a deserialized struct."""
     return StateTask.from_bytes(StateTask(**kwargs).to_bytes())
 

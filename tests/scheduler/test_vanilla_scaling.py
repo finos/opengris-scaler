@@ -1,8 +1,9 @@
+import sys
 import time
 import unittest
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
-from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
+from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds, WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.vanilla import (
     VanillaScalingPolicy,
@@ -15,15 +16,23 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, Wor
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestVanillaScalingPolicy(unittest.TestCase):
     """Unit tests for VanillaScalingPolicy declarative emission."""
 
+    @override
     def setUp(self):
         setup_logger()
         self.policy = VanillaScalingPolicy({})
 
-    def _single_request(self, snapshot, heartbeat, managed):
+    def _single_request(
+        self, snapshot: InformationSnapshot, heartbeat: WorkerManagerHeartbeat, managed: List[WorkerID]
+    ) -> WorkerManagerCommand.DesiredTaskConcurrencyRequest:
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
         self.assertEqual(len(commands), 1)
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
@@ -203,6 +212,7 @@ class TestFloorHeldWorkerCount(unittest.TestCase):
 class TestVanillaBounds(unittest.TestCase):
     """Bounds reach a manager through the policy and the scaling string."""
 
+    @override
     def setUp(self):
         setup_logger()
 
@@ -260,6 +270,7 @@ class TestVanillaBounds(unittest.TestCase):
 class TestVanillaDeclarativeEquivalents(unittest.TestCase):
     """Declarative equivalents of the master-branch vanilla shutdown tests."""
 
+    @override
     def setUp(self):
         setup_logger()
         self.policy = VanillaScalingPolicy({})
@@ -311,7 +322,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         self.assertEqual(requests[0].taskConcurrency, 5)
 
 
-def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
+def _create_mock_task(task_id: TaskID, capabilities: Dict[str, int]) -> Task:
     client_id = ClientID.generate_client_id()
     return Task(
         taskId=task_id,
@@ -323,7 +334,9 @@ def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
     )
 
 
-def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, draining: bool = False) -> WorkerHeartbeat:
+def _create_mock_worker_heartbeat(
+    capabilities: Dict[str, int], queued_tasks: int = 0, draining: bool = False
+) -> WorkerHeartbeat:
     return WorkerHeartbeat(
         agent=Resource(cpu=1, rss=1000000),
         rssFree=500000,

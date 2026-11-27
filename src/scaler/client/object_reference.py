@@ -21,5 +21,5 @@ class ObjectReference:
 
         return self.object_id == other.object_id
 
-    def __ne__(self, other):
+    def __ne__(self, other: object):
         return not self.__eq__(other)

@@ -1,8 +1,14 @@
+import sys
 import threading
 import unittest
 
 from scaler.utility.exceptions import TaskExceptionNotSerializableError
 from scaler.utility.serialization import deserialize_failure, serialize_failure
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 class TestSerializeFailure(unittest.TestCase):
@@ -30,6 +36,7 @@ class TestSerializeFailure(unittest.TestCase):
 
     def test_exception_with_broken_str_still_serializes(self):
         class BrokenStr(Exception):
+            @override
             def __str__(self):
                 raise RuntimeError("str blew up")
 

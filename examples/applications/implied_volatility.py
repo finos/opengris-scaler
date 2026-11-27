@@ -11,28 +11,31 @@ Usage:
 """
 
 from timeit import default_timer
-from typing import List
+from typing import List, Union
 
 import numpy as np
+import numpy.typing as npt
 import psutil
 from scipy.stats import norm
 
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
+FloatOrArray = Union[float, npt.NDArray[np.number]]
 
-def bs_call(S, K, T, r, vol):
+
+def bs_call(S: FloatOrArray, K: FloatOrArray, T: FloatOrArray, r: FloatOrArray, vol: FloatOrArray):
     d1 = (np.log(S / K) + (r + 0.5 * vol**2) * T) / (vol * np.sqrt(T))
     d2 = d1 - vol * np.sqrt(T)
     return S * norm.cdf(d1) - np.exp(-r * T) * K * norm.cdf(d2)
 
 
-def bs_vega(S, K, T, r, sigma):
+def bs_vega(S: FloatOrArray, K: FloatOrArray, T: FloatOrArray, r: FloatOrArray, sigma: FloatOrArray):
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     return S * norm.pdf(d1) * np.sqrt(T)
 
 
-def find_volatility(target_value, S, K, T, r) -> float:
+def find_volatility(target_value: float, S: float, K: float, T: float, r: float) -> float:
     MAX_ITERATIONS = 200
     PRECISION = 1.0e-5
     sigma = 0.5
@@ -46,11 +49,11 @@ def find_volatility(target_value, S, K, T, r) -> float:
     return sigma  # value wasn't found, return best guess so far
 
 
-def find_volatilities(dataset: np.ndarray) -> List[float]:
+def find_volatilities(dataset: npt.NDArray[np.float64]) -> List[float]:
     return [find_volatility(*sample) for sample in dataset]
 
 
-def generate_synthetic_data(n_samples: int) -> np.ndarray:
+def generate_synthetic_data(n_samples: int) -> npt.NDArray[np.float64]:
     S = np.random.randint(100, 200, n_samples)  # stock prices
     K = S * 1.25  # strike prices
     T = np.ones(n_samples)  # time maturity (year)

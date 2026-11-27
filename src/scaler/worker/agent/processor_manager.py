@@ -56,11 +56,11 @@ class VanillaProcessorManager(ProcessorManager):
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
-        self._heartbeat_manager: Optional[HeartbeatManager] = None
-        self._task_manager: Optional[TaskManager] = None
-        self._profiling_manager: Optional[ProfilingManager] = None
-        self._connector_external: Optional[AsyncConnector] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+        self._heartbeat_manager: HeartbeatManager
+        self._task_manager: TaskManager
+        self._profiling_manager: ProfilingManager
+        self._connector_external: AsyncConnector
+        self._connector_storage: AsyncObjectStorageConnector
 
         self._address_internal: AddressConfig = address_internal
 
@@ -70,7 +70,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         self._can_accept_task_lock: asyncio.Lock = asyncio.Lock()
 
-        self._binder_internal: Optional[AsyncBinder] = None
+        self._binder_internal: AsyncBinder
 
     def register(
         self,
@@ -120,9 +120,9 @@ class VanillaProcessorManager(ProcessorManager):
 
     async def on_task(self, task: Task) -> bool:
         assert self._can_accept_task_lock.locked()
-        assert self.current_processor_is_initialized()
 
         holder = self._current_holder
+        assert holder is not None and holder.initialized()
 
         assert holder.task() is None
         holder.set_task(task)
@@ -179,6 +179,7 @@ class VanillaProcessorManager(ProcessorManager):
             self.__kill_processor(reason, holder)
 
         if task is not None:
+            assert profile_result is not None
             source = task.source
             task_id = task.taskId
 
@@ -228,7 +229,7 @@ class VanillaProcessorManager(ProcessorManager):
 
     async def on_resume_task(self, task_id: TaskID) -> bool:
         assert self._can_accept_task_lock.locked()
-        assert self.current_processor_is_initialized()
+        assert self._current_holder is not None and self._current_holder.initialized()
 
         if self.current_task() is not None:
             return False
@@ -334,6 +335,7 @@ class VanillaProcessorManager(ProcessorManager):
 
     def __start_new_processor(self):
         object_storage_address = self._heartbeat_manager.get_object_storage_address()
+        assert object_storage_address is not None
 
         self._current_holder = ProcessorHolder(
             self._event_loop,
@@ -385,7 +387,10 @@ class VanillaProcessorManager(ProcessorManager):
         self._holders_by_processor_id = {}
 
     def __end_task(self, processor_holder: ProcessorHolder) -> ProfileResult:
-        profile_result = self._profiling_manager.on_task_end(processor_holder.pid(), processor_holder.task().taskId)
+        task = processor_holder.task()
+        assert task is not None
+
+        profile_result = self._profiling_manager.on_task_end(processor_holder.pid(), task.taskId)
         processor_holder.set_task(None)
 
         return profile_result

@@ -290,6 +290,7 @@ def check_container_instance_lifecycle(
             )
         )
         instance_id = response.data.id
+        assert instance_id is not None
         print(f"  Instance OCID: ...{instance_id[-30:]}")
 
         # Poll until INACTIVE (completed) or FAILED

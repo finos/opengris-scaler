@@ -1,4 +1,4 @@
-from typing import Optional, Set
+from typing import Set
 
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.agent.mixins import ObjectManager, TaskManager
@@ -10,9 +10,9 @@ class ClientTaskManager(TaskManager):
     def __init__(self):
         self._task_ids: Set[bytes] = set()
 
-        self._connector_external: Optional[AsyncConnector] = None
-        self._object_manager: Optional[ObjectManager] = None
-        self._future_manager: Optional[ClientFutureManager] = None
+        self._connector_external: AsyncConnector
+        self._object_manager: ObjectManager
+        self._future_manager: ClientFutureManager
 
     def register(
         self, connector_external: AsyncConnector, object_manager: ObjectManager, future_manager: ClientFutureManager

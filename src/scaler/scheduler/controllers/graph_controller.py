@@ -52,7 +52,7 @@ class _TaskInfo:
 @dataclasses.dataclass
 class _Graph:
     target_task_ids: List[TaskID]
-    sorter: TopologicalSorter
+    sorter: "TopologicalSorter[TaskID]"
     tasks: Dict[TaskID, _TaskInfo]
     depended_task_id_to_task_id: ManyToManyDict[TaskID, TaskID]
     client: ClientID
@@ -86,15 +86,15 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController):
         self._config_controller = config_controller
 
-        self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncPublisher] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+        self._binder: AsyncBinder
+        self._binder_monitor: AsyncPublisher
+        self._connector_storage: AsyncObjectStorageConnector
 
-        self._client_controller: Optional[ClientController] = None
-        self._task_controller: Optional[TaskController] = None
-        self._object_controller: Optional[ObjectController] = None
+        self._client_controller: ClientController
+        self._task_controller: TaskController
+        self._object_controller: ObjectController
 
-        self._unassigned: Queue = Queue()
+        self._unassigned: Queue[Tuple[ClientID, GraphTask]] = Queue()
 
         self._graph_task_id_to_graph: Dict[TaskID, _Graph] = dict()
         self._task_id_to_graph_task_id: Dict[TaskID, TaskID] = dict()
@@ -118,10 +118,10 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     async def on_graph_task(self, client_id: ClientID, graph_task: GraphTask):
         await self._unassigned.put((client_id, graph_task))
 
-    async def on_graph_task_cancel(self, task_cancel: TaskCancel):
-        graph_task_id = self._task_id_to_graph_task_id.get(task_cancel.taskId)
+    async def on_graph_task_cancel(self, graph_task_cancel: TaskCancel):
+        graph_task_id = self._task_id_to_graph_task_id.get(graph_task_cancel.taskId)
         if graph_task_id is None or graph_task_id not in self._graph_task_id_to_graph:
-            logger.info(f"{task_cancel.taskId!r}: ignoring cancel, its graph is already gone")
+            logger.info(f"{graph_task_cancel.taskId!r}: ignoring cancel, its graph is already gone")
             return
 
         # received any subtask canceling will lead the whole graph canceling
@@ -176,7 +176,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         client, graph_task = await self._unassigned.get()
         await self.__add_new_graph(client, graph_task)
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> Dict[str, Dict[str, int]]:
         return {"graph_manager": {"unassigned": self._unassigned.qsize()}}
 
     async def __add_new_graph(self, client_id: ClientID, graph_task: GraphTask):

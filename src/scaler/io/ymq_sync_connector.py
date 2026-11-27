@@ -20,7 +20,7 @@ class YMQSyncConnector(SyncConnector):
         address: AddressConfig,
         security_config: Optional[SecurityConfig] = None,
     ):
-        self._ymq_context = context
+        self._ymq_context: Optional[IOContext] = context
         self._identity = identity
         self._address = address
 

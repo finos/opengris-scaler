@@ -129,18 +129,17 @@ class Scheduler:
 
     @property
     def address(self) -> AddressConfig:
-        assert self._address is not None
         return self._address
 
     async def __initialize_network(self) -> None:
         # Scheduler's binder
-        assert self._address is not None
         default_monitor = default_monitor_address(self._address)
 
         await self._binder.bind(self._address, security_config=self._security_config)
 
-        self._address = self._binder.address
-        assert self._address is not None
+        bound_address = self._binder.address
+        assert bound_address is not None
+        self._address = bound_address
         self._config_controller.update_config("bind_address", self._address)
 
         logger.info(f"{self.__class__.__name__}: listen to scheduler address {self._address}")
@@ -151,6 +150,7 @@ class Scheduler:
             self._config_controller.get_config("object_storage_address"), security_config=self._security_config
         )
         object_storage_address = self._connector_storage.address
+        assert object_storage_address is not None
 
         logger.info(f"{self.__class__.__name__}: connected to object storage server {object_storage_address!r}")
 

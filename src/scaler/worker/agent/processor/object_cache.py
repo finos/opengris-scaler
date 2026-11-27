@@ -15,6 +15,11 @@ from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.utility.exceptions import DeserializeObjectError
 from scaler.utility.identifiers import ClientID, ObjectID
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,13 +37,15 @@ class ObjectCache(threading.Thread):
         self._cached_objects_alive_since: Dict[ObjectID, float] = dict()
         self._process = psutil.Process(multiprocessing.current_process().pid)
         # malloc_trim is glibc-only: macOS and Windows skip the optional RSS-trim hook
+        self._libc: Optional[ctypes.CDLL]
         if sys.platform == "linux":
-            self._libc: Optional[ctypes.CDLL] = ctypes.cdll.LoadLibrary("libc.so.6")
+            self._libc = ctypes.cdll.LoadLibrary("libc.so.6")
         else:
             self._libc = None
 
         self._stop_event = threading.Event()
 
+    @override
     def run(self) -> None:
         try:
             while not self._stop_event.wait(timeout=CLEANUP_INTERVAL_SECONDS):
@@ -81,7 +88,7 @@ class ObjectCache(threading.Thread):
     def has_object(self, object_id: ObjectID):
         return object_id in self._cached_objects or object_id in self._serializers
 
-    def get_object(self, object_id: ObjectID) -> Optional[Any]:
+    def get_object(self, object_id: ObjectID) -> Any:
         if object_id not in self._cached_objects:
             raise ValueError(f"cannot get object for {object_id!r}")
 

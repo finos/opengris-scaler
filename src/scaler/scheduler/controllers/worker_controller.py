@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import (
@@ -35,9 +35,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController, allocation_policy: TaskAllocatePolicy) -> None:
         self._config_controller = config_controller
 
-        self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncPublisher] = None
-        self._task_controller: Optional[TaskController] = None
+        self._binder: AsyncBinder
+        self._binder_monitor: AsyncPublisher
+        self._task_controller: TaskController
 
         self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
         self._worker_to_manager: Dict[WorkerID, WorkerManagerID] = dict()
@@ -124,7 +124,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     @staticmethod
     def __worker_status_from_heartbeat(
-        worker_id: WorkerID, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
+        worker_id: WorkerID, worker_task_numbers: Dict[str, Any], last: float, info: WorkerHeartbeat
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
         suspended = min(len([p for p in info.processors if p.suspended]), UINT8_MAX)

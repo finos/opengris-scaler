@@ -8,6 +8,7 @@ shutdown path is the one that relies on it. See ``tests/worker/test_worker.py`` 
 """
 
 import asyncio
+import sys
 import unittest
 from typing import List, Tuple
 
@@ -17,8 +18,14 @@ from scaler.io.ymq import ConnectorSocket, IOContext, SocketStopRequestedError
 from scaler.io.ymq_async_binder import YMQAsyncBinder
 from scaler.protocol.capnp import BaseMessage, ClientDisconnect
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
+    @override
     async def asyncSetUp(self) -> None:
         self._received: List[Tuple[bytes, BaseMessage]] = []
 
@@ -26,6 +33,7 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         self._binder = YMQAsyncBinder(self._context, identity=b"binder-under-test", callback=self._on_receive)
         await self._binder.bind(AddressConfig.from_string("tcp://127.0.0.1:0"))
 
+    @override
     async def asyncTearDown(self) -> None:
         # Destroy here rather than only in the tests: a binder left alive is destroyed by __del__ at
         # interpreter exit instead, which dead-locks on the GIL (finos/opengris-scaler#945), so a failing

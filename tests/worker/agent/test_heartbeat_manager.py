@@ -1,3 +1,4 @@
+import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,10 +9,17 @@ from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager, TimeoutManager
+from scaler.worker.agent.processor_holder import ProcessorHolder
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 class TestVanillaHeartbeatManager(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -26,7 +34,7 @@ class TestVanillaHeartbeatManager(unittest.IsolatedAsyncioTestCase):
         task_manager = MagicMock(spec=TaskManager)
         task_manager.get_queued_size.return_value = 0
         processor_manager = MagicMock(spec=ProcessorManager)
-        processor_manager.processors.return_value = []
+        processor_manager.processors.return_value = list[ProcessorHolder]()
         processor_manager.can_accept_task.return_value = True
         self.heartbeat_manager.register(
             self.connector_external,

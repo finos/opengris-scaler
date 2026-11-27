@@ -16,7 +16,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
     def __init__(self):
         self._workers_to_queue_size: Dict[bytes, int] = dict()
-        self._workers_to_task_ids: Dict[WorkerID, IndexedQueue] = dict()
+        self._workers_to_task_ids: Dict[WorkerID, IndexedQueue[TaskID]] = dict()
         self._task_id_to_worker: Dict[TaskID, WorkerID] = {}
 
         # Workers that take tasks, keyed by load. A draining worker leaves it: a worker with no free slot must not sit
@@ -171,7 +171,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
         return True
 
-    def statistics(self) -> Dict:
+    def statistics(self) -> Dict[WorkerID, Dict[str, int]]:
         return {
             worker: {"free": self._workers_to_queue_size[worker] - len(tasks), "sent": len(tasks)}
             for worker, tasks in self._workers_to_task_ids.items()

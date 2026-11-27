@@ -4,13 +4,15 @@ This method is used to submit large objects to the cluster.
 Users can then reuse this object without needing to retransmit it multiple times.
 """
 
+from typing import List
+
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 large_object = [1, 2, 3, 4, 5]
 
 
-def query(object_reference, idx):
+def query(object_reference: List[int], idx: int) -> int:
     return object_reference[idx]
 
 

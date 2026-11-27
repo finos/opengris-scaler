@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 import unittest
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -30,15 +31,25 @@ from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 TASK_CONCURRENCY_PER_UNIT = 4
 
 
 class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         provisioner = MagicMock(spec=UnitProvisioner)
-        provisioner.create_unit = AsyncMock(side_effect=lambda unit_id: unit_id)
+
+        def create_unit(unit_id: str) -> str:
+            return unit_id
+
+        provisioner.create_unit = AsyncMock(side_effect=create_unit)
         provisioner.max_units.return_value = -1
         provisioner.task_concurrency_per_unit.return_value = TASK_CONCURRENCY_PER_UNIT
         provisioner.startup_timeout_seconds.return_value = 60
@@ -71,7 +82,9 @@ class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
             pendingUnits=0,
         )
         self.binder.send.reset_mock()
-        await self.runner._on_receive_child(unit_id.encode(), deserialize(serialize(heartbeat)))
+        message = deserialize(serialize(heartbeat))
+        assert message is not None
+        await self.runner._on_receive_child(unit_id.encode(), message)
         (command,) = [
             call.args[1] for call in self.binder.send.call_args_list if isinstance(call.args[1], WorkerManagerCommand)
         ]
@@ -96,6 +109,7 @@ class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
 
 
 class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -170,6 +184,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         self.runner._binder_children = binder
 
         heartbeat = deserialize(serialize(WorkerHeartbeat()))  # a field read needs a struct off the wire
+        assert heartbeat is not None
         await self.runner._on_receive_child(b"unit-1", heartbeat)
 
         binder.send.assert_awaited_once()
@@ -178,6 +193,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
 
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -216,7 +232,7 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
         self.wp._task = self.task_cancel
 
     async def _dispatch(self, message: object) -> None:
-        await self.wp._WorkerProcess__on_receive_external(message)
+        await self.wp._WorkerProcess__on_receive_external(message)  # pyrefly: ignore[missing-attribute]
 
     async def test_messages_before_heartbeat_echo_are_queued(self) -> None:
         task = _make_task()

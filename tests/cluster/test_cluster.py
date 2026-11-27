@@ -1,5 +1,6 @@
 import multiprocessing
 import socket
+import sys
 import unittest
 from unittest import mock
 
@@ -9,11 +10,17 @@ from scaler.config.types.address import AddressConfig
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 # a worker that cannot reach its worker manager never runs the task
 TASK_TIMEOUT_SECONDS = 30
 
 
 class TestCluster(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -46,6 +53,7 @@ class TestCluster(unittest.TestCase):
         combo = SchedulerClusterCombo(n_workers=1)
         try:
             port = AddressConfig.from_string(combo.get_address()).port
+            assert port is not None
             socket.create_connection(("127.0.0.1", port)).close()
         finally:
             combo.shutdown()

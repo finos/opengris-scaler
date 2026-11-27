@@ -5,6 +5,7 @@ The GUI joins the two to say who a task belongs to and how much work each client
 """
 
 import unittest
+from typing import Any
 
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import (
@@ -39,7 +40,7 @@ def make_status(*clients: ClientManagerStatus.ClientStatus) -> StateScheduler:
     )
 
 
-def make_task(**kwargs) -> StateTask:
+def make_task(**kwargs: Any) -> StateTask:
     """A StateTask as the GUI receives it: capability reads need a deserialized struct."""
     return StateTask.from_bytes(StateTask(**kwargs).to_bytes())
 
@@ -95,6 +96,7 @@ class TestTaskAttribution(unittest.TestCase):
             make_task(taskId=b"t1", functionName=b"square", state=TaskState.running, worker=b"w1", client=b"Client|one")
         )
 
+        assert entry is not None
         self.assertEqual(entry["full_client"], "Client|one")
 
     def test_a_result_without_the_client_keeps_the_one_the_task_had(self) -> None:
@@ -106,6 +108,7 @@ class TestTaskAttribution(unittest.TestCase):
             make_task(taskId=b"t1", functionName=b"square", state=TaskState.success, worker=b"w1", client=b"")
         )
 
+        assert entry is not None
         self.assertEqual(entry["full_client"], "Client|one")
         self.assertEqual(app._client_task_totals["Client|one"], {"finished": 1, "failed": 0})
 

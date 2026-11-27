@@ -1,11 +1,12 @@
 import asyncio
 import os
+import sys
 import unittest
 import unittest.mock
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
-from scaler.protocol.capnp import Task, TaskCancelConfirmType, TaskResult, TaskResultType, TaskState
+from scaler.protocol.capnp import BaseMessage, Task, TaskCancelConfirmType, TaskResult, TaskResultType, TaskState
 from scaler.scheduler.controllers import task_controller
 from scaler.scheduler.task.task_state_machine import TERMINAL_TASK_STATES
 from scaler.utility.exceptions import SchedulerError
@@ -30,6 +31,11 @@ from tests.scheduler.controllers.task_state_graph_harness import (
     make_task_result,
 )
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 SNAPSHOT_PATH = Path(__file__).parent / "task_state_graph.txt"
 UPDATE_SNAPSHOT_ENVIRONMENT_VARIABLE = "SCALER_UPDATE_TASK_STATE_SNAPSHOT"
@@ -82,6 +88,7 @@ async def build_snapshot_rows() -> List[Tuple[str, str, str]]:
 class TestTaskStateGraph(unittest.IsolatedAsyncioTestCase):
     """The graph snapshot, and the reachability checks that read it."""
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -167,6 +174,7 @@ class TestTaskStateGraph(unittest.IsolatedAsyncioTestCase):
 class TestTaskStateMonitoring(unittest.IsolatedAsyncioTestCase):
     """The monitor hears every transition, so a surface built on it can show a task's whole trail."""
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -178,7 +186,9 @@ class TestTaskStateMonitoring(unittest.IsolatedAsyncioTestCase):
                     harness = TaskControllerHarness()
                     target_name = await drive(harness, source, scenario)
 
-                    expected = [] if target_name == REJECTED else [(target_name, type(scenario.event).__name__)]
+                    expected: List[Tuple[str, str]] = (
+                        [] if target_name == REJECTED else [(target_name, type(scenario.event).__name__)]
+                    )
                     transitions = [(state.name, event) for state, event in harness.monitored_transitions()]
                     self.assertEqual(transitions, expected)
 
@@ -216,6 +226,7 @@ class TestTaskStateMonitoring(unittest.IsolatedAsyncioTestCase):
 class TestTaskControllerBehavior(unittest.IsolatedAsyncioTestCase):
     """The defects that moving the actions onto the transitions resolves."""
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -642,6 +653,7 @@ class TestTaskControllerBehavior(unittest.IsolatedAsyncioTestCase):
 class TestTaskStateExclusion(unittest.IsolatedAsyncioTestCase):
     """One task's transitions are serialized, so two events cannot both act on one machine."""
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -660,7 +672,7 @@ class TestTaskStateExclusion(unittest.IsolatedAsyncioTestCase):
         release = asyncio.Event()
         committed: List[str] = []
 
-        async def blocking_send(peer, message, detached=False):
+        async def blocking_send(peer: bytes, message: BaseMessage, detached: bool = False) -> None:
             if isinstance(message, TaskResult):
                 committed.append("result delivered to client")
                 in_send.set()
@@ -693,7 +705,7 @@ class TestTaskStateExclusion(unittest.IsolatedAsyncioTestCase):
         in_send = asyncio.Event()
         release = asyncio.Event()
 
-        async def blocking_send(peer, message, detached=False):
+        async def blocking_send(peer: bytes, message: BaseMessage, detached: bool = False) -> None:
             if isinstance(message, TaskResult):
                 in_send.set()
                 await release.wait()
@@ -810,6 +822,7 @@ class TestTaskStateExclusion(unittest.IsolatedAsyncioTestCase):
 
 
 class TestTaskControllerStatistics(unittest.IsolatedAsyncioTestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -836,6 +849,7 @@ class TestObjectTaskCounts(unittest.IsolatedAsyncioTestCase):
     ARGUMENT_OBJECT_ID = ObjectID(b"argument-object-id-padded-to-32b")
     UNUSED_OBJECT_ID = ObjectID(b"an-object-no-task-names-padded32")
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

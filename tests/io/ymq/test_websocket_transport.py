@@ -139,7 +139,7 @@ class WebSocketObjectStorageTest(unittest.TestCase):
 
             connector.set_object(object_id, payload)
             got = connector.get_object(object_id)
-            self.assertEqual(bytes(got), payload)
+            self.assertEqual(got, payload)
         finally:
             proc.terminate()
             proc.join(timeout=5.0)

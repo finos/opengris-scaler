@@ -2,7 +2,7 @@ import asyncio
 import dataclasses
 import logging
 from asyncio import Queue
-from typing import List, Optional, Set
+from typing import List, Set
 
 from scaler.config.defaults import STORAGE_TOTALS_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher, ObjectStorageTotals
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
-class _ObjectCreation(ObjectUsage):
+class _ObjectCreation(ObjectUsage[ObjectID]):
     object_id: ObjectID
     object_creator: ClientID
     object_type: ObjectMetadata.ObjectContentType
@@ -42,12 +42,12 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
 
         self._queue_deleted_object_ids: Queue[ObjectID] = Queue()
 
-        self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncPublisher] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+        self._binder: AsyncBinder
+        self._binder_monitor: AsyncPublisher
+        self._connector_storage: AsyncObjectStorageConnector
 
-        self._client_manager: Optional[ClientController] = None
-        self._worker_manager: Optional[WorkerController] = None
+        self._client_manager: ClientController
+        self._worker_manager: WorkerController
 
         # The storage server's own view, refreshed by its routine: a status frame reports the last answer.
         self._storage_totals = ObjectStorageTotals()

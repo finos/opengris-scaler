@@ -1,17 +1,26 @@
+import sys
 import time
 import unittest
+from typing import List
 
 import numpy as np
 import ray
 from numpy import random
+from numpy.typing import NDArray
 
 from scaler.cluster.combo import SchedulerClusterCombo
 
 # this patches ray
 from scaler.compat.ray import scaler_init
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 class TestRayCompat(unittest.TestCase):
+    @override
     def tearDown(self):
         ray.shutdown()
 
@@ -30,7 +39,7 @@ class TestRayCompat(unittest.TestCase):
     def test_ray_example_square(self) -> None:
         # Define the square task.
         @ray.remote
-        def square(x):
+        def square(x: int):
             return x * x
 
         # Launch four parallel square tasks.
@@ -43,7 +52,7 @@ class TestRayCompat(unittest.TestCase):
     def test_ray_example_numpy(self) -> None:
         # Define a task that sums the values in a matrix.
         @ray.remote
-        def sum_matrix(matrix):
+        def sum_matrix(matrix: NDArray[np.float64]):
             return np.sum(matrix)
 
         # Call the task with a literal argument value.
@@ -79,10 +88,11 @@ class TestRayCompat(unittest.TestCase):
 
     # https://docs.ray.io/en/latest/ray-core/patterns/nested-tasks.html#code-example
     def test_ray_example_nested_quicksort(self) -> None:
-        def partition(collection):
+        def partition(collection: List[int]):
             # Use the last element as the pivot
             pivot = collection.pop()
-            greater, lesser = [], []
+            greater: List[int] = []
+            lesser: List[int] = []
             for element in collection:
                 if element > pivot:
                     greater.append(element)
@@ -90,7 +100,7 @@ class TestRayCompat(unittest.TestCase):
                     lesser.append(element)
             return lesser, pivot, greater
 
-        def quick_sort(collection):
+        def quick_sort(collection: List[int]):
             if len(collection) <= 200000:  # magic number
                 return sorted(collection)
             else:
@@ -100,7 +110,7 @@ class TestRayCompat(unittest.TestCase):
             return lesser + [pivot] + greater
 
         @ray.remote
-        def quick_sort_distributed(collection):
+        def quick_sort_distributed(collection: List[int]):
             # Tiny tasks are an antipattern.
             # Thus, in our example we have a "magic number" to
             # toggle when distributed recursion should be used vs

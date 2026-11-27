@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from scaler.utility.cooldown import Cooldown
 
@@ -11,7 +11,7 @@ class TestCooldown(unittest.TestCase):
         self.assertIsNone(cooldown.remaining_seconds())
 
     @patch("scaler.utility.cooldown.time.monotonic")
-    def test_remaining_seconds_counts_down(self, mock_time) -> None:
+    def test_remaining_seconds_counts_down(self, mock_time: MagicMock) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
         cooldown.start_if_not_running()
@@ -20,7 +20,7 @@ class TestCooldown(unittest.TestCase):
         self.assertEqual(cooldown.remaining_seconds(), 6.0)
 
     @patch("scaler.utility.cooldown.time.monotonic")
-    def test_remaining_seconds_none_once_elapsed(self, mock_time) -> None:
+    def test_remaining_seconds_none_once_elapsed(self, mock_time: MagicMock) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
         cooldown.start_if_not_running()
@@ -29,7 +29,7 @@ class TestCooldown(unittest.TestCase):
         self.assertIsNone(cooldown.remaining_seconds())
 
     @patch("scaler.utility.cooldown.time.monotonic")
-    def test_start_if_not_running_does_not_restart_when_already_running(self, mock_time) -> None:
+    def test_start_if_not_running_does_not_restart_when_already_running(self, mock_time: MagicMock) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
         cooldown.start_if_not_running()
@@ -44,7 +44,7 @@ class TestCooldown(unittest.TestCase):
         self.assertIsNone(cooldown.remaining_seconds())
 
     @patch("scaler.utility.cooldown.time.monotonic")
-    def test_reset_stops_the_timer(self, mock_time) -> None:
+    def test_reset_stops_the_timer(self, mock_time: MagicMock) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
         cooldown.start_if_not_running()
@@ -55,7 +55,7 @@ class TestCooldown(unittest.TestCase):
         self.assertIsNone(cooldown.remaining_seconds())
 
     @patch("scaler.utility.cooldown.time.monotonic")
-    def test_can_be_restarted_after_reset(self, mock_time) -> None:
+    def test_can_be_restarted_after_reset(self, mock_time: MagicMock) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
         cooldown.start_if_not_running()

@@ -181,9 +181,10 @@ def _from_args(config_cls: Type[T], kwargs: Dict[str, Any], toml_data: Optional[
             elif isinstance(raw, dict):
                 # Single TOML table [section]: reconstruct one instance.
                 # If the field expects a list, wrap the single instance.
-                instance: Any = _from_toml(inner_type, raw)
+                instance: Any = _from_toml(inner_type, raw)  # pyrefly: ignore[bad-argument-type]
                 result_kwargs[field.name] = [instance] if is_list(field.type) else instance
             else:  # list of dicts - TOML [[array of tables]]
+                # pyrefly: ignore[bad-argument-type]
                 result_kwargs[field.name] = [_from_toml(inner_type, item) for item in raw]
         elif is_config_class(field.type):
             # Nested ConfigClass with no section= - recurse, sharing the same

@@ -22,7 +22,7 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         address: AddressConfig,
         security_config: Optional[SecurityConfig] = None,
     ):
-        self._ymq_context = context
+        self._ymq_context: Optional[IOContext] = context
         self._identity = identity
         self._address = address
 
@@ -185,6 +185,7 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         return ObjectResponseHeader.from_bytes(header_bytes)
 
     def __read_response_payload(self, header: ObjectResponseHeader) -> bytearray:
+        assert self._socket is not None
         if header.payloadLength > 0:
             payload_msg = self._socket.recv_message_sync()
             res = payload_msg.payload.data

@@ -26,12 +26,18 @@ from scaler.utility.logging.utility import setup_logger
 from tests.io import interpreter_shutdown_subject
 from tests.utility.utility import logging_test_name
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 INTERPRETER_EXIT_TIMEOUT_SECONDS = 60
 
 
 class TestYMQInterpreterShutdown(unittest.TestCase):
     """A ymq socket still alive at interpreter exit must not hang or abort the process."""
 
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)

@@ -1,9 +1,15 @@
 import abc
 import hashlib
+import sys
 import uuid
 from typing import Optional
 
 from scaler.config.mixins import ConfigType
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 
 class Identifier(bytes, metaclass=abc.ABCMeta):
@@ -119,8 +125,8 @@ class WorkerManagerID(Identifier, ConfigType):
     def __str__(self) -> str:
         return self.decode()
 
-    @staticmethod
-    def from_string(name: str) -> "WorkerManagerID":
-        if not name:
+    @classmethod
+    def from_string(cls, value: str) -> Self:
+        if not value:
             raise ValueError("worker manager ID cannot be empty")
-        return WorkerManagerID(name.encode())
+        return cls(value.encode())

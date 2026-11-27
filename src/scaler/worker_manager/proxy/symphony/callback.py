@@ -1,6 +1,6 @@
 import concurrent.futures
 import threading
-from typing import Dict
+from typing import Any, Dict
 
 import cloudpickle
 
@@ -15,9 +15,9 @@ except ImportError:
 class SessionCallback(soamapi.SessionCallback):
     def __init__(self):
         self._callback_lock = threading.Lock()
-        self._task_id_to_future: Dict[str, concurrent.futures.Future] = {}
+        self._task_id_to_future: Dict[str, concurrent.futures.Future[Any]] = {}
 
-    def on_response(self, task_output_handle):
+    def on_response(self, task_output_handle: Any):
         with self._callback_lock:
             task_id = task_output_handle.get_id()
 
@@ -31,14 +31,14 @@ class SessionCallback(soamapi.SessionCallback):
             else:
                 future.set_exception(task_output_handle.get_exception().get_embedded_exception())
 
-    def on_exception(self, exception):
+    def on_exception(self, exception: Exception):
         with self._callback_lock:
             for future in self._task_id_to_future.values():
                 future.set_exception(exception)
 
             self._task_id_to_future.clear()
 
-    def submit_task(self, task_id: str, future: concurrent.futures.Future):
+    def submit_task(self, task_id: str, future: concurrent.futures.Future[Any]):
         self._task_id_to_future[task_id] = future
 
     def get_callback_lock(self) -> threading.Lock:

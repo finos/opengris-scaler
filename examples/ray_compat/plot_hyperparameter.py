@@ -5,6 +5,7 @@ Like in `highly_parallel.py`, only minimal changes are needed for the example to
 """
 
 import os
+from typing import Any, Dict
 
 import numpy as np
 import ray
@@ -33,7 +34,7 @@ def generate_hyperparameters():
     }
 
 
-def get_data_loaders(batch_size):
+def get_data_loaders(batch_size: int):
     mnist_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
 
     # We add FileLock here because multiple workers will want to
@@ -59,14 +60,19 @@ class ConvNet(nn.Module):
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
         self.fc = nn.Linear(192, 10)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.relu(F.max_pool2d(self.conv1(x), 3))
         x = x.view(-1, 192)
         x = self.fc(x)
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, device=torch.device("cpu")):
+def train(
+    model: nn.Module,
+    optimizer: optim.Optimizer,
+    train_loader: torch.utils.data.DataLoader,
+    device: torch.device = torch.device("cpu"),
+):
     """Optimize the model with one pass over the data.
 
     Cuts off at 1024 samples to simplify training.
@@ -83,7 +89,7 @@ def train(model, optimizer, train_loader, device=torch.device("cpu")):
         optimizer.step()
 
 
-def test(model, test_loader, device=torch.device("cpu")):
+def test(model: nn.Module, test_loader: torch.utils.data.DataLoader, device: torch.device = torch.device("cpu")):
     """Checks the validation accuracy of the model.
 
     Cuts off at 512 samples for simplicity.
@@ -106,7 +112,7 @@ def test(model, test_loader, device=torch.device("cpu")):
 
 def main():
     @ray.remote
-    def evaluate_hyperparameters(config):
+    def evaluate_hyperparameters(config: Dict[str, Any]):
         model = ConvNet()
         train_loader, test_loader = get_data_loaders(config["batch_size"])
         optimizer = optim.SGD(model.parameters(), lr=config["learning_rate"], momentum=config["momentum"])
@@ -156,6 +162,7 @@ def main():
             best_accuracy = accuracy
 
     # Record the best performing set of hyperparameters.
+    assert best_hyperparameters is not None
     print(
         """Best accuracy over {} trials was {:.3} with
         learning_rate: {:.2}

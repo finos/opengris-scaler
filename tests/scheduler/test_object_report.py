@@ -2,6 +2,7 @@
 
 import asyncio
 import unittest
+from typing import List, Tuple
 from unittest.mock import create_autospec, patch
 
 from scaler.config import defaults
@@ -30,7 +31,7 @@ def make_config_controller() -> VanillaConfigController:
     )
 
 
-def make_object_controller(sizes) -> VanillaObjectController:
+def make_object_controller(sizes: List[Tuple[bytes, ObjectID, int]]) -> VanillaObjectController:
     controller = VanillaObjectController(config_controller=make_config_controller())
     client_id = ClientID.generate_client_id()
     for name, object_id, size in sizes:
@@ -92,7 +93,8 @@ class StorageServerStub:
 
     def __init__(self) -> None:
         self.requested = asyncio.Event()
-        self.answer: asyncio.Future = asyncio.get_running_loop().create_future()  # the latest request's
+        # the latest request's
+        self.answer: asyncio.Future[ObjectStorageTotals] = asyncio.get_running_loop().create_future()
 
     async def info_get_total(self) -> ObjectStorageTotals:
         self.answer = asyncio.get_running_loop().create_future()

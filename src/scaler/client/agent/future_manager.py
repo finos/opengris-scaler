@@ -2,7 +2,7 @@ import logging
 import sys
 import threading
 from concurrent.futures import Future, InvalidStateError
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from scaler.client.agent.mixins import FutureManager
 from scaler.client.future import ScalerFuture
@@ -27,7 +27,7 @@ class ClientFutureManager(FutureManager):
 
         self._task_id_to_future: Dict[TaskID, ScalerFuture] = dict()
 
-    def add_future(self, future: Future):
+    def add_future(self, future: Future[Any]):
         assert isinstance(future, ScalerFuture)
         with self._lock:
             future.set_running_or_notify_cancel()

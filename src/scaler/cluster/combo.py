@@ -99,7 +99,7 @@ class SchedulerClusterCombo:
             self._object_storage_address = AddressConfig.from_string(object_storage_address)
 
         if monitor_address is None:
-            self._monitor_address = None
+            self._monitor_address: Optional[AddressConfig] = None
         else:
             self._monitor_address = AddressConfig.from_string(monitor_address)
 

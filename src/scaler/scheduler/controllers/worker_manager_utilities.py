@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from scaler.protocol import capnp
 from scaler.protocol.capnp import ScalingManagerStatus
@@ -6,7 +6,8 @@ from scaler.utility.identifiers import WorkerID, WorkerManagerID
 
 
 def build_scaling_manager_status(
-    managed_workers: Dict[WorkerManagerID, List[WorkerID]], worker_manager_details: Optional[List[dict]] = None
+    managed_workers: Dict[WorkerManagerID, List[WorkerID]],
+    worker_manager_details: Optional[List[Dict[str, Any]]] = None,
 ) -> ScalingManagerStatus:
     details = worker_manager_details or []
     return capnp.ScalingManagerStatus(

@@ -457,7 +457,7 @@ Arguments (shared by all subcommands)
      - Object storage server address (required for some remote worker setups).
    * - ``-mtc``, ``--max-task-concurrency``
      - No
-     - ``os.cpu_count() - 1``
+     - ``os.cpu_count() or 1``
      - Max workers/jobs (``-1`` means no limit where supported).
    * - ``-uts``, ``--unit-timeout-seconds``
      - No

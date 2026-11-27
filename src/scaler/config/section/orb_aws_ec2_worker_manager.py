@@ -8,6 +8,7 @@ from scaler.config.common.python_worker_environment import PythonWorkerEnvironme
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
+from scaler.config.type_utils import parse_comma_separated_dict, parse_comma_separated_list
 from scaler.config.types.network_backend import NetworkBackendType
 
 
@@ -76,14 +77,12 @@ class ORBAWSEC2WorkerManagerConfig(ConfigClass):
     instance_type: str = dataclasses.field(default="t2.micro", metadata=dict(help="EC2 instance type"))
     security_group_ids: List[str] = dataclasses.field(
         default_factory=list,
-        metadata=dict(
-            type=lambda s: [x for x in s.split(",") if x], help="Comma-separated list of AWS security group IDs"
-        ),
+        metadata=dict(type=parse_comma_separated_list, help="Comma-separated list of AWS security group IDs"),
     )
     instance_tags: Dict[str, str] = dataclasses.field(
         default_factory=dict,
         metadata=dict(
-            type=lambda s: dict(kv.split("=", 1) for kv in s.split(",") if "=" in kv),
+            type=parse_comma_separated_dict,
             help="Comma-separated Key=Value EC2 tags applied to worker instances (e.g. 'Name=my-worker,Env=prod')",
         ),
     )

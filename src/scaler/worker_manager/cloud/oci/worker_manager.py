@@ -72,7 +72,9 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
         num_workers = max(1, int(config.instance_ocpus))
         worker_config = config.worker_config
         scheduler_address = str(config.worker_manager_config.effective_worker_scheduler_address)
-        requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
+        requirements_txt = config.python_worker_environment.requirements_txt
+        assert requirements_txt is not None and container_instance_config.container_image is not None
+        requirements_content = load_requirements_content(requirements_txt)
 
         command = f"""scaler_worker_manager baremetal_native {scheduler_address!r} \
 {child_link_arguments(self._children_address, config.cloud_children_config, unit_id, num_workers)} \
@@ -179,6 +181,8 @@ class OCIInstancesWorkerManager:
         workers_per_instance = max(1, int(config.instance_ocpus))
         mtc = config.worker_manager_config.max_task_concurrency
         max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
+        children_address = config.worker_manager_config.children_address
+        assert children_address is not None
         self._runner = WorkerManagerRunner(
             name="worker_manager_oci_raw",
             worker_manager_config=config.worker_manager_config,
@@ -187,7 +191,7 @@ class OCIInstancesWorkerManager:
             create_provisioner=lambda children_address: OCIInstancesWorkerProvisioner(
                 config, max_instances, children_address
             ),
-            children_address=config.worker_manager_config.children_address,
+            children_address=children_address,
             io_threads=config.worker_config.io_threads,
         )
 

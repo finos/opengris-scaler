@@ -78,7 +78,7 @@ STORAGE_TOTALS_TIMEOUT_SECONDS = 5.0
 # WORKER SPECIFIC OPTIONS
 
 # number of workers, echo worker use 1 process
-DEFAULT_MAX_TASK_CONCURRENCY = os.cpu_count()
+DEFAULT_MAX_TASK_CONCURRENCY = os.cpu_count() or 1
 
 # number of seconds that worker agent send heartbeat to scheduler
 DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 2

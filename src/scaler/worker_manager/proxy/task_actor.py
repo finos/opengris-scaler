@@ -16,7 +16,7 @@ from scaler.worker_manager.proxy.mixins import ExecutionBackend
 logger = logging.getLogger(__name__)
 
 CancelConfirmSender = Callable[[TaskID, TaskCancelConfirmType], Awaitable[None]]
-ResultReporter = Callable[[Task, asyncio.Future, ProfileResult], None]
+ResultReporter = Callable[[Task, asyncio.Future[Any], ProfileResult], None]
 
 
 class _TaskState(enum.Enum):
@@ -32,7 +32,7 @@ class _TaskEntry:
     task: Task
     state: _TaskState
     start_time: Optional[float] = None
-    future: Optional[asyncio.Future] = None
+    future: Optional[asyncio.Future[Any]] = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -48,13 +48,13 @@ class _CancelRequested:
 @dataclasses.dataclass(frozen=True)
 class _Started:
     task_id: TaskID
-    future: asyncio.Future
+    future: asyncio.Future[Any]
 
 
 @dataclasses.dataclass(frozen=True)
 class _Finished:
     task_id: TaskID
-    future: asyncio.Future
+    future: asyncio.Future[Any]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -90,7 +90,7 @@ class TaskActor:
         self._report_result = report_result
 
         self._events: asyncio.Queue[_Event] = asyncio.Queue()
-        self._background_tasks: Set[asyncio.Task] = set()
+        self._background_tasks: Set[asyncio.Task[None]] = set()
 
         self._task_id_to_entry: Dict[TaskID, _TaskEntry] = dict()
         self._queued_task_id_queue: StablePriorityQueue[int, TaskID] = StablePriorityQueue()
@@ -173,11 +173,11 @@ class TaskActor:
         # A STARTING task has nothing to cancel in the backend yet: _handle_started cancels it once it does.
         # Either way the confirm waits for _CancelDone, so it reports what the backend did.
         if entry.state == _TaskState.RUNNING:
-            self._spawn(self._cancel_in_backend(task_id, cast(asyncio.Future, entry.future)))
+            self._spawn(self._cancel_in_backend(task_id, cast(asyncio.Future[Any], entry.future)))
 
         entry.state = _TaskState.CANCELING
 
-    def _handle_started(self, task_id: TaskID, future: asyncio.Future) -> None:
+    def _handle_started(self, task_id: TaskID, future: asyncio.Future[Any]) -> None:
         entry = self._task_id_to_entry[task_id]
         entry.future = future
         future.add_done_callback(lambda done: self._events.put_nowait(_Finished(task_id, done)))
@@ -188,7 +188,7 @@ class TaskActor:
 
         entry.state = _TaskState.RUNNING
 
-    def _handle_finished(self, task_id: TaskID, future: asyncio.Future) -> None:
+    def _handle_finished(self, task_id: TaskID, future: asyncio.Future[Any]) -> None:
         entry = self._task_id_to_entry[task_id]
         if task_id in self._permit_holder_queue:
             self._permit_holder_queue.remove(task_id)
@@ -243,7 +243,7 @@ class TaskActor:
 
         self._events.put_nowait(_Started(task.taskId, future))
 
-    async def _cancel_in_backend(self, task_id: TaskID, future: asyncio.Future) -> None:
+    async def _cancel_in_backend(self, task_id: TaskID, future: asyncio.Future[Any]) -> None:
         try:
             await self._execution_backend.on_cancel(
                 TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=True))

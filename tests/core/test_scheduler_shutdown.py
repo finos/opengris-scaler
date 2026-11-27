@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import time
 import unittest
@@ -6,6 +7,11 @@ import unittest
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 SCHEDULER_EXIT_TIMEOUT_SECONDS = 30
 
@@ -17,6 +23,7 @@ def noop_sleep(seconds: float) -> float:
 
 
 class TestSchedulerShutdown(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
