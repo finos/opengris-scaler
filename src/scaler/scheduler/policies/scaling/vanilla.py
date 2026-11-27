@@ -1,14 +1,14 @@
 import logging
 from math import ceil
-from typing import Dict, List, Tuple
+from typing import Dict, List, Mapping, Tuple
 
-from scaler.config.constants import VANILLA_LOWER_TASK_RATIO, VANILLA_UPPER_TASK_RATIO
-from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.config.constants import NO_LIMIT, VANILLA_LOWER_TASK_RATIO, VANILLA_UPPER_TASK_RATIO
+from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
-from scaler.scheduler.policies.scaling.types import WorkerManagerBounds, WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
-from scaler.utility.identifiers import WorkerID, WorkerManagerID
-from scaler.utility.snapshot import InformationSnapshot
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
+from scaler.utility.identifiers import WorkerManagerID
 
 logger = logging.getLogger(__name__)
 
@@ -26,48 +26,26 @@ class VanillaScalingPolicy(ScalingPolicy):
         self._logged_desired_by_manager: Dict[WorkerManagerID, int] = {}
 
     def get_scaling_commands(
-        self,
-        information_snapshot: InformationSnapshot,
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
-        managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
+        self, worker_manager_id: WorkerManagerID, cluster_state: ClusterState
     ) -> List[WorkerManagerCommand]:
-        # the manager being answered counts as live even if no snapshot was built for it
-        live_manager_ids = set(worker_manager_snapshots) | {worker_manager_heartbeat.workerManagerID}
-        forget_departed_managers(self._logged_desired_by_manager, live_manager_ids)
+        forget_departed_managers(self._logged_desired_by_manager, set(cluster_state.managers))
 
-        desired = self._compute_desired_worker_count(
-            information_snapshot, worker_manager_heartbeat, managed_worker_ids, worker_manager_snapshots
-        )
-        desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
+        desired = self._compute_desired_worker_count(worker_manager_id, cluster_state)
+        desired_per_capset: List[Tuple[Mapping[str, int], int]] = [({}, desired)]
         return [build_set_desired_command(desired_per_capset)]
 
-    def _compute_desired_worker_count(
-        self,
-        information_snapshot: InformationSnapshot,
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
-        managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
-    ) -> int:
-        """Compute the target worker count for this manager from current task and worker observations.
+    def _compute_desired_worker_count(self, manager_id: WorkerManagerID, cluster_state: ClusterState) -> int:
+        """Compute the target worker count for this manager from the cluster state."""
+        info = cluster_state.managers[manager_id]
+        current = info.worker_count
+        task_count = cluster_state.n_tasks
+        serving_workers = cluster_state.n_workers - cluster_state.n_draining_workers
 
-        A draining worker is not supply: it takes no new task, and its manager does not count it either."""
-        manager_id = worker_manager_heartbeat.workerManagerID
-        serving_worker_ids = {
-            worker_id for worker_id, heartbeat in information_snapshot.workers.items() if not heartbeat.draining
-        }
-        current = sum(1 for worker_id in managed_worker_ids if worker_id in serving_worker_ids)
-        task_count = len(information_snapshot.tasks)
-        worker_count = len(serving_worker_ids)
-        worker_count_by_manager = {
-            other_id: snapshot.worker_count for other_id, snapshot in worker_manager_snapshots.items()
-        }
-
-        floor_held = floor_held_worker_count(manager_id, self._bounds, worker_count_by_manager)
-        desired = ratio_target(current, task_count, worker_count, floor_held)
+        floor_held = floor_held_worker_count(manager_id, self._bounds, cluster_state.managers)
+        desired = ratio_target(current, task_count, serving_workers, floor_held)
         bounds = self._bounds.get(manager_id, WorkerManagerBounds(max_task_concurrency=None))
-        desired = clamp_to_bounds(desired, bounds, worker_manager_heartbeat.maxTaskConcurrency)
-        self.__log_decision(manager_id, task_count, worker_count, current, desired)
+        desired = clamp_to_bounds(desired, bounds, info.max_task_concurrency)
+        self.__log_decision(manager_id, task_count, serving_workers, current, desired)
         return desired
 
     def __log_decision(
@@ -108,8 +86,10 @@ def ratio_target(current: int, task_count: int, worker_count: int, floor_held: i
 
 
 def clamp_to_bounds(desired: int, bounds: WorkerManagerBounds, advertised_max_task_concurrency: int) -> int:
-    """Keep `desired` within `bounds`, whose cap never exceeds the manager's advertised maximum (-1: none)."""
-    caps = [cap for cap in (bounds.max_task_concurrency, advertised_max_task_concurrency) if cap not in (None, -1)]
+    """Keep `desired` within `bounds`, whose cap never exceeds the manager's advertised maximum (NO_LIMIT: none)."""
+    caps = [
+        cap for cap in (bounds.max_task_concurrency, advertised_max_task_concurrency) if cap not in (None, NO_LIMIT)
+    ]
     if not caps:
         return max(bounds.min_task_concurrency, desired)
 
@@ -119,15 +99,15 @@ def clamp_to_bounds(desired: int, bounds: WorkerManagerBounds, advertised_max_ta
 
 def floor_held_worker_count(
     manager_id: WorkerManagerID,
-    bounds_by_manager: Dict[WorkerManagerID, WorkerManagerBounds],
-    worker_count_by_manager: Dict[WorkerManagerID, int],
+    bounds_by_manager: Mapping[WorkerManagerID, WorkerManagerBounds],
+    worker_manager_infos: Mapping[WorkerManagerID, WorkerManagerInfo],
 ) -> int:
     """The connected workers that managers other than `manager_id` hold at their floors.
 
     A manager never drops below its floor, so these workers are safe to count as supply. Workers above a floor
     are not: two scaling managers sized from one snapshot would each subtract the other and drain together."""
     return sum(
-        min(worker_count, bounds_by_manager[other_id].min_task_concurrency)
-        for other_id, worker_count in worker_count_by_manager.items()
+        min(info.worker_count, bounds_by_manager[other_id].min_task_concurrency)
+        for other_id, info in worker_manager_infos.items()
         if other_id != manager_id and other_id in bounds_by_manager
     )

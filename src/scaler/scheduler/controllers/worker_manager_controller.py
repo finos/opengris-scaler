@@ -1,11 +1,14 @@
+import dataclasses
 import logging
 import time
-from typing import Dict, List, Optional, Tuple
+from types import MappingProxyType
+from typing import Dict, List, Mapping, Optional
 
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
 from scaler.protocol.capnp import (
     ScalingManagerStatus,
+    WorkerHeartbeat,
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
@@ -15,14 +18,24 @@ from scaler.scheduler.controllers.config_controller import VanillaConfigControll
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.controllers.worker_manager_utilities import build_scaling_manager_status
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
-from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.utility import build_cluster_state
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.mixins import Looper, Reporter
-from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
 
 UINT16_MAX = 2**16 - 1
+
+
+@dataclasses.dataclass
+class _WorkerManagerHolder:
+    manager_id: WorkerManagerID
+    source: bytes  # network identity (ZMQ/YMQ socket address)
+    last_seen_at: float  # time.monotonic() of last heartbeat
+    capabilities: Dict[str, int]
+    max_task_concurrency: int  # NO_LIMIT = unlimited
+    last_desired_total: int = 0
 
 
 class WorkerManagerController(Looper, Reporter):
@@ -34,15 +47,8 @@ class WorkerManagerController(Looper, Reporter):
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
 
-        # Track worker manager heartbeats: source -> (last_seen_time, heartbeat)
-        self._manager_alive_since: Dict[bytes, Tuple[float, WorkerManagerHeartbeat]] = {}
-
-        # Reverse map: worker_manager_id -> source (for duplicate detection)
-        self._manager_id_to_source: Dict[WorkerManagerID, bytes] = {}
-
-        # Per-manager total desired worker count from the latest setDesiredTaskConcurrency command.
-        # Used to report pendingWorkers = max(0, last_desired - connected_count) to the monitor.
-        self._last_desired_total: Dict[bytes, int] = {}
+        self._managers: Dict[WorkerManagerID, _WorkerManagerHolder] = {}
+        self._source_to_manager: Dict[bytes, _WorkerManagerHolder] = {}
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
@@ -50,36 +56,49 @@ class WorkerManagerController(Looper, Reporter):
         self._worker_controller = worker_controller
 
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
-        heartbeat.capabilities = capabilities_to_dict(heartbeat.capabilities)
-        if source not in self._manager_alive_since:
-            manager_id = heartbeat.workerManagerID
-            existing_source = self._manager_id_to_source.get(manager_id)
-            if existing_source is not None and existing_source != source:
-                logger.warning(
-                    f"Duplicate {manager_id!r}: source {source!r} rejected, "
-                    f"already registered by source {existing_source!r}"
-                )
-                return
-            self._manager_id_to_source[manager_id] = source
+        manager_id = heartbeat.workerManagerID
+        holder = self._managers.get(manager_id)
 
+        if holder is not None and holder.source != source:
+            logger.warning(
+                f"Duplicate {manager_id!r}: source {source!r} rejected, already registered by source {holder.source!r}"
+            )
+            return
+
+        previous_holder = self._source_to_manager.get(source)
+        if previous_holder is not None and previous_holder.manager_id != manager_id:
+            del self._managers[previous_holder.manager_id]
+            del self._source_to_manager[source]
+            logger.info(f"{previous_holder.manager_id!r} replaced by {manager_id!r} from source {source!r}")
+
+        capabilities = capabilities_to_dict(heartbeat.capabilities)
+
+        if holder is None:
+            holder = _WorkerManagerHolder(
+                manager_id=manager_id,
+                source=source,
+                last_seen_at=time.monotonic(),
+                capabilities=capabilities,
+                max_task_concurrency=heartbeat.maxTaskConcurrency,
+            )
+            self._managers[manager_id] = holder
+            self._source_to_manager[source] = holder
             logger.info(f"{manager_id!r} connected")
-
-        self._manager_alive_since[source] = (time.time(), heartbeat)
+        else:
+            holder.last_seen_at = time.monotonic()
+            holder.capabilities = capabilities
+            holder.max_task_concurrency = heartbeat.maxTaskConcurrency
 
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
-        information_snapshot = self._build_snapshot()
-        managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
-        worker_manager_snapshots = self._build_manager_snapshots(information_snapshot)
+        cluster_state = self._build_cluster_state()
 
-        commands = self._scaling_policy.get_scaling_commands(
-            information_snapshot, heartbeat, managed_worker_ids, worker_manager_snapshots
-        )
+        commands = self._scaling_policy.get_scaling_commands(worker_manager_id=manager_id, cluster_state=cluster_state)
 
         for command in commands:
             await self._send_command(source, command)
 
-        self._last_desired_total[source] = _sum_desired_for_manager(commands, heartbeat.capabilities)
+        holder.last_desired_total = _sum_desired_for_manager(commands, capabilities)
 
     async def routine(self):
         await self._clean_managers()
@@ -87,19 +106,18 @@ class WorkerManagerController(Looper, Reporter):
     def get_status(self) -> ScalingManagerStatus:
         managed_workers = self.get_managed_workers()
 
-        now = time.time()
+        now = time.monotonic()
         details = []
-        for source, (last_seen, heartbeat) in self._manager_alive_since.items():
-            caps = heartbeat.capabilities
-            caps_str = " ".join(sorted(capabilities_to_dict(caps).keys())) if caps else ""
-            connected = len(self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID))
-            pending = max(0, self._last_desired_total.get(source, 0) - connected)
+        for manager_id, holder in self._managers.items():
+            caps_str = " ".join(sorted(holder.capabilities.keys())) if holder.capabilities else ""
+            connected = len(self._worker_controller.get_workers_by_manager_id(manager_id))
+            pending = max(0, holder.last_desired_total - connected)
             details.append(
                 {
-                    "worker_manager_id": heartbeat.workerManagerID,
-                    "identity": source.decode(errors="replace"),
-                    "last_seen_seconds": min(int(now - last_seen), UINT16_MAX),
-                    "max_task_concurrency": heartbeat.maxTaskConcurrency,
+                    "worker_manager_id": manager_id,
+                    "identity": holder.source.decode(errors="replace"),
+                    "last_seen_seconds": min(int(now - holder.last_seen_at), UINT16_MAX),
+                    "max_task_concurrency": holder.max_task_concurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
                 }
@@ -110,69 +128,57 @@ class WorkerManagerController(Looper, Reporter):
     def get_managed_workers(self) -> Dict[WorkerManagerID, List[WorkerID]]:
         """Return managed workers keyed by worker_manager_id (from heartbeat)."""
         result: Dict[WorkerManagerID, List[WorkerID]] = {}
-        for source, (_, heartbeat) in self._manager_alive_since.items():
-            manager_id = heartbeat.workerManagerID
+        for manager_id in self._managers:
             result[manager_id] = self._worker_controller.get_workers_by_manager_id(manager_id)
         return result
 
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
         await self._binder.send(source, command, detached=True)
 
-    def _build_manager_snapshots(
-        self, information_snapshot: InformationSnapshot
-    ) -> Dict[WorkerManagerID, WorkerManagerSnapshot]:
-        """Build cross-manager snapshots from all known managers, keyed by worker_manager_id.
-
-        A manager's worker count leaves out its draining workers: they take no new task, and the manager does not
-        count them as supply either."""
-        snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot] = {}
-        for source, (last_seen, heartbeat) in self._manager_alive_since.items():
-            manager_id = heartbeat.workerManagerID
-            worker_count = sum(
-                1
-                for worker_id in self._worker_controller.get_workers_by_manager_id(manager_id)
-                if not information_snapshot.workers[worker_id].draining
+    def _build_worker_manager_infos(
+        self, workers: Mapping[WorkerID, WorkerHeartbeat]
+    ) -> Dict[WorkerManagerID, WorkerManagerInfo]:
+        """Build frozen manager summaries with read-only views of the holders' shared capability dictionaries."""
+        return {
+            manager_id: WorkerManagerInfo(
+                manager_id=manager_id,
+                max_task_concurrency=holder.max_task_concurrency,
+                worker_count=sum(
+                    1
+                    for worker_id in self._worker_controller.get_workers_by_manager_id(manager_id)
+                    if not workers[worker_id].draining
+                ),
+                capabilities=MappingProxyType(holder.capabilities),
             )
-            snapshots[manager_id] = WorkerManagerSnapshot(
-                worker_manager_id=manager_id,
-                max_task_concurrency=heartbeat.maxTaskConcurrency,
-                worker_count=worker_count,
-                last_seen_at=last_seen,
-                capabilities=heartbeat.capabilities,
-            )
-        return snapshots
+            for manager_id, holder in self._managers.items()
+        }
 
-    def _build_snapshot(self) -> InformationSnapshot:
+    def _build_cluster_state(self) -> ClusterState:
         tasks = self._task_controller._task_id_to_task  # type: ignore # noqa
         workers = {
             worker_id: worker_heartbeat
             for worker_id, (_, worker_heartbeat) in self._worker_controller._worker_alive_since.items()  # type: ignore # noqa
         }
-        return InformationSnapshot(tasks=tasks, workers=workers)
+        worker_manager_infos = self._build_worker_manager_infos(workers)
+        return build_cluster_state(tasks, workers, worker_manager_infos)
 
     async def _clean_managers(self):
         """Clean up dead worker managers that have not sent heartbeats."""
-        now = time.time()
+        now = time.monotonic()
         timeout_seconds = DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
         dead_managers = [
-            source
-            for source, (alive_since, _) in self._manager_alive_since.items()
-            if now - alive_since > timeout_seconds
+            manager_id for manager_id, holder in self._managers.items() if now - holder.last_seen_at > timeout_seconds
         ]
         for dead_manager in dead_managers:
             await self._disconnect_manager(dead_manager)
 
-    async def _disconnect_manager(self, source: bytes):
-        if source not in self._manager_alive_since:
+    async def _disconnect_manager(self, manager_id: WorkerManagerID):
+        holder = self._managers.pop(manager_id, None)
+        if holder is None:
             return
 
-        _, heartbeat = self._manager_alive_since[source]
-        manager_id = heartbeat.workerManagerID
-        self._manager_id_to_source.pop(manager_id, None)
-
-        logger.info(f"WorkerManager {source!r} disconnected")
-        self._manager_alive_since.pop(source)
-        self._last_desired_total.pop(source, None)
+        del self._source_to_manager[holder.source]
+        logger.info(f"{manager_id!r} disconnected")
 
 
 def _sum_desired_for_manager(commands: List[WorkerManagerCommand], manager_capabilities: Dict[str, int]) -> int:

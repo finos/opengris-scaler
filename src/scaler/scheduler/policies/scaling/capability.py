@@ -1,14 +1,13 @@
 import logging
-from collections import defaultdict
 from math import ceil
-from typing import Dict, FrozenSet, List, Tuple
+from typing import Dict, FrozenSet, List, Mapping, Tuple
 
-from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.config.constants import NO_LIMIT
+from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
-from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
-from scaler.utility.identifiers import WorkerID, WorkerManagerID
-from scaler.utility.snapshot import InformationSnapshot
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
+from scaler.utility.identifiers import WorkerManagerID
 
 logger = logging.getLogger(__name__)
 
@@ -30,26 +29,20 @@ class CapabilityScalingPolicy(ScalingPolicy):
         self._logged_desired_by_manager: Dict[WorkerManagerID, Dict[FrozenSet[Tuple[str, int]], int]] = {}
 
     def get_scaling_commands(
-        self,
-        information_snapshot: InformationSnapshot,
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
-        managed_worker_ids: List[WorkerID],
-        worker_manager_snapshots: Dict[WorkerManagerID, WorkerManagerSnapshot],
+        self, worker_manager_id: WorkerManagerID, cluster_state: ClusterState
     ) -> List[WorkerManagerCommand]:
-        manager_id = worker_manager_heartbeat.workerManagerID
-        # the manager being answered counts as live even if no snapshot was built for it
-        forget_departed_managers(self._logged_desired_by_manager, set(worker_manager_snapshots) | {manager_id})
+        forget_departed_managers(self._logged_desired_by_manager, set(cluster_state.managers))
 
-        tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
-        desired_per_capset = self._compute_desired_per_capset(tasks_by_capability, worker_manager_heartbeat)
-        self.__log_decisions(manager_id, tasks_by_capability, desired_per_capset)
+        info = cluster_state.managers[worker_manager_id]
+        desired_per_capset = self._compute_desired_per_capset(cluster_state, info)
+        self.__log_decisions(worker_manager_id, cluster_state, desired_per_capset)
         return [build_set_desired_command(desired_per_capset)]
 
     def __log_decisions(
         self,
         manager_id: WorkerManagerID,
-        tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
-        desired_per_capset: List[Tuple[Dict[str, int], int]],
+        cluster_state: ClusterState,
+        desired_per_capset: List[Tuple[Mapping[str, int], int]],
     ) -> None:
         """Logs what is asked of a manager, once per run of the same request.
 
@@ -65,39 +58,23 @@ class CapabilityScalingPolicy(ScalingPolicy):
             if previously_logged.get(frozenset(capabilities.items())) == desired:
                 continue
 
-            task_count = len(tasks_by_capability[frozenset(capabilities.keys())])
+            task_count = cluster_state.n_tasks_by_capset[frozenset(capabilities.keys())]
             logger.info(f"scaling {manager_id!r}: tasks={task_count}, capabilities={capabilities} -> desired={desired}")
 
-    def _group_tasks_by_capability(
-        self, information_snapshot: InformationSnapshot
-    ) -> Dict[FrozenSet[str], List[Dict[str, int]]]:
-        """Group pending tasks by their required capability keys."""
-        tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]] = defaultdict(list)
-
-        for task in information_snapshot.tasks.values():
-            capability_keys = frozenset(task.capabilities.keys())
-            tasks_by_capability[capability_keys].append(task.capabilities)
-
-        return tasks_by_capability
-
     def _compute_desired_per_capset(
-        self,
-        tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
-    ) -> List[Tuple[Dict[str, int], int]]:
-        """Compute desired worker count per capability set from observed tasks.
+        self, cluster_state: ClusterState, manager_info: WorkerManagerInfo
+    ) -> List[Tuple[Mapping[str, int], int]]:
+        """Compute desired worker count per capability set from the cluster state.
 
         Capsets with zero tasks are omitted (declarative "no opinion" for that capset).
-        Each desired count is clamped by the manager's maxTaskConcurrency.
+        Each desired count is clamped by the manager's max_task_concurrency.
         """
-        max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
-        result: List[Tuple[Dict[str, int], int]] = []
-        for _capability_keys, tasks in tasks_by_capability.items():
-            if not tasks:
+        result: List[Tuple[Mapping[str, int], int]] = []
+        for capset, count in cluster_state.n_tasks_by_capset.items():
+            if count == 0:
                 continue
-            desired = max(1, ceil(len(tasks) / self._upper_task_ratio))
-            if max_concurrency != -1:
-                desired = min(desired, max_concurrency)
-            # Use first task's concrete capability dict as the representative for the capset.
-            result.append((tasks[0], desired))
+            desired = max(1, ceil(count / self._upper_task_ratio))
+            if manager_info.max_task_concurrency != NO_LIMIT:
+                desired = min(desired, manager_info.max_task_concurrency)
+            result.append((cluster_state.capset_representatives[capset], desired))
         return result

@@ -1,20 +1,28 @@
 import unittest
 from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import patch
 
-from scaler.protocol.capnp import WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
+from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 from scaler.scheduler.policies.utility import create_policies
+from scaler.scheduler.types import ClusterState, WorkerManagerInfo
 from scaler.utility.identifiers import WorkerManagerID
 
 MAX_TASK_CONCURRENCY = 8
 
 
 def _desired_task_concurrency(
-    policy: StaticScalingPolicy, worker_manager_id: WorkerManagerID = WorkerManagerID(b"manager")
+    policy: StaticScalingPolicy,
+    worker_manager_id: WorkerManagerID = WorkerManagerID(b"manager"),
+    max_task_concurrency: int = MAX_TASK_CONCURRENCY,
 ) -> int:
-    heartbeat = WorkerManagerHeartbeat(maxTaskConcurrency=MAX_TASK_CONCURRENCY, workerManagerID=worker_manager_id)
-    commands = policy.get_scaling_commands(MagicMock(), heartbeat, [], {})
+    info = WorkerManagerInfo(
+        manager_id=worker_manager_id, max_task_concurrency=max_task_concurrency, worker_count=0, capabilities={}
+    )
+    commands = policy.get_scaling_commands(
+        worker_manager_id=worker_manager_id,
+        cluster_state=ClusterState(n_tasks=0, n_workers=0, n_draining_workers=0, managers={worker_manager_id: info}),
+    )
     (command,) = commands
     (request,) = command.setDesiredTaskConcurrencyRequests
     return request.taskConcurrency
@@ -23,6 +31,13 @@ def _desired_task_concurrency(
 class TestStaticScalingPolicy(unittest.TestCase):
     def test_default_requests_the_advertised_maximum(self) -> None:
         self.assertEqual(_desired_task_concurrency(StaticScalingPolicy(None, {})), MAX_TASK_CONCURRENCY)
+
+    def test_a_zero_capacity_manager_preserves_zero(self) -> None:
+        with patch(
+            "scaler.scheduler.policies.scaling.static.build_set_desired_command", wraps=build_set_desired_command
+        ) as build_command:
+            self.assertEqual(_desired_task_concurrency(StaticScalingPolicy(None, {}), max_task_concurrency=0), 0)
+        build_command.assert_called_once_with([({}, 0)])
 
     def test_argument_sets_the_count(self) -> None:
         self.assertEqual(_desired_task_concurrency(StaticScalingPolicy(3, {})), 3)

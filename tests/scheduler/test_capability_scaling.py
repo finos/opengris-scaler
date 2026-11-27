@@ -1,12 +1,13 @@
 import unittest
 from typing import Dict, Optional
 
-from scaler.protocol.capnp import Task, WorkerManagerHeartbeat
+from scaler.protocol.capnp import Task
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
+from scaler.scheduler.policies.scaling.utility import build_cluster_state
+from scaler.scheduler.types import WorkerManagerInfo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.snapshot import InformationSnapshot
 
 
 class TestCapabilityScalingPolicy(unittest.TestCase):
@@ -16,17 +17,22 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         setup_logger()
         self.policy = CapabilityScalingPolicy()
 
-    def _commands(self, snapshot, heartbeat, managed):
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
+    def _commands(self, tasks, workers, manager_id, managed, max_task_concurrency=10, capabilities=None):
+        info = _create_worker_manager_info(manager_id, max_task_concurrency, capabilities, worker_count=len(managed))
+        commands = self.policy.get_scaling_commands(
+            worker_manager_id=manager_id, cluster_state=build_cluster_state(tasks, workers, {manager_id: info})
+        )
         self.assertEqual(len(commands), 1)
         return commands[0]
 
     def test_no_tasks_emits_empty_requests(self):
         """No tasks: per-capset list is empty -> emits a command with no capset requests."""
-        snapshot = InformationSnapshot(tasks={}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"))
+        manager_id = WorkerManagerID(b"mgr")
+        info = _create_worker_manager_info(manager_id)
 
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {})
+        commands = self.policy.get_scaling_commands(
+            worker_manager_id=manager_id, cluster_state=build_cluster_state({}, {}, {manager_id: info})
+        )
 
         self.assertEqual(len(commands), 1)
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
@@ -35,10 +41,9 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
     def test_one_capset_targets_at_least_one_worker(self):
         """A single capset with one task targets one worker for that capset."""
         task_id = TaskID.generate_task_id()
-        snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1})
-
-        command = self._commands(snapshot, heartbeat, [])
+        command = self._commands(
+            {task_id: _create_mock_task(task_id, {"gpu": 1})}, {}, WorkerManagerID(b"mgr"), [], capabilities={"gpu": -1}
+        )
 
         requests = list(command.setDesiredTaskConcurrencyRequests)
         self.assertEqual(len(requests), 1)
@@ -50,10 +55,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         gpu_id = TaskID.generate_task_id()
         tpu_id = TaskID.generate_task_id()
         tasks = {gpu_id: _create_mock_task(gpu_id, {"gpu": 1}), tpu_id: _create_mock_task(tpu_id, {"tpu": 1})}
-        snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1, "tpu": -1})
-
-        command = self._commands(snapshot, heartbeat, [])
+        command = self._commands(tasks, {}, WorkerManagerID(b"mgr"), [], capabilities={"gpu": -1, "tpu": -1})
 
         requests = list(command.setDesiredTaskConcurrencyRequests)
         caps_in_requests = {frozenset(capabilities_to_dict(r.capabilities).keys()) for r in requests}
@@ -67,10 +69,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         for _ in range(20):
             tid = TaskID.generate_task_id()
             tasks[tid] = _create_mock_task(tid, {"gpu": 1})
-        snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1})
-
-        command = self._commands(snapshot, heartbeat, [])
+        command = self._commands(tasks, {}, WorkerManagerID(b"mgr"), [], capabilities={"gpu": -1})
 
         requests = list(command.setDesiredTaskConcurrencyRequests)
         self.assertEqual(len(requests), 1)
@@ -78,17 +77,14 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertEqual(requests[0].taskConcurrency, 4)
 
     def test_max_concurrency_clamps_per_capset(self):
-        """Per-capset desired clamped by manager's maxTaskConcurrency."""
+        """Per-capset desired clamped by manager's max_task_concurrency."""
         tasks = {}
         for _ in range(50):
             tid = TaskID.generate_task_id()
             tasks[tid] = _create_mock_task(tid, {"gpu": 1})
-        snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(
-            WorkerManagerID(b"mgr"), max_task_concurrency=3, capabilities={"gpu": -1}
+        command = self._commands(
+            tasks, {}, WorkerManagerID(b"mgr"), [], max_task_concurrency=3, capabilities={"gpu": -1}
         )
-
-        command = self._commands(snapshot, heartbeat, [])
 
         requests = list(command.setDesiredTaskConcurrencyRequests)
         self.assertEqual(requests[0].taskConcurrency, 3)
@@ -97,10 +93,13 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         """A capability set with zero observed tasks must not appear in the emitted requests."""
         # 1 gpu task; tpu capset has no tasks even if the manager advertises tpu.
         task_id = TaskID.generate_task_id()
-        snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1, "tpu": -1})
-
-        command = self._commands(snapshot, heartbeat, [])
+        command = self._commands(
+            {task_id: _create_mock_task(task_id, {"gpu": 1})},
+            {},
+            WorkerManagerID(b"mgr"),
+            [],
+            capabilities={"gpu": -1, "tpu": -1},
+        )
 
         requests = list(command.setDesiredTaskConcurrencyRequests)
         capsets = [set(capabilities_to_dict(r.capabilities).keys()) for r in requests]
@@ -111,11 +110,11 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         """A task requiring a capability that no manager-side worker yet provides
         still produces a per-capset request so the manager can spawn one."""
         task_id = TaskID.generate_task_id()
-        snapshot = InformationSnapshot(tasks={task_id: _create_mock_task(task_id, {"gpu": 1})}, workers={})
         # Manager advertises gpu so the request is serviceable; no managed workers yet.
-        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1})
 
-        command = self._commands(snapshot, heartbeat, [])
+        command = self._commands(
+            {task_id: _create_mock_task(task_id, {"gpu": 1})}, {}, WorkerManagerID(b"mgr"), [], capabilities={"gpu": -1}
+        )
 
         requests = list(command.setDesiredTaskConcurrencyRequests)
         self.assertEqual(len(requests), 1)
@@ -135,10 +134,12 @@ class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
         empty request list -- effective desired (0) differs from current (3) so the manager
         is told to drain (via extract_desired_count returning 0 for the empty list)."""
         managed = [WorkerID(f"w{i}".encode()) for i in range(3)]
-        snapshot = InformationSnapshot(tasks={}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(WorkerManagerID(b"mgr"), capabilities={"gpu": -1})
+        manager_id = WorkerManagerID(b"mgr")
+        info = _create_worker_manager_info(manager_id, capabilities={"gpu": -1}, worker_count=len(managed))
 
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
+        commands = self.policy.get_scaling_commands(
+            worker_manager_id=manager_id, cluster_state=build_cluster_state({}, {}, {manager_id: info})
+        )
 
         self.assertEqual(len(commands), 1)
         # No per-capset requests because there are no tasks -- the manager interprets this
@@ -158,9 +159,15 @@ def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
     )
 
 
-def _create_worker_manager_heartbeat(
-    worker_manager_id: WorkerManagerID, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
-) -> WorkerManagerHeartbeat:
-    return WorkerManagerHeartbeat(
-        maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
+def _create_worker_manager_info(
+    worker_manager_id: WorkerManagerID,
+    max_task_concurrency: int = 10,
+    capabilities: Optional[Dict[str, int]] = None,
+    worker_count: int = 0,
+) -> WorkerManagerInfo:
+    return WorkerManagerInfo(
+        manager_id=worker_manager_id,
+        max_task_concurrency=max_task_concurrency,
+        worker_count=worker_count,
+        capabilities=capabilities or {},
     )
