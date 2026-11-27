@@ -71,7 +71,9 @@ class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
             pendingUnits=0,
         )
         self.binder.send.reset_mock()
-        await self.runner._on_receive_child(unit_id.encode(), deserialize(serialize(heartbeat)))
+        message = deserialize(serialize(heartbeat))
+        assert message is not None
+        await self.runner._on_receive_child(unit_id.encode(), message)
         (command,) = [
             call.args[1] for call in self.binder.send.call_args_list if isinstance(call.args[1], WorkerManagerCommand)
         ]
@@ -170,6 +172,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         self.runner._binder_children = binder
 
         heartbeat = deserialize(serialize(WorkerHeartbeat()))  # a field read needs a struct off the wire
+        assert heartbeat is not None
         await self.runner._on_receive_child(b"unit-1", heartbeat)
 
         binder.send.assert_awaited_once()
@@ -216,7 +219,7 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
         self.wp._task = self.task_cancel
 
     async def _dispatch(self, message: object) -> None:
-        await self.wp._WorkerProcess__on_receive_external(message)
+        await self.wp._WorkerProcess__on_receive_external(message)  # pyrefly: ignore[missing-attribute]
 
     async def test_messages_before_heartbeat_echo_are_queued(self) -> None:
         task = _make_task()

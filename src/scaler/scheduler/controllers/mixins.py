@@ -188,7 +188,7 @@ class TaskController(Reporter):
 
 class WorkerController(Reporter):
     @abc.abstractmethod
-    def acquire_worker(self, task: Task) -> Optional[WorkerID]:
+    def acquire_worker(self, task: Task) -> WorkerID:
         """this acquires worker should be atomic, means it cannot be async decorated, otherwise it will create gap that
         get worker but task is not send to worker, and cannot find task in the worker state"""
 

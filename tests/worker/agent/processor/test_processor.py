@@ -73,7 +73,7 @@ class ProcessorLogExitTest(unittest.TestCase):
         record = self.__log_exit("object storage error", exception=exception)
 
         self.assertEqual(record.levelno, logging.ERROR)
-        self.assertIsNotNone(record.exc_info)
+        assert record.exc_info
         self.assertIs(record.exc_info[1], exception)
 
     def test_in_flight_task_is_named_when_an_exception_is_present(self) -> None:

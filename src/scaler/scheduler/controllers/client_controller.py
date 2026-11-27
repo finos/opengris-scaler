@@ -38,11 +38,11 @@ class VanillaClientController(ClientController, Looper, Reporter):
 
         self._client_to_task_ids: OneToManyDict[ClientID, TaskID] = OneToManyDict()
 
-        self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncPublisher] = None
-        self._object_controller: Optional[ObjectController] = None
-        self._task_controller: Optional[TaskController] = None
-        self._worker_controller: Optional[WorkerController] = None
+        self._binder: AsyncBinder
+        self._binder_monitor: AsyncPublisher
+        self._object_controller: ObjectController
+        self._task_controller: TaskController
+        self._worker_controller: WorkerController
 
         self._connected_clients: Dict[ClientID, _ConnectedClient] = dict()
 

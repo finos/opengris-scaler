@@ -11,7 +11,7 @@ from scaler.protocol.capnp import BaseMessage
 
 class YMQAsyncPublisher(AsyncPublisher):
     def __init__(self, context: IOContext, identity: bytes):
-        self._ymq_context = context
+        self._ymq_context: Optional[IOContext] = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
         self._socket: Optional[BinderSocket] = BinderSocket(self._ymq_context, self._identity.decode())

@@ -13,8 +13,8 @@ class ClientObjectManager(ObjectManager):
 
         self._identity = identity
 
-        self._connector_internal: Optional[AsyncConnector] = None
-        self._connector_external: Optional[AsyncConnector] = None
+        self._connector_internal: AsyncConnector
+        self._connector_external: AsyncConnector
 
     def register(self, connector_internal: AsyncConnector, connector_external: AsyncConnector):
         self._connector_internal = connector_internal

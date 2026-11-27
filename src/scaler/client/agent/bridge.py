@@ -864,7 +864,8 @@ class InProcessAgentBridge(ClientAgentBridge):
         return await self._agent.get_object_storage_connector()
 
     def join(self) -> None:
-        if self._task is None:
+        task = self._task
+        if task is None:
             return
         self._running = False
         if sys.platform == "emscripten":
@@ -874,7 +875,7 @@ class InProcessAgentBridge(ClientAgentBridge):
 
         async def _await_task() -> None:
             try:
-                await self._task
+                await task
             except asyncio.CancelledError:
                 return
             except BaseException:

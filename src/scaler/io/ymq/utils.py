@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable, Optional, TypeVar, Union
 try:
     from typing import Concatenate, ParamSpec
 except ImportError:
-    from typing_extensions import Concatenate, ParamSpec  # type: ignore[assignment]
+    from typing_extensions import Concatenate, ParamSpec
 
 from scaler.config.common.security import SecurityConfig
 from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, TLSConfig
@@ -36,11 +36,10 @@ async def call_async(
     return await future
 
 
-# mypy rejects the keyword-only timeout argument that sits between P.args and P.kwargs, hence the ignore below
-def call_sync(  # type: ignore[valid-type]
+def call_sync(
     func: Callable[Concatenate[Callable[[Union[T, BaseException]], None], P], None],
+    timeout: Optional[float],
     *args: P.args,
-    timeout: Optional[float] = None,
     **kwargs: P.kwargs,
 ) -> T:
     future: concurrent.futures.Future = concurrent.futures.Future()
@@ -116,7 +115,7 @@ def _safe_set_exception(future: asyncio.Future, exc: BaseException) -> None:
 def to_tls_config(security_config: Optional[SecurityConfig]) -> Optional[TLSConfig]:
     """Convert a Scaler ``SecurityConfig`` into a YMQ ``TLSConfig``."""
 
-    if security_config is None or not security_config.has_credentials():
+    if security_config is None or security_config.tls_cert is None or security_config.tls_key is None:
         return None
 
     return TLSConfig(cert_chain=security_config.tls_cert, private_key=security_config.tls_key)

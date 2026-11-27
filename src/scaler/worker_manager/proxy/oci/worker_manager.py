@@ -27,6 +27,14 @@ class OCIJobsWorkerProvisioner(UnitProvisioner):
     async def create_unit(self, unit_id: str) -> UnitHandle:
         config = self._config
         container_instance_config = config.container_instance_config
+        assert (
+            container_instance_config.compartment_id is not None
+            and container_instance_config.availability_domain is not None
+            and container_instance_config.subnet_id is not None
+            and container_instance_config.container_image is not None
+            and config.object_storage_namespace is not None
+            and config.object_storage_bucket is not None
+        )
         worker = create_oci_worker(
             name=f"oci-hpc-{unit_id}",
             address=config.worker_manager_config.effective_worker_scheduler_address,

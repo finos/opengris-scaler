@@ -1,5 +1,5 @@
 import collections
-from typing import Callable
+from typing import Callable, SupportsIndex
 
 
 class EventList(collections.UserList):
@@ -37,7 +37,7 @@ class EventList(collections.UserList):
         super().insert(i, item)
         self._list_updated()
 
-    def pop(self, i: int = -1):
+    def pop(self, i: SupportsIndex = -1):
         v = super().pop(i)
         self._list_updated()
         return v

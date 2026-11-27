@@ -20,7 +20,7 @@ from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import NetworkBackend, SyncConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.ymq import YMQException
-from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
+from scaler.protocol.capnp import BaseMessage, ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.protocol.helpers import capabilities_to_dict, dict_to_capabilities
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
@@ -119,7 +119,6 @@ class Client:
     ):
         check_browser_runtime()
 
-        self._future_manager: Optional[ClientFutureManager] = None
         self._bridge: Optional[ClientAgentBridge] = None
         self._connector_agent: Optional[SyncConnector] = None
 
@@ -282,6 +281,7 @@ class Client:
         )
 
         self._object_buffer.commit_send_objects()
+        assert self._connector_agent is not None
         self._connector_agent.send(task)
         return future
 
@@ -373,6 +373,7 @@ class Client:
         )
 
         self._object_buffer.commit_send_objects()
+        assert self._connector_agent is not None
         for task in tasks:
             self._connector_agent.send(task)
 
@@ -455,6 +456,7 @@ class Client:
             self._future_manager.add_future(future)
 
         self._object_buffer.commit_send_objects()
+        assert self._connector_agent is not None
         self._connector_agent.send(graph_task)
 
         # preserve the future insertion order based on inputted keys
@@ -546,7 +548,8 @@ class Client:
         self.__destroy()
 
     def __receive_shutdown_response(self):
-        message: Optional[ClientShutdownResponse] = None
+        assert self._connector_agent is not None
+        message: Optional[BaseMessage] = None
         try:
             while not isinstance(message, ClientShutdownResponse):
                 message = self._connector_agent.receive()
@@ -568,6 +571,7 @@ class Client:
         then it cannot shut down scheduler and the workers
         """
 
+        assert self._bridge is not None and self._connector_agent is not None
         if not self._bridge.is_alive():
             self.__destroy()
             return

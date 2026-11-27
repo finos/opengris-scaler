@@ -97,7 +97,7 @@ client: Optional[Client] = None
 def scaler_init(
     address: Optional[str] = None,
     *,
-    n_workers: Optional[int] = psutil.cpu_count(),
+    n_workers: int = psutil.cpu_count() or 1,
     object_storage_address: Optional[str] = None,
     monitor_address: Optional[str] = None,
     per_worker_capabilities: Optional[Dict[str, int]] = None,
@@ -361,6 +361,7 @@ class RayRemote(Generic[P, T]):
             or a list of RayObjectReferences if num_returns > 1.
         """
         ensure_init()
+        assert client is not None
 
         # Ray supports passing object references into other remote functions
         # so we must take special care to get their values
@@ -412,6 +413,7 @@ def put(obj: Any) -> ObjectReference:
         An ObjectReference that can be used to retrieve the object.
     """
     ensure_init()
+    assert client is not None
     return client.send_object(obj)
 
 

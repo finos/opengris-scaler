@@ -432,14 +432,14 @@ class AWSBatchInfrastructureProvisioner:
                     "Ref::s3_key",
                 ],
                 "jobRoleArn": role_arn,
-                "vcpus": int(vcpus),  # EC2 requires integer vCPUs
+                "vcpus": vcpus,  # EC2 requires integer vCPUs
                 "memory": effective_memory,  # 90% of multiple of 2048MB
             },
             timeout={"attemptDurationSeconds": job_timeout_seconds},
         )
 
         job_def_arn = response["jobDefinitionArn"]
-        logger.info(f"Registered job definition: {job_def_name} (vcpus={int(vcpus)}, memory={effective_memory}MB)")
+        logger.info(f"Registered job definition: {job_def_name} (vcpus={vcpus}, memory={effective_memory}MB)")
 
         # Cleanup old job definition revisions, keep only latest N
         self._cleanup_old_job_definitions(job_def_name, keep_latest=JOB_DEFINITION_REVISIONS_TO_KEEP)

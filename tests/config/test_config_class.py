@@ -11,12 +11,12 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.type_utils import parse_bool
 
 try:
-    from typing import override  # type: ignore[attr-defined]
+    from typing import override
 except ImportError:
     from typing_extensions import override
 
 try:
-    from typing import Self  # type: ignore[attr-defined]
+    from typing import Self
 except ImportError:
     from typing_extensions import Self
 

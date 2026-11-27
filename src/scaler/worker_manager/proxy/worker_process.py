@@ -40,7 +40,7 @@ _EXPECTED_TEARDOWN_ERROR_CODES = frozenset(
 _SpawnProcess = multiprocessing.get_context("spawn").Process
 
 
-class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
+class WorkerProcess(_SpawnProcess):
     def __init__(
         self,
         name: str,
@@ -88,9 +88,9 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_manager: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._execution_backend: Optional[ExecutionBackend] = None
-        self._task_manager: Optional[TaskManager] = None
-        self._heartbeat_manager: Optional[HeartbeatManager] = None
+        self._execution_backend: ExecutionBackend
+        self._task_manager: TaskManager
+        self._heartbeat_manager: HeartbeatManager
 
         self._heartbeat_received: bool = False
         self._backoff_message_queue: deque = deque()
@@ -259,6 +259,9 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
 
     async def __main_loop(self) -> None:
+        assert self._connector_external is not None and self._connector_manager is not None
+        assert self._connector_storage is not None
+
         await self._connector_external.connect(
             self._address, ConnectorRemoteType.Binder, security_config=self._security_config
         )

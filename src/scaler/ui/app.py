@@ -331,7 +331,7 @@ def _current_task_label(processor_statuses: Iterable[ProcessorStatus]) -> str:
     if not busy:
         return "\u2014"
     if len(busy) == 1:
-        return bytes(busy[0].currentTaskId).hex()[:TASK_ID_DISPLAY_LENGTH]
+        return busy[0].currentTaskId.hex()[:TASK_ID_DISPLAY_LENGTH]
     return f"{len(busy)} tasks"
 
 
@@ -1506,7 +1506,7 @@ class WebUIApp:
         full_client = state_task.client.decode(errors="replace") if state_task.client else ""
         client_str = _format_client_name(full_client) if full_client else ""
 
-        entry = self._task_log_by_id.get(task_id_hex)
+        entry: Optional[Dict[str, Any]] = self._task_log_by_id.get(task_id_hex)
         first_sighting = entry is None
         if entry is None:
             entry = {

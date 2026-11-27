@@ -103,7 +103,7 @@ max_task_concurrency = 1
             descendants = psutil.Process(process.pid).children(recursive=True)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             descendants = []
-        # The platform check is for mypy on Windows; the whole test class is POSIX-only.
+        # The platform check is for pyrefly on Windows; the whole test class is POSIX-only.
         if sys.platform != "win32":
             try:
                 os.killpg(os.getpgid(process.pid), signal.SIGKILL)

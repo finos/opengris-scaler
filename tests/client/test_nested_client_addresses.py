@@ -30,7 +30,7 @@ class _FakeProcessor:
 
 class TestNestedClientAddresses(unittest.TestCase):
     def setUp(self) -> None:
-        self._token = _current_processor.set(_FakeProcessor("tcp://storage.inside:6379"))  # type: ignore[arg-type]
+        self._token = _current_processor.set(_FakeProcessor("tcp://storage.inside:6379"))
         self.addCleanup(_current_processor.reset, self._token)
 
     def test_a_client_taking_its_worker_scheduler_takes_its_worker_storage(self) -> None:

@@ -151,6 +151,9 @@ def main():
     logger.info(f"Starting task {task_id[:8]}...")
     logger.info(f"Args: task_id={task_id[:8]}, s3_bucket={s3_bucket}, s3_prefix={s3_prefix}")
 
+    if s3_bucket is None:
+        raise ValueError("--s3_bucket is required to store the result")
+
     try:
         # Get payload
         payload_bytes = get_payload(args)
@@ -184,7 +187,7 @@ def main():
             try:
                 import resource
 
-                usage = resource.getrusage(resource.RUSAGE_SELF)  # type: ignore[attr-defined, unused-ignore]
+                usage = resource.getrusage(resource.RUSAGE_SELF)  # pyrefly: ignore[missing-attribute, unused-ignore]
                 mem_before = usage.ru_maxrss
                 logger.info(f"Memory before execution: {mem_before} KB")
             except Exception:

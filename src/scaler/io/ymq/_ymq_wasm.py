@@ -286,8 +286,7 @@ class IOContext:
 # ConnectorSocket
 
 
-# Type aliases for callbacks. We use ``Any`` because mypy can't see across
-# Pyodide's JS bridge. ``ConnectCallback`` receives ``None`` on success or an
+# Type aliases for callbacks. ``ConnectCallback`` receives ``None`` on success or an
 # Exception on failure; ``SendCallback`` is the same. ``RecvCallback`` receives
 # a Message on success or an Exception on failure.
 ConnectCallback = Callable[[Optional[Exception]], None]
@@ -690,8 +689,8 @@ class ConnectorSocket:
     def _invoke(callback: Callable[[Any], None], arg: Any) -> None:
         try:
             callback(arg)
-        except Exception:  # noqa: BLE001 -- never let a user callback abort the IO loop
-            sys.excepthook(*sys.exc_info())
+        except Exception as e:  # noqa: BLE001 -- never let a user callback abort the IO loop
+            sys.excepthook(type(e), e, e.__traceback__)
 
 
 # ---------------------------------------------------------------------------

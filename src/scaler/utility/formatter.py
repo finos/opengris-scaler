@@ -34,7 +34,7 @@ def format_microseconds(number: int):
             return f"{number / TIME_MODULUS:.1f}ms"
 
         too_big_sign = "+" if unit == "s" and number > TIME_MODULUS else ""
-        return f"{int(number)}{too_big_sign}{unit}"
+        return f"{number}{too_big_sign}{unit}"
 
 
 def format_seconds(number: int) -> str:

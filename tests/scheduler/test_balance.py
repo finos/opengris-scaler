@@ -146,7 +146,7 @@ class TestBalance(unittest.TestCase):
 
             _signal_process_tree(
                 combo._worker_manager_process,
-                signal.SIGSTOP,  # type: ignore[attr-defined, unused-ignore]
+                signal.SIGSTOP,  # pyrefly: ignore[missing-attribute, unused-ignore]
             )
 
             base_config = combo._worker_manager.config
@@ -188,7 +188,7 @@ class TestBalance(unittest.TestCase):
             # never be delivered to a stopped process.
             _signal_process_tree(
                 combo._worker_manager_process,
-                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
+                signal.SIGKILL,  # pyrefly: ignore[missing-attribute, unused-ignore]
             )
             combo._worker_manager_process.join()
 
@@ -259,7 +259,7 @@ class TestBalance(unittest.TestCase):
             # the timeout far off the scheduler still lists it, so the balancer will send a cancel to it.
             _signal_process_tree(
                 combo._worker_manager_process,
-                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
+                signal.SIGKILL,  # pyrefly: ignore[missing-attribute, unused-ignore]
             )
 
             base_config = combo._worker_manager.config
@@ -304,7 +304,7 @@ class TestBalance(unittest.TestCase):
 
             _signal_process_tree(
                 combo._worker_manager_process,
-                signal.SIGKILL,  # type: ignore[attr-defined, unused-ignore]
+                signal.SIGKILL,  # pyrefly: ignore[missing-attribute, unused-ignore]
             )
             combo._worker_manager_process.join()
 

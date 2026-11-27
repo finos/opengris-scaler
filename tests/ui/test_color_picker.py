@@ -23,9 +23,9 @@ class TestHueDistance(unittest.TestCase):
 
 class TestExtractHue(unittest.TestCase):
     def test_valid_hsl(self) -> None:
-        self.assertAlmostEqual(_extract_hue("hsl(120,65%,50%)"), 120.0)
-        self.assertAlmostEqual(_extract_hue("hsl(0,55%,45%)"), 0.0)
-        self.assertAlmostEqual(_extract_hue("hsl(359,70%,55%)"), 359.0)
+        self.assertEqual(_extract_hue("hsl(120,65%,50%)"), 120.0)
+        self.assertEqual(_extract_hue("hsl(0,55%,45%)"), 0.0)
+        self.assertEqual(_extract_hue("hsl(359,70%,55%)"), 359.0)
 
     def test_hex_color_returns_none(self) -> None:
         self.assertIsNone(_extract_hue("#ffffff"))
@@ -95,7 +95,7 @@ class TestCapabilitiesColor(unittest.TestCase):
         for name in names:
             _capabilities_color(name, color_map)
 
-        hues = [_extract_hue(v) for v in color_map.values() if _extract_hue(v) is not None]
+        hues = [hue for v in color_map.values() if (hue := _extract_hue(v)) is not None]
         for i in range(len(hues)):
             for j in range(i + 1, len(hues)):
                 self.assertGreaterEqual(

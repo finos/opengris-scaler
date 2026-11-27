@@ -37,11 +37,11 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
 
         self._agent_process = psutil.Process()
 
-        self._connector_external: Optional[AsyncConnector] = None
-        self._connector_manager: Optional[AsyncConnector] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._task_manager: Optional["TaskManager"] = None
-        self._timeout_manager: Optional[TimeoutManager] = None
+        self._connector_external: AsyncConnector
+        self._connector_manager: AsyncConnector
+        self._connector_storage: AsyncObjectStorageConnector
+        self._task_manager: "TaskManager"
+        self._timeout_manager: TimeoutManager
 
         self._start_timestamp_nanoseconds = 0
         self._latency_microseconds = 0

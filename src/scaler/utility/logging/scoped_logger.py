@@ -29,6 +29,7 @@ class TimedLogger:
         self.logger.log(self.logging_level, f"beginning {self.message}")
 
     def end(self):
+        assert self.timer is not None, "end() needs a begin() first"
         elapsed = time.perf_counter_ns() - self.timer
         offset = datetime.timedelta(
             seconds=int(elapsed / 1e9), milliseconds=int(elapsed % 1e9 / 1e6), microseconds=int(elapsed % 1e6 / 1e3)

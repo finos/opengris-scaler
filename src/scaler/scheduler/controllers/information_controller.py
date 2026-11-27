@@ -1,5 +1,3 @@
-from typing import Optional
-
 import psutil
 
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
@@ -23,13 +21,13 @@ class VanillaInformationController(InformationController, Looper):
 
         self._process = psutil.Process()
 
-        self._monitor_binder: Optional[AsyncPublisher] = None
-        self._binder: Optional[AsyncBinder] = None
-        self._client_controller: Optional[ClientController] = None
-        self._object_controller: Optional[ObjectController] = None
-        self._task_controller: Optional[TaskController] = None
-        self._worker_controller: Optional[WorkerController] = None
-        self._worker_manager_controller: Optional[WorkerManagerController] = None
+        self._monitor_binder: AsyncPublisher
+        self._binder: AsyncBinder
+        self._client_controller: ClientController
+        self._object_controller: ObjectController
+        self._task_controller: TaskController
+        self._worker_controller: WorkerController
+        self._worker_manager_controller: WorkerManagerController
 
     def register_managers(
         self,

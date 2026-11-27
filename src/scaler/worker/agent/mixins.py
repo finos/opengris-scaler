@@ -21,7 +21,7 @@ class HeartbeatManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_object_storage_address(self) -> AddressConfig:
+    def get_object_storage_address(self) -> Optional[AddressConfig]:
         raise NotImplementedError()
 
 
@@ -107,7 +107,7 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def current_task_id(self) -> TaskID:
+    def current_task_id(self) -> Optional[TaskID]:
         raise NotImplementedError()
 
     @abc.abstractmethod

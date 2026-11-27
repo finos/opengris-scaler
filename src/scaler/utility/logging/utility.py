@@ -162,7 +162,7 @@ def get_logger_info(logger: logging.Logger) -> typing.Tuple[str, str, typing.Tup
     if logger.hasHandlers():
         first_handler = logger.handlers[0]
         if first_handler.formatter:
-            log_format_str = getattr(first_handler.formatter, "_fmt", "")
+            log_format_str = getattr(first_handler.formatter, "_fmt", None) or ""
 
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.BaseRotatingHandler):

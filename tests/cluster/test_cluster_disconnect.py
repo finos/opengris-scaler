@@ -163,6 +163,7 @@ class TestGracefulWorkerShutdown(unittest.TestCase):
         # Graceful SIGINT: manager sends SIGTERM to worker -> worker sends WDN -> scheduler
         # re-queues the task immediately. Without WDN the task would stay assigned to the
         # dead worker until the heartbeat timeout (_HEARTBEAT_TIMEOUT_SECONDS).
+        assert proc_a.pid is not None
         os.kill(proc_a.pid, signal.SIGINT)
 
         self._start_manager("manager_b")  # worker B picks up the re-queued task

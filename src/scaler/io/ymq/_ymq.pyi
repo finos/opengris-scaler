@@ -5,7 +5,7 @@ from enum import IntEnum
 from typing import Callable, Optional, SupportsBytes, Union
 
 try:
-    from collections.abc import Buffer  # type: ignore[attr-defined]
+    from collections.abc import Buffer
 except ImportError:
     from typing_extensions import Buffer
 

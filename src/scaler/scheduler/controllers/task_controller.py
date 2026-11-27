@@ -61,8 +61,8 @@ logger = logging.getLogger(__name__)
 # rather than resurfacing later as a worker or client being declared dead. If it ever fires, fix the cycle.
 LOCK_ACQUIRE_TIMEOUT_SECONDS = 10
 
-# The state that each action can produce. mypy checks every return against these, so the behavior of an action cannot
-# widen without its annotation widening too.
+# The state that each action can produce. pyrefly checks every return against these, so the behavior of an action
+# cannot widen without its annotation widening too.
 DispatchTargetStates = Literal[TaskState.inactive, TaskState.running]
 HasCapacityTargetStates = Literal[TaskState.running]
 TaskCancelTargetStates = Literal[TaskState.canceled, TaskState.canceling, TaskState.canceledNotFound]
@@ -99,15 +99,15 @@ def task_result_target(result_type: TaskResultType) -> TaskResultTargetStates:
 class VanillaTaskController(TaskController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController):
         self._config_controller = config_controller
-        self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncPublisher] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+        self._binder: AsyncBinder
+        self._binder_monitor: AsyncPublisher
+        self._connector_storage: AsyncObjectStorageConnector
 
-        self._client_controller: Optional[ClientController] = None
-        self._object_controller: Optional[ObjectController] = None
-        self._worker_controller: Optional[WorkerController] = None
+        self._client_controller: ClientController
+        self._object_controller: ObjectController
+        self._worker_controller: WorkerController
 
-        self._graph_controller: Optional[GraphTaskController] = None
+        self._graph_controller: GraphTaskController
 
         self._task_id_to_task: Dict[TaskID, Task] = dict()
         # Live tasks naming each object, counted as tasks arrive and leave: a status report reads it per object.
@@ -761,7 +761,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     def __task_object_bytes(self, task_id: TaskID) -> int:
         """Payload bytes a task's function and arguments move, 0 if the task is already gone."""
         task = self._task_id_to_task.get(task_id)
-        if task is None or self._object_controller is None:
+        if task is None:
             return 0
 
         return sum(self._object_controller.get_object_size(object_id) for object_id in task_object_ids(task))

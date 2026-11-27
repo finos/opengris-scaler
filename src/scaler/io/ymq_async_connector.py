@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class YMQAsyncConnector(AsyncConnector):
     def __init__(self, context: IOContext, identity: bytes, callback: Callable[[BaseMessage], Awaitable[None]]):
-        self._ymq_context = context
+        self._ymq_context: Optional[IOContext] = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
 

@@ -95,6 +95,7 @@ class TestTaskAttribution(unittest.TestCase):
             make_task(taskId=b"t1", functionName=b"square", state=TaskState.running, worker=b"w1", client=b"Client|one")
         )
 
+        assert entry is not None
         self.assertEqual(entry["full_client"], "Client|one")
 
     def test_a_result_without_the_client_keeps_the_one_the_task_had(self) -> None:
@@ -106,6 +107,7 @@ class TestTaskAttribution(unittest.TestCase):
             make_task(taskId=b"t1", functionName=b"square", state=TaskState.success, worker=b"w1", client=b"")
         )
 
+        assert entry is not None
         self.assertEqual(entry["full_client"], "Client|one")
         self.assertEqual(app._client_task_totals["Client|one"], {"finished": 1, "failed": 0})
 

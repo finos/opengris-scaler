@@ -30,7 +30,7 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         self._latency_microseconds = 0
         self._connected = False
 
-        self._connector_external: Optional[AsyncConnector] = None
+        self._connector_external: AsyncConnector
         self._object_manager: Optional[ObjectManager] = None
 
     def register(self, connector_external: AsyncConnector):

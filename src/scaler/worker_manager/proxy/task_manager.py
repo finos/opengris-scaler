@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Tuple, cast
 
 import cloudpickle
 
@@ -43,9 +43,9 @@ class TaskManager(Looper, TaskManagerMixin):
 
         self._serializers: Dict[bytes, Serializer] = dict()
 
-        self._connector_external: Optional[AsyncConnector] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._heartbeat_manager: Optional[HeartbeatManager] = None
+        self._connector_external: AsyncConnector
+        self._connector_storage: AsyncObjectStorageConnector
+        self._heartbeat_manager: HeartbeatManager
 
     def register(
         self,

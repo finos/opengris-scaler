@@ -81,7 +81,7 @@ class ClientAgent(threading.Thread):
         # does get there first when the object storage address is known upfront, as it then does not wait on the
         # scheduler before submitting objects.
         self._loop: concurrent.futures.Future[asyncio.AbstractEventLoop] = concurrent.futures.Future()
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+        self._connector_storage: AsyncObjectStorageConnector
 
         self._future_manager = future_manager
 
@@ -101,9 +101,9 @@ class ClientAgent(threading.Thread):
             identity=self._identity, callback=self.__on_receive_from_scheduler
         )
 
-        self._disconnect_manager: Optional[ClientDisconnectManager] = None
-        self._heartbeat_manager: Optional[ClientHeartbeatManager] = None
-        self._task_manager: Optional[ClientTaskManager] = None
+        self._disconnect_manager: ClientDisconnectManager
+        self._heartbeat_manager: ClientHeartbeatManager
+        self._task_manager: ClientTaskManager
 
     def __initialize(self):
         self._connector_storage = self._network_backend.create_async_object_storage_connector(identity=self._identity)
@@ -149,7 +149,6 @@ class ClientAgent(threading.Thread):
     async def get_object_storage_connector(self) -> AsyncObjectStorageConnector:
         """Returns the agent's object storage connector, or blocks until it is connected."""
 
-        assert self._connector_storage is not None
         await self._connector_storage.wait_until_connected()
         return self._connector_storage
 

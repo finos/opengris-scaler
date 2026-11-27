@@ -86,13 +86,13 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController):
         self._config_controller = config_controller
 
-        self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncPublisher] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+        self._binder: AsyncBinder
+        self._binder_monitor: AsyncPublisher
+        self._connector_storage: AsyncObjectStorageConnector
 
-        self._client_controller: Optional[ClientController] = None
-        self._task_controller: Optional[TaskController] = None
-        self._object_controller: Optional[ObjectController] = None
+        self._client_controller: ClientController
+        self._task_controller: TaskController
+        self._object_controller: ObjectController
 
         self._unassigned: Queue = Queue()
 

@@ -63,7 +63,9 @@ class TestWebGUIServer(unittest.TestCase):
 
             self.assertEqual(answer["type"], "view_update")
             self.assertEqual(answer["settings"]["stream_window"], 30)
-            self.assertEqual(self.app.get_browser(browser_id).view.stream_window_minutes, 30)
+            browser = self.app.get_browser(browser_id)
+            assert browser is not None
+            self.assertEqual(browser.view.stream_window_minutes, 30)
 
     def test_a_stream_opens_on_the_view_the_browser_saved(self) -> None:
         """A reload or a dropped stream reopens on what the browser was showing, not on the default view."""
@@ -90,6 +92,7 @@ class TestWebGUIServer(unittest.TestCase):
         with urllib.request.urlopen(f"{self.base}/events", timeout=10) as stream:
             browser_id = self.__next_event(stream)["browser_id"]
             browser = self.app.get_browser(browser_id)
+            assert browser is not None
 
             for _ in range(BROWSER_QUEUE_MAX_PAYLOADS + 1):
                 browser.offer(json.dumps({"type": "view_update"}))
@@ -115,7 +118,9 @@ class TestWebGUIServer(unittest.TestCase):
                     self.__post_view(body)
                 self.assertEqual(raised.exception.code, 400)
 
-            self.assertEqual(self.app.get_browser(browser_id).view.workers_page, 0)
+            browser = self.app.get_browser(browser_id)
+            assert browser is not None
+            self.assertEqual(browser.view.workers_page, 0)
 
     def test_a_request_for_an_unknown_browser_is_refused(self) -> None:
         with self.assertRaises(urllib.error.HTTPError) as raised:

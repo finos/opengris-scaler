@@ -200,7 +200,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
         for i in range(self.N_WORKERS):
             worker_id = WorkerID(f"worker-{i}".encode())
             allocation_policy.add_worker(worker_id, {"capA": -1}, 10)
-            worker_controller._worker_alive_since[worker_id] = (time.time() - 3600, None)
+            worker_controller._worker_alive_since[worker_id] = (time.time() - 3600, _received_heartbeat(draining=False))
             worker_controller._worker_to_manager[worker_id] = manager_id
             worker_controller._manager_to_workers.setdefault(manager_id, set()).add(worker_id)
 

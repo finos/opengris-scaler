@@ -46,6 +46,7 @@ class TestCluster(unittest.TestCase):
         combo = SchedulerClusterCombo(n_workers=1)
         try:
             port = AddressConfig.from_string(combo.get_address()).port
+            assert port is not None
             socket.create_connection(("127.0.0.1", port)).close()
         finally:
             combo.shutdown()

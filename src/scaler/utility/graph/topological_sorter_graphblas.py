@@ -25,8 +25,8 @@ class TopologicalSorter(Generic[GraphKeyType]):
         self._matrix = gb.Matrix(gb.dtypes.BOOL)
         self._key_to_id: bidict[GraphKeyType, int] = bidict()
 
-        self._graph_matrix_mask: Optional[np.ndarray] = None
-        self._visited_vertices_mask: Optional[np.ndarray] = None
+        self._graph_matrix_mask: np.ndarray
+        self._visited_vertices_mask: np.ndarray
         self._ready_nodes: Optional[List[GraphKeyType]] = None
 
         self._n_done = 0
@@ -167,7 +167,7 @@ class TopologicalSorter(Generic[GraphKeyType]):
     def _get_zero_degree_mask(cls, masked_matrix: gb.Matrix) -> np.ndarray:
         degrees = masked_matrix.reduce_rowwise(gb.monoid.lor)
         indices, _ = degrees.to_coo(indices=True, values=False, sort=False)
-        return np.logical_not(np.in1d(np.arange(masked_matrix.nrows), indices))
+        return np.logical_not(np.isin(np.arange(masked_matrix.nrows), indices))
 
     @staticmethod
     def _get_mask_diff(old_mask: np.ndarray, new_mask: np.ndarray) -> List[int]:

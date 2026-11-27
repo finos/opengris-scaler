@@ -46,12 +46,12 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         self._worker_manager_id = worker_manager_id
         self._security_config = security_config
 
-        self._connector_external: Optional[AsyncConnector] = None
-        self._connector_manager: Optional[AsyncConnector] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._worker_task_manager: Optional[TaskManager] = None
-        self._timeout_manager: Optional[TimeoutManager] = None
-        self._processor_manager: Optional[ProcessorManager] = None
+        self._connector_external: AsyncConnector
+        self._connector_manager: AsyncConnector
+        self._connector_storage: AsyncObjectStorageConnector
+        self._worker_task_manager: TaskManager
+        self._timeout_manager: TimeoutManager
+        self._processor_manager: ProcessorManager
 
         self._start_timestamp_nanoseconds = 0
         self._latency_microseconds = 0

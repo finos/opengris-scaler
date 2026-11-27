@@ -112,9 +112,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._connector_manager: Optional[AsyncConnector] = None
         self._binder_internal: Optional[AsyncBinder] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._task_manager: Optional[VanillaTaskManager] = None
-        self._heartbeat_manager: Optional[VanillaHeartbeatManager] = None
-        self._profiling_manager: Optional[VanillaProfilingManager] = None
+        self._task_manager: VanillaTaskManager
+        self._heartbeat_manager: VanillaHeartbeatManager
+        self._profiling_manager: VanillaProfilingManager
         self._processor_manager: Optional[VanillaProcessorManager] = None
 
         # True once the scheduler has acknowledged us at least once. Used to distinguish "the
@@ -265,6 +265,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         )
 
     async def __on_receive_external(self, message: BaseMessage):
+        assert self._processor_manager is not None
+
         if isinstance(message, WorkerHeartbeatEcho):
             self._connected_to_scheduler = True
             await self._heartbeat_manager.on_heartbeat_echo(message)
@@ -297,6 +299,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
 
     async def __on_receive_internal(self, processor_id_bytes: bytes, message: BaseMessage):
+        assert self._processor_manager is not None and self._connector_external is not None
         processor_id = ProcessorID(processor_id_bytes)
 
         if isinstance(message, ProcessorInitialized):
@@ -318,6 +321,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
     async def __main_loop(self) -> None:
+        assert self._connector_external is not None and self._connector_manager is not None
+        assert self._binder_internal is not None and self._connector_storage is not None
+        assert self._processor_manager is not None and self._address_internal is not None
+
         await self._connector_external.connect(
             self._address, ConnectorRemoteType.Binder, security_config=self._security_config
         )

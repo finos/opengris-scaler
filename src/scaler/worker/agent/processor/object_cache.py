@@ -81,7 +81,7 @@ class ObjectCache(threading.Thread):
     def has_object(self, object_id: ObjectID):
         return object_id in self._cached_objects or object_id in self._serializers
 
-    def get_object(self, object_id: ObjectID) -> Optional[Any]:
+    def get_object(self, object_id: ObjectID) -> Any:
         if object_id not in self._cached_objects:
             raise ValueError(f"cannot get object for {object_id!r}")
 

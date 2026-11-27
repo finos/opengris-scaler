@@ -112,8 +112,8 @@ class VanillaTaskManager(Looper, TaskManager):
 
         self._tasks = _TaskTable()
 
-        self._connector_external: Optional[AsyncConnector] = None
-        self._processor_manager: Optional[ProcessorManager] = None
+        self._connector_external: AsyncConnector
+        self._processor_manager: ProcessorManager
 
     def register(self, connector: AsyncConnector, processor_manager: ProcessorManager):
         self._connector_external = connector

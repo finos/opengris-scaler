@@ -183,7 +183,7 @@ class WebGUIServer(ThreadingHTTPServer):
     def __init__(self, address: Tuple[str, int], app: WebUIApp, security: SecurityConfig) -> None:
         super().__init__(address, WebGUIRequestHandler)
         self.app = app
-        if security.has_credentials():
+        if security.tls_cert is not None and security.tls_key is not None:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             # TLS 1.0 and 1.1 are deprecated by RFC 8996 and the default context still offers them.
             context.minimum_version = ssl.TLSVersion.TLSv1_2

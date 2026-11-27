@@ -156,6 +156,7 @@ def main():
             best_accuracy = accuracy
 
     # Record the best performing set of hyperparameters.
+    assert best_hyperparameters is not None
     print(
         """Best accuracy over {} trials was {:.3} with
         learning_rate: {:.2}

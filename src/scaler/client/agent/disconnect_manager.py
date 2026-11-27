@@ -1,5 +1,3 @@
-from typing import Optional
-
 from scaler.client.agent.mixins import DisconnectManager
 from scaler.io.mixins import AsyncConnector
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse
@@ -8,8 +6,8 @@ from scaler.utility.exceptions import ClientQuitException, ClientShutdownExcepti
 
 class ClientDisconnectManager(DisconnectManager):
     def __init__(self):
-        self._connector_internal: Optional[AsyncConnector] = None
-        self._connector_external: Optional[AsyncConnector] = None
+        self._connector_internal: AsyncConnector
+        self._connector_external: AsyncConnector
 
     def register(self, connector_internal: AsyncConnector, connector_external: AsyncConnector):
         self._connector_internal = connector_internal

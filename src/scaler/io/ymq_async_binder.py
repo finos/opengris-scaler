@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class YMQAsyncBinder(AsyncBinder):
     def __init__(self, context: IOContext, identity: bytes, callback: Callable[[bytes, BaseMessage], Awaitable[None]]):
-        self._ymq_context = context
+        self._ymq_context: Optional[IOContext] = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
 
@@ -60,6 +60,7 @@ class YMQAsyncBinder(AsyncBinder):
     async def routine(self):
         assert self._socket is not None
         ymq_msg = await self._socket.recv_message()
+        assert ymq_msg.address is not None and ymq_msg.address.data is not None
 
         message: Optional[BaseMessage] = deserialize(ymq_msg.payload.data)
         if message is None:

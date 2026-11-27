@@ -186,13 +186,15 @@ class ECSWorkerProvisioner(UnitProvisioner):
 
 class ECSWorkerManager:
     def __init__(self, config: ECSWorkerManagerConfig) -> None:
+        children_address = config.worker_manager_config.children_address
+        assert children_address is not None
         self._runner = WorkerManagerRunner(
             name="worker_manager_ecs",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             create_provisioner=lambda children_address: ECSWorkerProvisioner(config, children_address),
-            children_address=config.worker_manager_config.children_address,
+            children_address=children_address,
             io_threads=config.worker_config.io_threads,
         )
 
