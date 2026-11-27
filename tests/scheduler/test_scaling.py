@@ -28,6 +28,7 @@ from scaler.config.defaults import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
+    TASKS_PER_WORKER,
 )
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
@@ -352,16 +353,81 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         self.controller = WorkerManagerController(config_controller, scaling_policy)
         self.scaling_policy = scaling_policy
 
-        binder = AsyncMock()
-        task_controller = MagicMock()
-        task_controller._task_id_to_task = {}
+        self.binder = AsyncMock()
+        self.task_controller = MagicMock()
+        self.task_controller._task_id_to_task = {}
         self.worker_controller = MagicMock()
         self.worker_controller._worker_alive_since = {
             WorkerID(b"w0"): (0.0, _create_mock_worker_heartbeat({})),
             WorkerID(b"w1"): (0.0, _create_mock_worker_heartbeat({})),
         }
 
-        self.controller.register(binder, task_controller, self.worker_controller)
+        self.controller.register(self.binder, self.task_controller, self.worker_controller)
+
+    async def test_source_replacement_removes_ghost_manager_from_status_and_policy(self) -> None:
+        """A replacement ID removes the old waterfall tier and receives its share of the target."""
+        source = b"mgr-src"
+        old_id = WorkerManagerID(b"old")
+        new_id = WorkerManagerID(b"new")
+        self.scaling_policy.get_scaling_commands.side_effect = WaterfallScalingPolicy(
+            [
+                WaterfallRule(priority=1, worker_manager_id=old_id, max_task_concurrency=3),
+                WaterfallRule(priority=2, worker_manager_id=new_id, max_task_concurrency=3),
+            ]
+        ).get_scaling_commands
+        self.task_controller._task_id_to_task = {
+            task_id: _create_mock_task(task_id, {})
+            for task_id in (TaskID.generate_task_id() for _ in range(3 * TASKS_PER_WORKER))
+        }
+        self.worker_controller.get_workers_by_manager_id.return_value = []
+        await self.controller.on_heartbeat(source, _create_worker_manager_heartbeat(old_id))
+        old_holder = self.controller._managers[old_id]
+        self.assertEqual(old_holder.last_desired_total, 3)
+
+        async def check_registration_before_send(*args: object, **kwargs: object) -> None:
+            self.assertEqual(set(self.controller._managers), {new_id})
+            self.assertEqual(self.controller._managers[new_id].last_desired_total, 0)
+
+        self.binder.send.reset_mock()
+        self.binder.send.side_effect = check_registration_before_send
+        await self.controller.on_heartbeat(source, _create_worker_manager_heartbeat(new_id))
+
+        self.assertIsNot(self.controller._managers[new_id], old_holder)
+        self.assertIs(self.controller._source_to_manager[source], self.controller._managers[new_id])
+        self.assertEqual(set(self.controller.get_managed_workers()), {new_id})
+        status = self.controller.get_status()
+        self.assertEqual([detail.workerManagerID for detail in status.workerManagerDetails], [new_id])
+        self.assertEqual([pair.workerManagerID for pair in status.managedWorkers], [new_id])
+        cluster_state = self.scaling_policy.get_scaling_commands.call_args.kwargs["cluster_state"]
+        self.assertEqual(set(cluster_state.managers), {new_id})
+        self.assertEqual(self.controller._managers[new_id].last_desired_total, 3)
+        (command,) = [
+            call.args[1] for call in self.binder.send.call_args_list if isinstance(call.args[1], WorkerManagerCommand)
+        ]
+        self.assertEqual(command.setDesiredTaskConcurrencyRequests[0].taskConcurrency, 3)
+
+    async def test_duplicate_id_rejected_before_source_registration_is_evicted(self) -> None:
+        """A source cannot replace its registration with an ID owned by another source."""
+        first_id = WorkerManagerID(b"first")
+        second_id = WorkerManagerID(b"second")
+        self.scaling_policy.get_scaling_commands.return_value = []
+        self.worker_controller.get_workers_by_manager_id.return_value = []
+        await self.controller.on_heartbeat(b"first-src", _create_worker_manager_heartbeat(first_id))
+        await self.controller.on_heartbeat(b"second-src", _create_worker_manager_heartbeat(second_id))
+        holders = self.controller._managers.copy()
+        sources = self.controller._source_to_manager.copy()
+        self.binder.send.reset_mock()
+        self.scaling_policy.get_scaling_commands.reset_mock()
+
+        await self.controller.on_heartbeat(b"first-src", _create_worker_manager_heartbeat(second_id))
+
+        self.assertEqual(self.controller._managers, holders)
+        self.assertEqual(self.controller._source_to_manager, sources)
+        for manager_id, holder in holders.items():
+            self.assertIs(self.controller._managers[manager_id], holder)
+            self.assertIs(self.controller._source_to_manager[holder.source], holder)
+        self.binder.send.assert_not_awaited()
+        self.scaling_policy.get_scaling_commands.assert_not_called()
 
     async def test_heartbeat_age_ignores_wall_clock_jumps(self) -> None:
         """Heartbeat timestamps and reported durations use monotonic seconds despite wall-clock jumps."""

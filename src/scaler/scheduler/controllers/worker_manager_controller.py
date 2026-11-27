@@ -48,6 +48,7 @@ class WorkerManagerController(Looper, Reporter):
         self._worker_controller: Optional[WorkerController] = None
 
         self._managers: Dict[WorkerManagerID, _WorkerManagerHolder] = {}
+        self._source_to_manager: Dict[bytes, _WorkerManagerHolder] = {}
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
@@ -64,6 +65,12 @@ class WorkerManagerController(Looper, Reporter):
             )
             return
 
+        previous_holder = self._source_to_manager.get(source)
+        if previous_holder is not None and previous_holder.manager_id != manager_id:
+            del self._managers[previous_holder.manager_id]
+            del self._source_to_manager[source]
+            logger.info(f"{previous_holder.manager_id!r} replaced by {manager_id!r} from source {source!r}")
+
         capabilities = capabilities_to_dict(heartbeat.capabilities)
 
         if holder is None:
@@ -75,6 +82,7 @@ class WorkerManagerController(Looper, Reporter):
                 max_task_concurrency=heartbeat.maxTaskConcurrency,
             )
             self._managers[manager_id] = holder
+            self._source_to_manager[source] = holder
             logger.info(f"{manager_id!r} connected")
         else:
             holder.last_seen_at = time.monotonic()
@@ -165,11 +173,12 @@ class WorkerManagerController(Looper, Reporter):
             await self._disconnect_manager(dead_manager)
 
     async def _disconnect_manager(self, manager_id: WorkerManagerID):
-        if manager_id not in self._managers:
+        holder = self._managers.pop(manager_id, None)
+        if holder is None:
             return
 
+        del self._source_to_manager[holder.source]
         logger.info(f"{manager_id!r} disconnected")
-        self._managers.pop(manager_id, None)
 
 
 def _sum_desired_for_manager(commands: List[WorkerManagerCommand], manager_capabilities: Dict[str, int]) -> int:
