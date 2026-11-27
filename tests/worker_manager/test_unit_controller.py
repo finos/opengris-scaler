@@ -1,9 +1,16 @@
 import asyncio
 import unittest
 from typing import Dict, List, Set
+from unittest import mock
+
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
 from scaler.config.constants import WORKER_MANAGER_UNIT_STABLE_SECONDS
 from scaler.utility.logging.utility import setup_logger
+from scaler.worker_manager import unit_controller
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController, UnitState
 from tests.utility.utility import logging_test_name
@@ -78,6 +85,21 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
             unit_timeout_seconds=UNIT_TIMEOUT_SECONDS,
             restart_backoff_seconds=RESTART_BACKOFF_SECONDS,
         )
+
+    def __record_spans(self) -> InMemorySpanExporter:
+        """Route the controller's spans to an in-memory exporter, and give the test a tracer for parent spans."""
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        self.decision_tracer = provider.get_tracer(__name__)
+        patcher = mock.patch.object(unit_controller, "tracer", provider.get_tracer(unit_controller.__name__))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return exporter
+
+    @staticmethod
+    def __spans_named(exporter: InMemorySpanExporter, name: str) -> List[ReadableSpan]:
+        return [span for span in exporter.get_finished_spans() if span.name == name]
 
     async def __tick(self, controller: UnitController) -> None:
         """Run one routine, then let the provisioner calls it started finish."""
@@ -269,6 +291,46 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         await self.__tick(self.controller)
         self.assertEqual(self.controller._units, {})
         self.assertEqual(len(self.provisioner.destroyed), 1)
+
+    async def test_a_shed_units_destroy_span_nests_under_the_scale_down_decision(self) -> None:
+        exporter = self.__record_spans()
+        (unit_id,) = await self.__active_units(1)
+
+        with self.decision_tracer.start_as_current_span("decision") as decision:
+            self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+
+        (destroy,) = self.__spans_named(exporter, "scaler.worker_manager.destroy_unit")
+        self.assertEqual(destroy.attributes["scaler.unit.id"], unit_id)
+        self.assertIsNotNone(destroy.parent)
+        self.assertEqual(destroy.parent.span_id, decision.get_span_context().span_id)
+        self.assertEqual(destroy.status.status_code, StatusCode.UNSET)
+
+    async def test_a_lost_units_destroy_span_starts_its_own_trace(self) -> None:
+        exporter = self.__record_spans()
+        (unit_id,) = await self.__active_units(1)
+
+        self.controller.on_unit_disconnect(unit_id)
+        await self.__tick(self.controller)
+
+        (destroy,) = self.__spans_named(exporter, "scaler.worker_manager.destroy_unit")
+        self.assertIsNone(destroy.parent)
+
+    async def test_each_destroy_attempt_is_a_span_and_a_failed_one_records_the_error(self) -> None:
+        exporter = self.__record_spans()
+        await self.__active_units(1)
+
+        self.provisioner.fail_destroys = True
+        self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+        self.provisioner.fail_destroys = False
+        await self.__tick(self.controller)
+
+        failed, succeeded = self.__spans_named(exporter, "scaler.worker_manager.destroy_unit")
+        self.assertEqual(failed.status.status_code, StatusCode.ERROR)
+        self.assertEqual([event.name for event in failed.events], ["exception"])
+        self.assertEqual(succeeded.status.status_code, StatusCode.UNSET)
+        self.assertEqual(failed.parent, succeeded.parent)
 
     async def test_a_slow_destroy_is_not_started_again(self) -> None:
         await self.__active_units(1)

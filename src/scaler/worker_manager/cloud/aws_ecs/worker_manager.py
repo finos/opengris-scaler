@@ -7,7 +7,12 @@ import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.config.types.address import AddressConfig
-from scaler.worker_manager.cloud.child_command import child_link_arguments, format_capabilities
+from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
+    child_link_arguments,
+    format_capabilities,
+    unit_environment,
+)
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
 
@@ -33,12 +38,14 @@ class ECSWorkerProvisioner(UnitProvisioner):
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._telemetry_relay = config.worker_config.telemetry_relay
         self._preload = config.worker_config.preload
         self._event_loop = config.worker_config.event_loop
 
         self._ecs_cluster = config.ecs_cluster
         self._ecs_task_image = config.ecs_task_image
         self._ecs_python_requirements = config.ecs_python_requirements
+        check_unit_requirements_support_telemetry(self._ecs_python_requirements, config.worker_config)
         self._ecs_python_version = config.ecs_python_version
         self._ecs_task_definition = config.ecs_task_definition
         self._ecs_task_cpu = config.ecs_task_cpu
@@ -46,6 +53,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id
         self._cloud_children_config = config.cloud_children_config
+        self._worker_config = config.worker_config
 
         aws_session = boto3.Session(
             aws_access_key_id=config.aws_access_key_id,
@@ -116,6 +124,9 @@ class ECSWorkerProvisioner(UnitProvisioner):
         if self._hard_processor_suspend:
             command += " --hard-processor-suspend"
 
+        if not self._telemetry_relay:
+            command += " --telemetry-relay false"
+
         if self._object_storage_address:
             command += f" --object-storage-address {self._object_storage_address!r}"
 
@@ -143,6 +154,10 @@ class ECSWorkerProvisioner(UnitProvisioner):
                             {"name": "COMMAND", "value": self._build_task_command(unit_id)},
                             {"name": "PYTHON_REQUIREMENTS", "value": self._ecs_python_requirements},
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
+                            *(
+                                {"name": name, "value": value}
+                                for name, value in unit_environment(self._worker_config).items()
+                            ),
                         ],
                     }
                 ]
@@ -194,6 +209,7 @@ class ECSWorkerManager:
             create_provisioner=lambda children_address: ECSWorkerProvisioner(config, children_address),
             children_address=config.worker_manager_config.children_address,
             io_threads=config.worker_config.io_threads,
+            telemetry_relay=config.worker_config.telemetry_relay,
         )
 
     def run(self) -> None:

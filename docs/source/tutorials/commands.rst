@@ -298,6 +298,11 @@ Scheduler arguments
      - No
      - ``1``
      - I/O backend thread count.
+   * - ``-oe``, ``--otlp-endpoint``
+     - No
+     - ``OTEL_EXPORTER_OTLP_ENDPOINT``
+     - OTLP/HTTP endpoint the scheduler exports telemetry to, and forwards relayed telemetry to; worker managers and
+       workers without an endpoint relay to it (see :doc:`telemetry`).
    * - ``-sri``, ``--status-report-interval-seconds``
      - No
      - ``1``
@@ -477,6 +482,11 @@ Arguments (shared by all subcommands)
      - ``--children-address``
      - Only for ``orb_aws_ec2``, ``aws_raw_ecs``, ``oci_raw``: address the units dial, when they reach the worker
        manager through NAT (e.g. an EC2 public IP). On port 0, the units dial the port ``--children-address`` bound.
+   * - ``-oe``, ``--otlp-endpoint``
+     - No
+     - ``OTEL_EXPORTER_OTLP_ENDPOINT``
+     - OTLP/HTTP endpoint the worker manager exports telemetry to, and its workers too unless
+       ``--worker-otlp-endpoint`` is set (see :doc:`telemetry`).
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty
@@ -510,6 +520,16 @@ Arguments (shared by all subcommands)
      - No
      - ``False``
      - Use OS-level processor suspension (SIGTSTP) for paused tasks.
+   * - ``-tr``, ``--telemetry-relay``
+     - No
+     - ``true``
+     - Relay the telemetry of the worker manager, its workers, and their processors up to the scheduler when they have
+       no endpoint of their own; ``false`` exports nothing instead (see :doc:`telemetry`).
+   * - ``-woe``, ``--worker-otlp-endpoint``
+     - No
+     - ``--otlp-endpoint``
+     - OTLP/HTTP endpoint the workers and processors this worker manager starts export telemetry to, local or in cloud
+       units, e.g. the collector's address as the units reach it through NAT (see :doc:`telemetry`).
    * - ``-it``, ``--io-threads``
      - No
      - ``1``

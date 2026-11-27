@@ -16,6 +16,7 @@ from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerMana
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.telemetry import worker_manager_service
 
 _AnyWorkerManagerConfig = Union[
     NativeWorkerManagerConfig,
@@ -95,6 +96,10 @@ def main() -> None:
         wm_config.logging_config.config_file,
         wm_config.logging_config.level,
         process_name=wm_type,
+        telemetry_service=worker_manager_service(
+            wm_config.worker_manager_config,
+            wm_config.unit_id if isinstance(wm_config, NativeWorkerManagerConfig) else None,
+        ),
     )
     register_event_loop(wm_config.worker_config.event_loop)
 

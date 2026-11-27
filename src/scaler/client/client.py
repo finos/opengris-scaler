@@ -4,8 +4,14 @@ import logging
 import sys
 import threading
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple, TypeVar, Union
+
+from opentelemetry import baggage, trace
+from opentelemetry.context import Context, attach, detach, get_current
+from opentelemetry.trace import SpanKind
 
 from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -28,13 +34,27 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
+from scaler.utility.semantic_conventions import (
+    CLIENT_ID_ATTRIBUTE,
+    CLIENT_SUBMIT_SPAN,
+    RESERVED_ATTRIBUTE_PREFIX,
+    TASK_ID_ATTRIBUTE,
+)
+from scaler.utility.telemetry import trace_context_field
 
 if sys.platform != "emscripten":
     from scaler.worker.agent.processor.processor import Processor
 else:
     Processor = None  # type: ignore[assignment]
 
+
 logger = logging.getLogger(__name__)
+
+tracer = trace.get_tracer(__name__)
+
+# the baggage of the client.baggage() blocks the current thread or asyncio task is in, per client
+_block_baggage: ContextVar[Mapping[ClientID, Dict[str, str]]] = ContextVar("scaler_client_block_baggage", default={})
+
 
 _T = TypeVar("_T")
 
@@ -68,6 +88,7 @@ class Client:
         object_storage_address: Optional[str] = None,
         security_config: Optional[SecurityConfig] = None,
         capabilities: Optional[Dict[str, int]] = None,
+        baggage: Optional[Mapping[str, Any]] = None,
     ):
         """
         The Scaler Client used to send tasks to a scheduler.
@@ -92,6 +113,10 @@ class Client:
                              `capabilities` replaces them. If None, a client inside a worker takes the capabilities of
                              the task it runs in, and any other client uses `{}`.
         :type capabilities: Optional[Dict[str, int]]
+        :param baggage: OpenTelemetry baggage of every task this client submits, e.g. `{"job": "backtest-42"}`: each
+                        span of those tasks carries it as attributes, as strings. `baggage()` adds baggage for a block
+                        of submits.
+        :type baggage: Optional[Mapping[str, Any]]
         """
         self.__initialize__(
             address,
@@ -103,6 +128,7 @@ class Client:
             object_storage_address,
             security_config,
             capabilities,
+            baggage,
         )
 
     def __initialize__(
@@ -116,8 +142,10 @@ class Client:
         object_storage_address: Optional[str] = None,
         security_config: Optional[SecurityConfig] = None,
         capabilities: Optional[Dict[str, int]] = None,
+        baggage: Optional[Mapping[str, Any]] = None,
     ):
         check_browser_runtime()
+        self._baggage = _validate_baggage(baggage or {})
 
         self._future_manager: Optional[ClientFutureManager] = None
         self._bridge: Optional[ClientAgentBridge] = None
@@ -214,6 +242,7 @@ class Client:
             "timeout_seconds": self._timeout_seconds,
             "heartbeat_interval_seconds": self._heartbeat_interval_seconds,
             "capabilities": self._capabilities,
+            "baggage": self._baggage,
         }
 
     def __setstate__(self, state: dict) -> None:
@@ -225,7 +254,29 @@ class Client:
             timeout_seconds=state["timeout_seconds"],
             heartbeat_interval_seconds=state["heartbeat_interval_seconds"],
             capabilities=state["capabilities"],
+            baggage=state["baggage"],
         )
+
+    @contextmanager
+    def baggage(self, **baggage: Any) -> Iterator[None]:
+        """
+        Add OpenTelemetry baggage to every task this client submits inside the block, over the client's own baggage.
+
+        .. code:: python
+
+            with client.baggage(stage="aggregate"):
+                client.submit(aggregate, results)
+
+        Blocks nest, the innermost winning, and apply to the thread or asyncio task that entered them. Keys starting
+        with `scaler.` are reserved.
+        """
+        block_baggage = _block_baggage.get()
+        client_block_baggage = {**block_baggage.get(self._identity, {}), **_validate_baggage(baggage)}
+        token = _block_baggage.set({**block_baggage, self._identity: client_block_baggage})
+        try:
+            yield
+        finally:
+            _block_baggage.reset(token)
 
     def submit(self, fn: Callable, *args, **kwargs) -> ScalerFuture:
         """
@@ -609,6 +660,17 @@ class Client:
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
+        # the submit span ends at once: it marks where the task left the caller and parents the scheduler's span
+        # current, not passed as the span's context: the span's own context takes its baggage from the current one
+        token = attach(self.__submit_context())
+        try:
+            with tracer.start_as_current_span(
+                CLIENT_SUBMIT_SPAN, kind=SpanKind.PRODUCER, attributes={TASK_ID_ATTRIBUTE: task_id.hex()}
+            ):
+                trace_context_fields = trace_context_field()
+        finally:
+            detach(token)
+
         task = Task(
             taskId=task_id,
             source=self._identity,
@@ -618,6 +680,7 @@ class Client:
                 Task.Argument(type=Task.Argument.ArgumentType.objectID, data=argument) for argument in function_args
             ],
             capabilities=dict_to_capabilities(capabilities),
+            **trace_context_fields,
         )
 
         future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
@@ -712,6 +775,7 @@ class Client:
         task_flags_bytes = self.__get_task_flags().serialize()
 
         task_id_to_tasks = dict()
+        submit_context = self.__submit_context()
 
         for node_name, node in call_graph.items():
             task_id = node_name_to_task_id[node_name]
@@ -746,6 +810,7 @@ class Client:
                     for argument in arguments
                 ],
                 capabilities=dict_to_capabilities(capabilities),
+                **trace_context_field(submit_context),
             )
 
         result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]
@@ -782,6 +847,22 @@ class Client:
                 raise ValueError(f"cannot find {key=} in graph")
 
         return graph_task, compute_futures, ready_futures
+
+    def __submit_context(self) -> Context:
+        """The current context with this client's baggage and ID in its baggage.
+
+        Lowest first: the baggage already current (a parent task's), the client's baggage, its `baggage()` blocks, and
+        its ID, which replaces a parent client's.
+        """
+        submit_context = get_current()
+        submit_baggage = {
+            **self._baggage,
+            **_block_baggage.get().get(self._identity, {}),
+            CLIENT_ID_ATTRIBUTE: self._identity.decode(),
+        }
+        for key, value in submit_baggage.items():
+            submit_context = baggage.set_baggage(key, value, submit_context)
+        return submit_context
 
     def __get_task_flags(self) -> TaskFlags:
         parent_task_priority = self.__get_parent_task_priority()
@@ -874,3 +955,11 @@ class Client:
             return None
 
         return str(current_processor.object_storage_address())
+
+
+def _validate_baggage(baggage: Mapping[str, Any]) -> Dict[str, str]:
+    """The baggage as OpenTelemetry holds it, strings; a key under Scaler's own prefix is refused."""
+    reserved = [key for key in baggage if key.startswith(RESERVED_ATTRIBUTE_PREFIX)]
+    if reserved:
+        raise ValueError(f"baggage keys starting with {RESERVED_ATTRIBUTE_PREFIX!r} are reserved: {reserved}")
+    return {key: str(value) for key, value in baggage.items()}

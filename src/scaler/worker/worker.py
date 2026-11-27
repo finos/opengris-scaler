@@ -6,6 +6,9 @@ import sys
 import uuid
 from typing import Callable, Dict, List, Optional, Tuple
 
+from opentelemetry import trace
+from opentelemetry.trace import Span, Status, StatusCode
+
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import PROFILING_INTERVAL_SECONDS, WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
 from scaler.config.types.address import AddressConfig, SocketType
@@ -27,6 +30,7 @@ from scaler.protocol.capnp import (
     TaskCancel,
     TaskLog,
     TaskResult,
+    TelemetryBatch,
     WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
 )
@@ -34,7 +38,20 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.semantic_conventions import (
+    UNIT_ID_ATTRIBUTE,
+    WORKER_ID_ATTRIBUTE,
+    WORKER_MANAGER_ID_ATTRIBUTE,
+    WORKER_START_SPAN,
+)
 from scaler.utility.signal_handler import install_async_shutdown_handler
+from scaler.utility.telemetry import (
+    ServiceName,
+    TelemetryService,
+    extract_trace_context,
+    relay_routines,
+    send_remaining_telemetry,
+)
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager
@@ -42,6 +59,8 @@ from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
 logger = logging.getLogger(__name__)
+
+tracer = trace.get_tracer(__name__)
 
 # YMQ errors that mean the scheduler connection is already gone.
 _EXPECTED_TEARDOWN_ERROR_CODES = frozenset(
@@ -66,11 +85,14 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         task_timeout_seconds: int,
         death_timeout_seconds: int,
         hard_processor_suspend: bool,
+        telemetry_relay: bool,
+        otlp_endpoint: Optional[str],
         logging_paths: Tuple[str, ...],
         logging_level: str,
         worker_manager_id: WorkerManagerID,
         worker_manager_address: AddressConfig,
         unit_id: str,
+        trace_context: str,
         deterministic_worker_ids: bool = False,
         security_config: Optional[SecurityConfig] = None,
     ):
@@ -100,12 +122,16 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_timeout_seconds = task_timeout_seconds
         self._death_timeout_seconds = death_timeout_seconds
         self._hard_processor_suspend = hard_processor_suspend
+        self._telemetry_relay = telemetry_relay
+        self._otlp_endpoint = otlp_endpoint
 
         self._logging_paths = logging_paths
         self._logging_level = logging_level
         self._worker_manager_id = worker_manager_id
         self._worker_manager_address = worker_manager_address
         self._unit_id = unit_id
+        self._trace_context = trace_context  # the reconcile that started this worker, which its start span nests under
+        self._start_span: Optional[Span] = None  # from process start to the first heartbeat echo
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -196,8 +222,25 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._connector_storage.destroy()
 
     def __initialize(self):
-        bootstrap_process()
+        bootstrap_process(
+            telemetry_service=TelemetryService(
+                ServiceName.WORKER,
+                {
+                    WORKER_ID_ATTRIBUTE: self._ident.decode(),
+                    WORKER_MANAGER_ID_ATTRIBUTE: self._worker_manager_id.decode(),
+                    UNIT_ID_ATTRIBUTE: self._unit_id,
+                },
+                relay=self._telemetry_relay,
+                otlp_endpoint=self._otlp_endpoint,
+            )
+        )
         register_event_loop(self._event_loop)
+
+        self._start_span = tracer.start_span(
+            WORKER_START_SPAN,
+            context=extract_trace_context(self._trace_context),
+            attributes={WORKER_ID_ATTRIBUTE: self._ident.decode()},
+        )
 
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)
 
@@ -240,6 +283,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
             hard_processor_suspend=self._hard_processor_suspend,
+            telemetry_relay=self._telemetry_relay,
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
             security_config=self._security_config,
@@ -267,6 +311,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     async def __on_receive_external(self, message: BaseMessage):
         if isinstance(message, WorkerHeartbeatEcho):
             self._connected_to_scheduler = True
+            self.__end_start_span(StatusCode.OK)
             await self._heartbeat_manager.on_heartbeat_echo(message)
             return
 
@@ -311,6 +356,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             await self._connector_external.send(message, detached=True)
             return
 
+        if isinstance(message, TelemetryBatch):
+            await self._connector_manager.send(message, detached=True)  # a processor's telemetry, relayed up
+            return
+
         if isinstance(message, TaskResult):
             await self._processor_manager.on_task_result(processor_id, message)
             return
@@ -340,11 +389,21 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             create_async_loop_routine(self._timeout_manager.routine, 1),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
+            *relay_routines(self._connector_manager),
         )
+
+    def __end_start_span(self, status: StatusCode) -> None:
+        if self._start_span is None:
+            return
+        self._start_span.set_status(Status(status))
+        self._start_span.end()
+        self._start_span = None
 
     async def __teardown(self) -> None:
         # Guarded with `is not None` throughout: this runs even when __initialize failed partway
         # through, so some of these may never have been created.
+        self.__end_start_span(StatusCode.ERROR)  # still open: the worker never reached the scheduler
+        await send_remaining_telemetry(self._connector_manager)  # ahead of the exit notification, on the same socket
         await self.__notify_of_exit()
 
         destroyables: List[Tuple[str, Callable[[], None]]] = []

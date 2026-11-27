@@ -13,6 +13,7 @@ from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.telemetry import empty_trace_context
 from tests.utility.utility import logging_test_name
 
 _WORKER_ID = WorkerID(b"worker_aaa")
@@ -48,6 +49,7 @@ class TestVanillaWorkerControllerOnDrainingHeartbeat(unittest.IsolatedAsyncioTes
             funcObjectId=b"",
             functionArgs=[],
             capabilities={},
+            traceContext=empty_trace_context(),
         )
         self.assertEqual(self.allocation_policy.assign_task(task), _WORKER_ID)
 
@@ -164,6 +166,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
             funcObjectId=b"",
             functionArgs=[],
             capabilities={},
+            traceContext=empty_trace_context(),
         )
 
     def test_mass_eviction_is_handled_without_crashing(self):

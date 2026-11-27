@@ -18,6 +18,7 @@ from scaler.protocol.capnp import BaseMessage, WorkerDisconnectNotification, Wor
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
+from scaler.utility.telemetry import empty_trace_context
 from scaler.worker.worker import Worker
 from tests.utility.utility import logging_test_name
 
@@ -75,11 +76,14 @@ def _worker(combo: SchedulerClusterCombo, manager: _FakeManager) -> Worker:
         task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
         death_timeout_seconds=TIMEOUT_SECONDS,
         hard_processor_suspend=False,
+        telemetry_relay=False,
+        otlp_endpoint=None,
         logging_paths=DEFAULT_LOGGING_PATHS,
         logging_level=DEFAULT_LOGGING_LEVEL,
         worker_manager_id=WorkerManagerID(b"fake-manager"),
         worker_manager_address=manager.address,
         unit_id=UNIT_ID,
+        trace_context=empty_trace_context(),
     )
 
 

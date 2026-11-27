@@ -36,6 +36,7 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.network_util import OS_PICKED_PORT
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.telemetry import worker_manager_service
 from scaler.worker_manager.native.worker_manager import NativeWorkerManager
 
 logger = logging.getLogger(__name__)
@@ -46,8 +47,13 @@ SCHEDULER_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 10
 def _run_native_worker_manager(worker_manager: NativeWorkerManager) -> None:
     # This process is spawned directly, so it must bootstrap its own logging/faulthandler.
     logging_config = worker_manager.config.logging_config
+    config = worker_manager.config
     bootstrap_process(
-        logging_config.paths, logging_config.config_file, logging_config.level, process_name="worker_manager_native"
+        logging_config.paths,
+        logging_config.config_file,
+        logging_config.level,
+        process_name="worker_manager_native",
+        telemetry_service=worker_manager_service(config.worker_manager_config, config.unit_id),
     )
     worker_manager.run()
 
@@ -75,6 +81,7 @@ class SchedulerClusterCombo:
         trim_memory_threshold_bytes: int = DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
         per_worker_task_queue_size: int = DEFAULT_PER_WORKER_QUEUE_SIZE,
         hard_processor_suspend: bool = DEFAULT_HARD_PROCESSOR_SUSPEND,
+        telemetry_relay: bool = True,
         protected: bool = True,
         scaler_policy: PolicyConfig = PolicyConfig(policy_content="allocate=even_load; scaling=static"),
         event_loop: str = "builtin",
@@ -171,6 +178,7 @@ class SchedulerClusterCombo:
                         garbage_collect_interval_seconds=garbage_collect_interval_seconds,
                         trim_memory_threshold_bytes=trim_memory_threshold_bytes,
                         hard_processor_suspend=hard_processor_suspend,
+                        telemetry_relay=telemetry_relay,
                         io_threads=worker_io_threads,
                         event_loop=event_loop,
                     ),

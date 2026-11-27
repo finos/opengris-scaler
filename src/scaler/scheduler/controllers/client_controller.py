@@ -19,6 +19,12 @@ from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.one_to_many_dict import OneToManyDict
+from scaler.utility.semantic_conventions import (
+    CLIENT_CONNECTED_EVENT,
+    CLIENT_DISCONNECTED_EVENT,
+    CLIENT_ID_ATTRIBUTE,
+    EVENT_NAME_ATTRIBUTE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +109,10 @@ class VanillaClientController(ClientController, Looper, Reporter):
         now = time.time()
         connected = self._connected_clients.get(client_id)
         if connected is None:
-            logger.info(f"{client_id!r} connected")
+            logger.info(
+                f"{client_id!r} connected",
+                extra={EVENT_NAME_ATTRIBUTE: CLIENT_CONNECTED_EVENT, CLIENT_ID_ATTRIBUTE: client_id.decode()},
+            )
             self._connected_clients[client_id] = _ConnectedClient(connected_at=now, last_seen_at=now, heartbeat=info)
             return
 
@@ -174,7 +183,10 @@ class VanillaClientController(ClientController, Looper, Reporter):
             await self.__on_client_disconnect(client)
 
     async def __on_client_disconnect(self, client_id: ClientID):
-        logger.info(f"{client_id!r} disconnected")
+        logger.info(
+            f"{client_id!r} disconnected",
+            extra={EVENT_NAME_ATTRIBUTE: CLIENT_DISCONNECTED_EVENT, CLIENT_ID_ATTRIBUTE: client_id.decode()},
+        )
         self._connected_clients.pop(client_id, None)
 
         await self.__cancel_client_all_tasks(client_id)

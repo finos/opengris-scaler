@@ -1,9 +1,17 @@
 import os
-from typing import Dict
+import re
+from typing import Dict, Optional
 
 from scaler.config.common.cloud_children import CloudChildrenConfig
+from scaler.config.common.worker import WorkerConfig
+from scaler.config.constants import OTLP_ENDPOINT_ENV
 from scaler.config.types.address import AddressConfig
 from scaler.utility.network_util import resolve_port_zero
+from scaler.utility.telemetry import is_export_configured, otel_environment, trace_context_environment
+
+# a requirement line that installs opengris-scaler with extras, e.g. "opengris-scaler[otel,aws]>=2.9"
+SCALER_REQUIREMENT_EXTRAS = re.compile(r"^\s*opengris[-_.]scaler\s*\[([^\]]*)\]", re.IGNORECASE)
+TELEMETRY_EXTRAS = frozenset({"otel", "all"})
 
 
 def load_requirements_content(requirements_txt: str) -> str:
@@ -41,3 +49,42 @@ def child_link_arguments(
         children_address if advertised_address is None else resolve_port_zero(advertised_address, children_address)
     )
     return f"--parent-address {parent_address} --unit-id {unit_id} --max-task-concurrency {task_concurrency}"
+
+
+def unit_environment(worker_config: WorkerConfig) -> Dict[str, str]:
+    """The environment a unit starts with: this manager's OpenTelemetry settings, and the trace of the unit create
+    starting it, so the unit's manager and workers export the same way and join the scale-up trace.
+
+    Not this manager's endpoint, which a unit may not reach: a unit relays to this manager, unless worker_otlp_endpoint
+    gives it one of its own."""
+    environment = {**otel_environment(), **trace_context_environment()}
+    environment.pop(OTLP_ENDPOINT_ENV, None)
+    if worker_config.worker_otlp_endpoint is not None:
+        environment[OTLP_ENDPOINT_ENV] = worker_config.worker_otlp_endpoint
+    return environment
+
+
+def check_unit_requirements_support_telemetry(requirements_content: Optional[str], worker_config: WorkerConfig) -> None:
+    """Fail at start when units would export telemetry but their requirements leave out the OpenTelemetry SDK.
+
+    A unit given an endpoint without the SDK exits at start, and one that relays loses its telemetry."""
+    # a unit relays to this manager, which forwards when it exports; whether the scheduler forwards is not known yet
+    units_export = worker_config.worker_otlp_endpoint is not None or (
+        worker_config.telemetry_relay and is_export_configured()
+    )
+    if requirements_content is None or not units_export:
+        return
+
+    for line in requirements_content.splitlines():
+        match = SCALER_REQUIREMENT_EXTRAS.match(line)
+        if match is None:
+            continue
+        extras = {extra.strip().lower() for extra in match.group(1).split(",")}
+        if extras & TELEMETRY_EXTRAS:
+            return
+
+    raise ValueError(
+        "units export telemetry (--worker-otlp-endpoint is set, or they relay to this worker manager, which exports), "
+        "but their requirements install opengris-scaler without the otel extra: "
+        "require opengris-scaler[otel]"
+    )

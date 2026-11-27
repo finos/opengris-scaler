@@ -52,6 +52,26 @@ class WorkerConfig(ConfigClass):
             ),
         ),
     )
+    telemetry_relay: bool = dataclasses.field(
+        default=True,
+        metadata=dict(
+            short="-tr",
+            help=(
+                "relay the telemetry of this worker manager, its workers, and their processors up to the scheduler, "
+                "when they have no OTLP endpoint of their own and the scheduler has one; false exports nothing instead"
+            ),
+        ),
+    )
+    worker_otlp_endpoint: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-woe",
+            help=(
+                "OTLP/HTTP endpoint the workers and processors this worker manager starts export telemetry to, local "
+                "or in cloud units, in place of the worker manager's own; e.g. the collector's address seen through NAT"
+            ),
+        ),
+    )
     io_threads: int = dataclasses.field(
         default=defaults.DEFAULT_IO_THREADS,
         metadata=dict(short="-it", help="set the number of io threads for io backend per worker"),

@@ -13,6 +13,7 @@ from scaler.scheduler.controllers.mixins import (
     WorkerController,
 )
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
+from scaler.scheduler.metrics import SchedulerMetrics
 from scaler.utility.memory import get_memory_limit_and_available, get_process_memory
 from scaler.utility.mixins import Looper
 
@@ -22,6 +23,7 @@ class VanillaInformationController(InformationController, Looper):
         self._config_controller = config_controller
 
         self._process = psutil.Process()
+        self._metrics = SchedulerMetrics()
 
         self._monitor_binder: Optional[AsyncPublisher] = None
         self._binder: Optional[AsyncBinder] = None
@@ -79,15 +81,15 @@ class VanillaInformationController(InformationController, Looper):
 
     async def __send_scheduler_state(self) -> None:
         _, mem_available = get_memory_limit_and_available()
-        await self._monitor_binder.send(
-            StateScheduler(
-                binder=self._binder.get_status(),
-                scheduler=Resource(cpu=int(self._process.cpu_percent() * 10), rss=get_process_memory(self._process)),
-                rssFree=mem_available,
-                clientManager=self._client_controller.get_status(),
-                objectManager=self._object_controller.get_status(),
-                taskManager=self._task_controller.get_status(),
-                workerManager=self._worker_controller.get_status(),
-                scalingManager=self._worker_manager_controller.get_status(),
-            )
+        state = StateScheduler(
+            binder=self._binder.get_status(),
+            scheduler=Resource(cpu=int(self._process.cpu_percent() * 10), rss=get_process_memory(self._process)),
+            rssFree=mem_available,
+            clientManager=self._client_controller.get_status(),
+            objectManager=self._object_controller.get_status(),
+            taskManager=self._task_controller.get_status(),
+            workerManager=self._worker_controller.get_status(),
+            scalingManager=self._worker_manager_controller.get_status(),
         )
+        self._metrics.record(state)
+        await self._monitor_binder.send(state)

@@ -35,6 +35,7 @@ A cloud worker manager runs a native worker manager in each resource it provisio
 * ``--unit-startup-timeout-seconds`` (``-usts``): Seconds a cloud unit (ORB AWS EC2 instance, AWS Raw ECS task, OCI Raw container instance) may take to send its first heartbeat before the worker manager counts it as lost (default: ``600``). Raise it when the units install scaler from source, which builds its C++ dependencies on each unit.
 * ``--children-address`` (``-ca``): Address the worker manager binds for its units to dial. Local worker processes default to ``127.0.0.1`` on port 0. On port 0, the units dial the port the OS picked at bind time. ORB AWS EC2, AWS Raw ECS, and OCI Raw require it: each provisioned resource runs a native worker manager that dials this address, so it must be reachable from those resources.
 * ``--advertised-children-address`` (``-aca``): ORB AWS EC2, AWS Raw ECS, and OCI Raw only. Address the units dial, written into their start command. Defaults to ``--children-address``. On port 0, the units dial the port ``--children-address`` bound, as with 1:1 NAT such as an EC2 public IP. Set it when the units reach the worker manager through NAT, such as an EC2 public IP that is not on any local interface.
+* ``--otlp-endpoint`` (``-oe``): OTLP/HTTP endpoint the worker manager exports telemetry to, in place of ``OTEL_EXPORTER_OTLP_ENDPOINT``. Its workers use it too, unless ``--worker-otlp-endpoint`` is set (see :doc:`../telemetry`).
 
 Worker Behavior
 ---------------
@@ -48,6 +49,8 @@ These parameters control individual worker processes started by the worker manag
 * ``--garbage-collect-interval-seconds`` (``-gc``): Interval at which the worker runs garbage collection in seconds (default: ``30``).
 * ``--trim-memory-threshold-bytes`` (``-tm``): Threshold for trimming libc's memory in bytes (default: ``1073741824``, i.e., 1 GB).
 * ``--hard-processor-suspend`` (``-hps``): When set, suspends worker processors using SIGTSTP instead of a synchronization event.
+* ``--telemetry-relay`` (``-tr``): ``true`` (default) or ``false``. When true, the worker manager, its workers, and their processors relay their telemetry up to the scheduler when they have no endpoint of their own; false exports nothing instead (see :doc:`../telemetry`).
+* ``--worker-otlp-endpoint`` (``-woe``): OTLP/HTTP endpoint the workers and processors this worker manager starts export telemetry to, local or in cloud units, in place of the worker manager's own. Set it when the workers reach the collector at another address, such as through NAT (see :doc:`../telemetry`).
 * ``--io-threads`` (``-it``): Number of IO threads per worker (default: ``1``).
 * ``--per-worker-capabilities`` (``-pwc``): Comma-separated list of capabilities (e.g., ``"linux,cpu=4"``).
   Each entry is either a bare capability name (e.g., ``linux``, meaning unlimited) or ``name=integer`` (e.g., ``cpu=4``).

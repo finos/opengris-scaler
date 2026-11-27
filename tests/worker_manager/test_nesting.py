@@ -9,7 +9,13 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.network_backends import get_network_backend_from_env
-from scaler.protocol.capnp import BaseMessage, WorkerManagerCommand, WorkerManagerHeartbeat, WorkerManagerHeartbeatEcho
+from scaler.protocol.capnp import (
+    BaseMessage,
+    TelemetryBatch,
+    WorkerManagerCommand,
+    WorkerManagerHeartbeat,
+    WorkerManagerHeartbeatEcho,
+)
 from scaler.utility.identifiers import WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import OS_PICKED_PORT
@@ -33,7 +39,9 @@ class _FakeParent:
     def __init__(self, address: AddressConfig) -> None:
         self.address = address
         self.task_concurrency = 0
+        self.forwards_telemetry = False
         self.received: List[str] = []
+        self.relayed: List[TelemetryBatch] = []
         self._backend = get_network_backend_from_env(io_threads=1)
         self._binder = self._backend.create_async_binder(identity=b"fake-parent", callback=self._on_receive)
 
@@ -52,9 +60,13 @@ class _FakeParent:
     async def _on_receive(self, source: bytes, message: BaseMessage) -> None:
         assert source == UNIT_ID.encode(), "the child dials with its unit id as identity"
         self.received.append(type(message).__name__)
+        if isinstance(message, TelemetryBatch):
+            self.relayed.append(message)
+            return
 
         assert isinstance(message, WorkerManagerHeartbeat)
-        await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
+        echo = WorkerManagerHeartbeatEcho(forwardsTelemetry=self.forwards_telemetry)
+        await self._binder.send(source, echo, detached=True)
 
         request = WorkerManagerCommand.DesiredTaskConcurrencyRequest(
             taskConcurrency=self.task_concurrency, capabilities=[]

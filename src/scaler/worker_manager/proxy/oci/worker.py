@@ -16,6 +16,8 @@ def create_oci_worker(
     worker_manager_id: WorkerManagerID,
     worker_manager_address: AddressConfig,
     unit_id: str,
+    telemetry_relay: bool,
+    otlp_endpoint: Optional[str],
     compartment_id: str,
     availability_domain: str,
     subnet_id: str,
@@ -52,6 +54,8 @@ def create_oci_worker(
         worker_manager_id=worker_manager_id,
         worker_manager_address=worker_manager_address,
         unit_id=unit_id,
+        telemetry_relay=telemetry_relay,
+        otlp_endpoint=otlp_endpoint,
         processor_status_provider_factory=OCIProcessorStatusProvider,
         execution_backend_factory=partial(
             OCIExecutionBackend,

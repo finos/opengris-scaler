@@ -25,6 +25,7 @@ from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerManagerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
+from scaler.utility.telemetry import empty_trace_context
 from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -53,6 +54,7 @@ class TestChildManagerTaskConcurrency(unittest.IsolatedAsyncioTestCase):
             capabilities={},
             create_provisioner=lambda _children_address: provisioner,
             children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
+            telemetry_relay=True,
         )
         # _get_loops creates the controller after the bind, which never runs here
         self.runner._create_unit_controller(AddressConfig.from_string("tcp://127.0.0.1:2"))
@@ -113,6 +115,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
             capabilities={"cpu": 4},
             create_provisioner=lambda _children_address: self.provisioner,
             children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
+            telemetry_relay=True,
         )
         connector = AsyncMock()
         connector.send = self.send_mock
@@ -127,7 +130,8 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
                 WorkerManagerCommand.DesiredTaskConcurrencyRequest(
                     taskConcurrency=5, capabilities=[TaskCapability(name="gpu", value=-1)]
                 ),
-            ]
+            ],
+            traceContext=empty_trace_context(),
         )
 
         await self.runner._handle_command(cmd)
@@ -208,6 +212,8 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
             worker_manager_id=WorkerManagerID(b"mgr"),
             worker_manager_address=MagicMock(),
             unit_id="unit",
+            telemetry_relay=False,
+            otlp_endpoint=None,
             processor_status_provider_factory=MagicMock(),
             execution_backend_factory=MagicMock(),
         )

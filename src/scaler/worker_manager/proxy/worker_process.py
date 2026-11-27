@@ -25,6 +25,8 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import WorkerID, WorkerManagerID
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.semantic_conventions import UNIT_ID_ATTRIBUTE, WORKER_ID_ATTRIBUTE, WORKER_MANAGER_ID_ATTRIBUTE
+from scaler.utility.telemetry import ServiceName, TelemetryService, relay_routines, send_remaining_telemetry
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_manager.proxy.heartbeat_manager import HeartbeatManager
 from scaler.worker_manager.proxy.mixins import ExecutionBackend, ProcessorStatusProvider
@@ -56,6 +58,8 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         worker_manager_id: WorkerManagerID,
         worker_manager_address: AddressConfig,
         unit_id: str,
+        telemetry_relay: bool,
+        otlp_endpoint: Optional[str],
         processor_status_provider_factory: Callable[[], ProcessorStatusProvider],
         execution_backend_factory: Callable[[], ExecutionBackend],
         security_config: Optional[SecurityConfig] = None,
@@ -80,6 +84,8 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._worker_manager_id = worker_manager_id
         self._worker_manager_address = worker_manager_address
         self._unit_id = unit_id
+        self._telemetry_relay = telemetry_relay
+        self._otlp_endpoint = otlp_endpoint
 
         self._processor_status_provider_factory = processor_status_provider_factory
         self._execution_backend_factory = execution_backend_factory
@@ -172,7 +178,18 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             self._connector_storage.destroy()
 
     def __initialize(self) -> None:
-        bootstrap_process()
+        bootstrap_process(
+            telemetry_service=TelemetryService(
+                ServiceName.WORKER,
+                {
+                    WORKER_ID_ATTRIBUTE: self._ident.decode(),
+                    WORKER_MANAGER_ID_ATTRIBUTE: self._worker_manager_id.decode(),
+                    UNIT_ID_ATTRIBUTE: self._unit_id,
+                },
+                relay=self._telemetry_relay,
+                otlp_endpoint=self._otlp_endpoint,
+            )
+        )
         register_event_loop(self._event_loop)
 
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)
@@ -279,9 +296,11 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             create_async_loop_routine(self._execution_backend.routine, 0),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._task_manager.upload_results, 0),
+            *relay_routines(self._connector_external),
         )
 
     async def __teardown(self) -> None:
+        await send_remaining_telemetry(self._connector_external)  # ahead of the exit notification, on the same socket
         await self.__notify_of_exit()
 
     def __register_signal(self) -> None:

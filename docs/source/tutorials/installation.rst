@@ -65,6 +65,12 @@ If you use GraphBLAS to solve DAG graph tasks:
 
     uv pip install 'opengris-scaler[graphblas]'
 
+If you export telemetry to an OpenTelemetry collector (see :doc:`telemetry`):
+
+.. code-block:: bash
+
+    uv pip install 'opengris-scaler[otel]'
+
 If you need all optional dependencies:
 
 .. code-block:: bash

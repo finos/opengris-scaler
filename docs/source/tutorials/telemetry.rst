@@ -1,0 +1,233 @@
+Telemetry
+=========
+
+Scaler exports traces, metrics, and logs to an `OpenTelemetry <https://opentelemetry.io/>`_ collector over OTLP/HTTP.
+
+Enable export
+-------------
+
+1. Install the SDK and exporter on every machine that runs a scheduler, worker manager, or worker:
+
+   .. code-block:: bash
+
+       pip install opengris-scaler[otel]
+
+2. Give the scheduler the collector endpoint, in its environment or as ``otlp_endpoint`` in its ``[scheduler]`` section:
+
+   .. code-block:: bash
+
+       export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+
+- Every other process relays to the scheduler by default (see below), so the scheduler's endpoint is enough; ``OTEL_SDK_DISABLED=true`` turns export off.
+- Workers and processors inherit the environment of the worker manager that starts them.
+- A cloud worker manager (ECS, ORB AWS EC2, OCI) passes its ``OTEL_*`` variables to the units it starts, except ``OTEL_EXPORTER_OTLP_ENDPOINT``, which a unit may not reach.
+- ``otlp_endpoint`` in the ``[scheduler]`` or a ``[[worker_manager]]`` section (``--otlp-endpoint``) sets the endpoint for that process in place of ``OTEL_EXPORTER_OTLP_ENDPOINT``, so one configuration file can send each component to the collector address it reaches.
+- Workers that reach the collector at another address, such as cloud units behind NAT, export to ``worker_otlp_endpoint`` (``--worker-otlp-endpoint``) of their worker manager instead; it applies to local workers and to units alike.
+- Both replace ``OTEL_EXPORTER_OTLP_ENDPOINT`` only, so a signal-specific endpoint such as ``OTEL_EXPORTER_OTLP_TRACES_ENDPOINT``, headers, and certificates still come from the environment.
+- The cloud provider stores those variables with the unit (the ECS task overrides, the EC2 user data, the OCI container): put a secret such as an ``OTEL_EXPORTER_OTLP_HEADERS`` token there only if those places may hold it.
+- A cloud worker manager whose units install from ``requirements_txt`` refuses to start when its units would export (``--worker-otlp-endpoint``, or relay to a worker manager with an endpoint) but the requirements install ``opengris-scaler`` without the ``otel`` or ``all`` extra.
+- On Windows, a worker or processor that is stopped loses the telemetry it has not exported yet, up to ``OTEL_BSP_SCHEDULE_DELAY`` of spans: Windows stops them without letting them flush.
+- The SDK reads every other setting from the standard `OTEL_* variables <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/>`_, for example ``OTEL_EXPORTER_OTLP_HEADERS`` and ``OTEL_METRIC_EXPORT_INTERVAL``.
+
+Configuration examples
+----------------------
+
+Each example is a ``scaler config.toml`` file; the same keys work as flags on ``scaler_scheduler`` and ``scaler_worker_manager``.
+
+The scheduler's endpoint alone exports the whole cluster: relaying is on by default, so the worker manager, its workers, and their processors send their telemetry through the scheduler.
+
+.. code-block:: toml
+
+    [scheduler]
+    bind_address = "tcp://127.0.0.1:6378"
+    object_storage_address = "tcp://127.0.0.1:6379"
+    otlp_endpoint = "http://collector:4318"
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    scheduler_address = "tcp://127.0.0.1:6378"
+    worker_manager_id = "wm-native"
+    # no endpoint of its own, and telemetry_relay defaults to true: it relays up to the scheduler
+
+A worker manager that reaches the collector exports directly, with its workers, and keeps their telemetry off the scheduler:
+
+.. code-block:: toml
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    scheduler_address = "tcp://10.0.0.5:6378"
+    worker_manager_id = "wm-rack-2"
+    otlp_endpoint = "http://10.0.0.9:4318"
+
+Cloud units that reach the collector at another address than their worker manager does export to ``worker_otlp_endpoint``:
+
+.. code-block:: toml
+
+    [[worker_manager]]
+    type = "orb_aws_ec2"
+    worker_manager_id = "wm-orb"
+    # ... the worker manager's other settings
+    otlp_endpoint = "http://10.0.0.9:4318"
+    # the collector as the units reach it through NAT
+    worker_otlp_endpoint = "http://203.0.113.10:4318"
+
+A worker manager whose telemetry must not leave it turns relaying off, and with no endpoint of its own exports nothing:
+
+.. code-block:: toml
+
+    [[worker_manager]]
+    type = "baremetal_native"
+    scheduler_address = "tcp://127.0.0.1:6378"
+    worker_manager_id = "wm-quiet"
+    telemetry_relay = false
+
+The same, from the command line:
+
+.. code-block:: bash
+
+    scaler_scheduler tcp://127.0.0.1:6378 --object-storage-address tcp://127.0.0.1:6379 --otlp-endpoint http://collector:4318
+    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-quiet --telemetry-relay false
+
+Relay
+-----
+
+A process with no endpoint of its own sends its telemetry to the process that supervises it, which exports it or passes it up:
+
+.. code-block:: text
+
+    processor -> worker -> worker manager -> (a cloud unit's manager -> its parent worker manager) -> scheduler
+
+- A process with an endpoint of its own (``otlp_endpoint``, ``worker_otlp_endpoint``, or ``OTEL_EXPORTER_OTLP_ENDPOINT``) exports directly, and exports what the processes it supervises relay to it.
+- A worker manager relays when its parent forwards: the scheduler, or a parent worker manager, says so in its heartbeat echo, and the first one decides before the manager creates a unit.
+- A worker manager tells each worker it starts whether to relay.
+- So with only the scheduler's endpoint set, every worker manager, worker, and processor relays up to it; a worker manager with its own endpoint keeps its workers' telemetry off the scheduler.
+- ``telemetry_relay = false`` in a ``[[worker_manager]]`` section (``--telemetry-relay false``) makes that worker manager and its workers export nothing when they have no endpoint of their own.
+- A relaying process exports into a buffer, and sends it to its parent every second; a processor also sends after each task, and a worker manager keeps receiving while its units stop.
+- The top of the chain posts each batch unparsed to ``<OTEL_EXPORTER_OTLP_ENDPOINT>/v1/traces``, ``/v1/metrics``, or ``/v1/logs`` with ``OTEL_EXPORTER_OTLP_HEADERS``, from a thread.
+- A process that would relay but lacks the ``otel`` extra logs a warning and exports nothing.
+- A full buffer drops new batches and logs a warning with the count.
+- Relaying costs more than exporting directly: give the processes that can reach the collector an endpoint of their own.
+
+Services
+--------
+
+Each process reports itself with ``service.namespace=scaler`` and one of these ``service.name`` values:
+
+- ``scaler-scheduler``
+- ``scaler-worker-manager``
+- ``scaler-worker``: the worker agent
+- ``scaler-processor``: the process that runs task functions
+
+Resource attributes ``scaler.worker.id``, ``scaler.worker_manager.id``, and ``scaler.unit.id`` identify workers and worker managers.
+
+Traces
+------
+
+Each task is one trace:
+
+.. code-block:: text
+
+    scaler.client.submit                 the client hands the task to the scheduler
+    └─ scaler.scheduler.task             from arrival to a terminal state, one span event per transition
+       ├─ scaler.scheduler.queued        waiting for a worker with room in its queue
+       └─ scaler.worker.task             from arrival at the worker to the result or cancel it sends back
+          ├─ scaler.worker.queued        waiting in the worker's queue for its processor
+          └─ scaler.processor.execute    the function call, recording the exception of a failed task
+             ├─ scaler.processor.fetch_objects
+             ├─ <spans the task function starts>
+             └─ scaler.processor.store_result
+
+- A task requeued after its worker died or a balance cancel gets another ``scaler.scheduler.queued`` span, and a suspended task another ``scaler.worker.queued`` span.
+- The client does not install the SDK: ``scaler.client.submit`` records only when the calling application configured OpenTelemetry, and joins the caller's trace.
+- Without a client span, ``scaler.scheduler.task`` starts the trace.
+- The task function runs inside ``scaler.processor.execute``, so spans it starts with the OpenTelemetry API nest under it.
+- ``scaler.scheduler.task`` carries ``scaler.task.id``, ``scaler.task.function``, and the terminal ``scaler.task.state``, and ends with an error status when the task failed.
+- Every span of a task carries ``scaler.client.id``, the client that submitted it, through baggage; a client created inside a task replaces its parent's, and its tasks' spans nest under that task's ``scaler.processor.execute`` in the same trace.
+- With a client span, every Scaler process follows the client's sampling decision.
+- Without one, the scheduler decides by the standard ``OTEL_TRACES_SAMPLER`` variable, and the worker and processor follow it.
+
+Each change of a worker manager's desired concurrency is one trace, with a span for each unit it creates:
+
+.. code-block:: text
+
+    scaler.scheduler.scaling_decision        the scaling policy changed a manager's desired task concurrency
+    └─ scaler.worker_manager.create_unit     the manager creates one unit, including its cloud API calls
+       ├─ scaler.worker.start                a native worker, from process start to its first heartbeat echo
+       └─ scaler.worker_manager.create_unit  the manager of a cloud unit, once the unit booted, starting a worker
+          └─ scaler.worker.start
+
+- ``scaler.scheduler.scaling_decision`` carries ``scaler.worker_manager.id``, ``scaler.worker_manager.desired_task_concurrency``, and ``scaler.worker_manager.previous_task_concurrency``.
+- ``scaler.worker_manager.create_unit`` carries ``scaler.unit.id``, and ends with an error status when creating the unit raised.
+- ``scaler.worker.start`` ends with an error status when the worker exits before it reaches the scheduler.
+- A cloud worker manager starts each unit with ``TRACEPARENT`` and ``BAGGAGE`` set to the ``scaler.worker_manager.create_unit`` span that started it, and the unit's manager creates its workers under them.
+- The gap between the end of a cloud unit's ``create_unit`` span and the start of its manager's ``create_unit`` spans is the unit's boot time.
+- Each call that destroys a unit is a ``scaler.worker_manager.destroy_unit`` span, carrying ``scaler.unit.id`` and ending with an error status when the call raised; a retried destroy gets another.
+- A unit shed to scale down is destroyed under the ``scaler.scheduler.scaling_decision`` that lowered the desired concurrency, after ``--scale-down-cooldown-seconds``.
+- A unit destroyed because it was lost, because it exited, or because its manager is stopping starts a trace of its own.
+- A worker manager spans each AWS API call boto3 makes (ECS, ORB AWS EC2), such as ``EC2.DescribeInstances``, under the ``create_unit`` or ``destroy_unit`` span that made it, with ``rpc.service``, ``rpc.method``, ``aws.region``, and ``aws.request_id``.
+- Those calls carry the span's context to AWS in the ``X-Amzn-Trace-Id`` header.
+- OCI API calls have no spans: the OCI SDK has no OpenTelemetry support.
+
+Baggage
+-------
+
+Give a client's tasks `baggage <https://opentelemetry.io/docs/concepts/signals/baggage/>`_, and every span of those tasks carries it as attributes:
+
+.. code-block:: python
+
+    with Client(address=address, baggage={"team": "rates", "job": "backtest-42"}) as client:
+        results = client.map(simulate, range(1000))
+
+        with client.baggage(stage="aggregate"):
+            client.submit(aggregate, results)
+
+- ``baggage`` on the client applies to everything it submits; a ``client.baggage()`` block adds baggage to the submits inside it.
+- A task's baggage is, lowest first: the baggage current when it is submitted, the client's baggage, its ``baggage()`` blocks with the innermost winning, and ``scaler.client.id``.
+- A ``baggage()`` block applies to that client only, in the thread or asyncio task that entered it.
+- Values are sent as strings, and keys starting with ``scaler.`` are reserved.
+- A client created inside a task inherits the task's baggage, and adds its own over it.
+- Baggage travels in the W3C ``baggage`` header: user code that calls other services through instrumented HTTP libraries sends it on, so baggage must never hold a secret.
+
+Spans in task code
+------------------
+
+A task function creates spans with the OpenTelemetry API; they nest under ``scaler.processor.execute`` and carry the task's baggage:
+
+.. code-block:: python
+
+    from opentelemetry import trace
+
+    tracer = trace.get_tracer("my_package")
+
+    def simulate(seed: int) -> float:
+        with tracer.start_as_current_span("simulate.load") as span:
+            span.set_attribute("seed", seed)
+            data = load(seed)
+        with tracer.start_as_current_span("simulate.run"):
+            return run(data)
+
+- The processor exports them with its own spans: the task code needs only ``opentelemetry-api``, which Scaler depends on.
+- Without ``OTEL_EXPORTER_OTLP_ENDPOINT`` set for the worker, the calls are no-ops.
+
+Metrics
+-------
+
+The scheduler refreshes these values every ``status_report_interval_seconds``, samples the event loop lag every second, and exports every ``OTEL_METRIC_EXPORT_INTERVAL``:
+
+- ``scaler.scheduler.tasks``: tasks per ``state``; terminal states count every task that reached them
+- ``scaler.scheduler.workers``: connected workers
+- ``scaler.scheduler.processors``: processors per ``state`` (``busy``, ``idle``, ``suspended``)
+- ``scaler.scheduler.clients``: connected clients
+- ``scaler.scheduler.objects``: objects the scheduler tracks
+- ``scaler.object_storage.bytes``: bytes the object storage server holds
+- ``scaler.worker_manager.pending_workers``: workers requested from each worker manager that have not connected yet
+- ``scaler.scheduler.event_loop.lag``: how late the scheduler's event loop wakes a sleeping coroutine, in seconds, as a histogram with bucket boundaries from 1 ms to 10 s
+
+Logs
+----
+
+- Every process exports the records of the ``scaler`` logger at its configured logging level.
+- The scheduler's lifecycle records carry an ``event.name`` attribute and the IDs involved:
+
+  - ``scaler.worker.connected``, ``scaler.worker.draining``, ``scaler.worker.disconnected`` (with ``scaler.worker.disconnect_reason``)
+  - ``scaler.client.connected``, ``scaler.client.disconnected``

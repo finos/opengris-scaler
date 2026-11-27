@@ -167,6 +167,7 @@ class Task(BaseMessage):
     funcObjectId: ScalerObjectID
     functionArgs: Any
     capabilities: Any
+    traceContext: str
 
     class Argument(CapnpStruct):
         type: Any
@@ -253,10 +254,12 @@ class WorkerManagerHeartbeat(BaseMessage):
     activeUnits: int
     pendingUnits: int
 
-class WorkerManagerHeartbeatEcho(BaseMessage): ...
+class WorkerManagerHeartbeatEcho(BaseMessage):
+    forwardsTelemetry: bool
 
 class WorkerManagerCommand(BaseMessage):
     setDesiredTaskConcurrencyRequests: Any
+    traceContext: str
 
     class DesiredTaskConcurrencyRequest(CapnpStruct):
         taskConcurrency: int
@@ -273,6 +276,15 @@ class ObjectInstruction(BaseMessage):
         clear = 2
 
 class WorkerDisconnectNotification(BaseMessage): ...
+
+class TelemetryBatch(BaseMessage):
+    signal: "TelemetryBatch.Signal"
+    payload: bytes
+
+    class Signal(IntEnum):
+        traces = 0
+        metrics = 1
+        logs = 2
 
 class ClientDisconnect(BaseMessage):
     disconnectType: "ClientDisconnect.DisconnectType"
@@ -374,6 +386,7 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
     workerDisconnectNotification: WorkerDisconnectNotification
+    telemetryBatch: TelemetryBatch
 
 class ObjectRequestHeader(CapnpStruct):
     MESSAGE_LENGTH: ClassVar[int]

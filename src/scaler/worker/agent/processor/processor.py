@@ -12,6 +12,9 @@ from multiprocessing.synchronize import Event as EventType
 from typing import IO, Callable, List, Optional, Tuple, TypeVar, cast
 
 import tblib.pickling_support
+from opentelemetry import trace
+from opentelemetry.context import attach, detach
+from opentelemetry.trace import Status, StatusCode
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
@@ -34,12 +37,22 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import LogType, detect_log_type
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.semantic_conventions import (
+    PROCESSOR_EXECUTE_SPAN,
+    PROCESSOR_FETCH_OBJECTS_SPAN,
+    PROCESSOR_STORE_RESULT_SPAN,
+    TASK_ID_ATTRIBUTE,
+)
 from scaler.utility.serialization import serialize_failure
+from scaler.utility.telemetry import ServiceName, TelemetryService, extract_trace_context, flush_telemetry, relay_buffer
 from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
 from scaler.worker.preload import execute_preload
 
 logger = logging.getLogger(__name__)
+
+tracer = trace.get_tracer(__name__)
+
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
@@ -66,6 +79,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         suspend_trigger: Optional[EventType],
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
+        telemetry_relay: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
         security_config: Optional[SecurityConfig] = None,
@@ -93,6 +107,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
+        self._telemetry_relay = telemetry_relay
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
@@ -132,7 +147,11 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             for path in self._logging_paths
         ]
 
-        bootstrap_process(log_paths=tuple(logging_paths), logging_level=self._logging_level)
+        bootstrap_process(
+            log_paths=tuple(logging_paths),
+            logging_level=self._logging_level,
+            telemetry_service=TelemetryService(ServiceName.PROCESSOR, relay=self._telemetry_relay),
+        )
         tblib.pickling_support.install()
 
         self._backend = get_network_backend_from_env()
@@ -308,9 +327,20 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __on_received_task(self, task: Task):
         self._current_task = task
 
-        self.__cache_required_object_ids(task)
+        # the task's context, baggage included, and then the execute span are current while the function runs,
+        # so the user's own spans nest under the execute span and carry the baggage
+        token = attach(extract_trace_context(task.traceContext))
+        try:
+            task_attributes = {TASK_ID_ATTRIBUTE: task.taskId.hex()}
+            with tracer.start_as_current_span(PROCESSOR_EXECUTE_SPAN, attributes=task_attributes):
+                with tracer.start_as_current_span(PROCESSOR_FETCH_OBJECTS_SPAN):
+                    self.__cache_required_object_ids(task)
 
-        self.__process_task(task)
+                self.__process_task(task)
+        finally:
+            detach(token)
+
+        self.__relay_telemetry()
 
     def __cache_required_object_ids(self, task: Task) -> None:
         required_object_ids = self.__get_required_object_ids_for_task(task)
@@ -358,10 +388,22 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         except Exception as e:
             logger.exception(f"exception when processing task_id={task.taskId.hex()}:")
+            execute_span = trace.get_current_span()
+            execute_span.record_exception(e)
+            execute_span.set_status(Status(StatusCode.ERROR, type(e).__name__))
             task_result_type = TaskResultType.failed
             result_bytes = serialize_failure(e)
 
         self.__send_result(task.source, task.taskId, task_result_type, result_bytes)
+
+    def __relay_telemetry(self) -> None:
+        """Send this task's telemetry to the agent now: an idle processor may be killed before its next export."""
+        buffer = relay_buffer()
+        if buffer is None:
+            return
+        flush_telemetry()
+        for batch in buffer.drain():
+            self._connector_agent.send(batch)
 
     def __send_result(self, source: ClientID, task_id: TaskID, task_result_type: TaskResultType, result_bytes: bytes):
         result_object_id = self.__store_result(source, task_id, result_bytes)
@@ -401,7 +443,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._connector_storage.set_object(result_object_id, result_bytes)
             return result_object_id
 
-        return self.__hand_off(store, task_id, "store the result")
+        with tracer.start_as_current_span(PROCESSOR_STORE_RESULT_SPAN):
+            return self.__hand_off(store, task_id, "store the result")
 
     def __send_to_agent(self, message: BaseMessage, task_id: TaskID, description: str) -> None:
         self.__hand_off(lambda: self._connector_agent.send(message), task_id, description)

@@ -2,9 +2,12 @@ import asyncio
 import logging
 from typing import Callable, Dict, Optional
 
+from opentelemetry.context import attach, detach
+
 from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.constants import (
+    RELAY_SEND_INTERVAL_SECONDS,
     WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
     WORKER_MANAGER_UNIT_CONTROLLER_INTERVAL_SECONDS,
 )
@@ -15,6 +18,7 @@ from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
+    TelemetryBatch,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
@@ -25,6 +29,15 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.signal_handler import install_async_shutdown_handler
+from scaler.utility.telemetry import (
+    accepts_relayed_telemetry,
+    extract_trace_context,
+    process_start_context,
+    relay_buffer,
+    relay_to_parent,
+    send_remaining_telemetry,
+)
+from scaler.utility.telemetry_forwarder import TelemetryForwarder
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.unit_controller import UnitController
@@ -48,6 +61,7 @@ class WorkerManagerRunner:
         capabilities: Dict[str, int],
         create_provisioner: Callable[[AddressConfig], UnitProvisioner],
         children_address: AddressConfig,
+        telemetry_relay: bool,
         io_threads: int = 1,
         security_config: Optional[SecurityConfig] = None,
         parent_address: Optional[AddressConfig] = None,
@@ -67,6 +81,12 @@ class WorkerManagerRunner:
         self._security_config = security_config
         self._scale_down_cooldown_seconds = worker_manager_config.scale_down_cooldown_seconds
         self._unit_timeout_seconds = worker_manager_config.unit_timeout_seconds
+
+        # relay to the parent when it forwards and this manager has no endpoint of its own, decided on its first echo
+        self._telemetry_relay = telemetry_relay
+        self._parent_echoed = False
+        # exports what the units relay, when this manager has an endpoint of its own
+        self._telemetry_forwarder = TelemetryForwarder()
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_parent: Optional[AsyncConnector] = None
@@ -140,6 +160,7 @@ class WorkerManagerRunner:
             create_async_loop_routine(self._connector_parent.routine, 0),
             create_async_loop_routine(self._binder_children.routine, 0, swallow_routine_errors=True),
             create_async_loop_routine(self._send_heartbeat, self._heartbeat_interval_seconds),
+            create_async_loop_routine(self._relay_telemetry, RELAY_SEND_INTERVAL_SECONDS),
             create_async_loop_routine(
                 self._unit_controller.routine,
                 WORKER_MANAGER_UNIT_CONTROLLER_INTERVAL_SECONDS,
@@ -159,7 +180,21 @@ class WorkerManagerRunner:
         except Exception:
             logger.exception(f"{self._ident!r}: failed with unhandled exception")
 
-        await self._unit_controller.terminate()
+        # keep receiving while the units stop, so the telemetry they send on the way out is relayed or exported
+        receiving = asyncio.ensure_future(create_async_loop_routine(self._binder_children.routine, 0))
+        try:
+            await self._unit_controller.terminate()
+        finally:
+            receiving.cancel()
+        await send_remaining_telemetry(self._connector_parent)
+        self._telemetry_forwarder.stop()
+
+    async def _relay_telemetry(self) -> None:
+        buffer = relay_buffer()
+        if buffer is None:
+            return
+        for batch in buffer.drain():
+            await self._connector_parent.send(batch, detached=True)
 
     def _create_unit_controller(self, children_address: AddressConfig) -> None:
         self._provisioner = self._create_provisioner(children_address)
@@ -175,11 +210,22 @@ class WorkerManagerRunner:
             if isinstance(message, WorkerManagerCommand):
                 await self._handle_command(message)
             elif isinstance(message, WorkerManagerHeartbeatEcho):
-                pass
+                self._on_parent_echo(message)
             else:
                 logger.warning(f"Unknown action: received unrecognized message type {type(message).__name__!r}")
         except Exception:
             logger.exception(f"Unhandled exception while processing message {type(message).__name__}")
+
+    def _on_parent_echo(self, echo: WorkerManagerHeartbeatEcho) -> None:
+        """Relay to the parent if it forwards: it says so in every echo, fixed for its lifetime, so the first decides.
+
+        The parent echoes before it sends a command, so this manager decides before it creates a unit.
+        """
+        if self._parent_echoed:
+            return
+        self._parent_echoed = True
+        if echo.forwardsTelemetry and self._telemetry_relay:
+            relay_to_parent()
 
     async def _handle_command(self, command: WorkerManagerCommand) -> None:
         requests = getattr(command, "setDesiredTaskConcurrencyRequests", None)
@@ -187,7 +233,19 @@ class WorkerManagerRunner:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
         assert self._unit_controller is not None
-        self._unit_controller.set_desired_task_concurrency(extract_desired_count(list(requests), self._capabilities))
+        # the scaling decision's context is current while the unit controller takes the new desired concurrency; a
+        # unit's parent sends no decision, and the unit's own start, in the parent's create_unit, causes its commands
+        if command.traceContext:
+            command_context = extract_trace_context(command.traceContext)
+        else:
+            command_context = process_start_context()
+        token = attach(command_context)
+        try:
+            self._unit_controller.set_desired_task_concurrency(
+                extract_desired_count(list(requests), self._capabilities)
+            )
+        finally:
+            detach(token)
 
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:
         unit_id = source.decode()  # each unit dials with the unit id it was created with as its identity
@@ -202,8 +260,13 @@ class WorkerManagerRunner:
 
         if isinstance(message, WorkerManagerHeartbeat):
             self._unit_controller.on_unit_heartbeat(unit_id, message.activeTaskConcurrency, message.assignedTasks)
-            await self._binder_children.send(source, WorkerManagerHeartbeatEcho(), detached=True)
+            echo = WorkerManagerHeartbeatEcho(forwardsTelemetry=accepts_relayed_telemetry())
+            await self._binder_children.send(source, echo, detached=True)
             await self._binder_children.send(source, self._unit_command(), detached=True)
+            return
+
+        if isinstance(message, TelemetryBatch):
+            self._on_relayed_telemetry(message)
             return
 
         if isinstance(message, WorkerDisconnectNotification):
@@ -212,6 +275,14 @@ class WorkerManagerRunner:
             return
 
         logger.error(f"unknown message from unit {unit_id!r}: {message}")
+
+    def _on_relayed_telemetry(self, batch: TelemetryBatch) -> None:
+        """Pass a unit's telemetry up when this manager relays, or export it when it has an endpoint of its own."""
+        buffer = relay_buffer()
+        if buffer is None:
+            self._telemetry_forwarder.forward(batch)
+            return
+        buffer.put(TelemetryBatch.Signal(batch.signal), bytes(batch.payload))
 
     def _unit_command(self) -> WorkerManagerCommand:
         return WorkerManagerCommand(

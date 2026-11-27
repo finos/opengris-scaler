@@ -20,10 +20,13 @@ from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerMana
 from scaler.config.types.address import AddressConfig
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
+from scaler.utility.telemetry import worker_manager_service
 from scaler.worker_manager.cloud.child_command import (
+    check_unit_requirements_support_telemetry,
     child_link_arguments,
     format_capabilities,
     load_requirements_content,
+    unit_environment,
 )
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
@@ -171,6 +174,7 @@ class ORBAWSEC2WorkerManager:
         if config.image_id is None:
             requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
             self._validate_requirements(requirements_content)
+            check_unit_requirements_support_telemetry(requirements_content, config.worker_config)
 
     def _build_app_config(self) -> dict:
         region = self._config.aws_region
@@ -255,6 +259,7 @@ class ORBAWSEC2WorkerManager:
             create_provisioner=create_provisioner,
             children_address=self._config.worker_manager_config.children_address,
             io_threads=self._config.worker_config.io_threads,
+            telemetry_relay=self._config.worker_config.telemetry_relay,
         )
 
     def run(self) -> None:
@@ -286,7 +291,12 @@ class ORBAWSEC2WorkerManager:
         async with orb(app_config=app_config) as sdk:
             # bootstrap_process is called after the ORB context is entered because ORB reconfigures
             # the root logger during __aenter__, which would otherwise suppress scaler log output.
-            bootstrap_process(self._logging_paths, self._logging_config_file, self._logging_level)
+            bootstrap_process(
+                self._logging_paths,
+                self._logging_config_file,
+                self._logging_level,
+                telemetry_service=worker_manager_service(self._config.worker_manager_config, None),
+            )
             await self._setup(sdk)
             try:
                 await self._runner.run_in_loop(self._loop)
@@ -408,7 +418,11 @@ set +e
 
 """
 
-        backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
+        environment = {
+            "SCALER_NETWORK_BACKEND": self._config.network_backend.name,
+            **unit_environment(self._config.worker_config),
+        }
+        backend_prefix = "".join(f"{name}={shlex.quote(value)} " for name, value in environment.items())
         wm_id = shlex.quote(str(worker_manager_config.worker_manager_id))
         script += f"""{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
     {child_link_arguments(children_address, self._config.cloud_children_config, unit_id, workers_per_instance)} \\
@@ -425,6 +439,9 @@ set +e
 
         if worker_config.hard_processor_suspend:
             script += " \\\n    --hard-processor-suspend"
+
+        if not worker_config.telemetry_relay:
+            script += " \\\n    --telemetry-relay false"
 
         if worker_manager_config.object_storage_address:
             script += f" \\\n    --object-storage-address {worker_manager_config.object_storage_address!r}"

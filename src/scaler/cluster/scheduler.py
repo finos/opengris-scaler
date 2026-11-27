@@ -11,6 +11,7 @@ from scaler.scheduler.scheduler import BoundSchedulerAddresses, Scheduler
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
+from scaler.utility.telemetry import ServiceName, TelemetryService
 
 
 def run_scheduler(
@@ -28,7 +29,12 @@ def run_scheduler(
     loop = asyncio.new_event_loop()
 
     async def _run() -> None:
-        bootstrap_process(logging_paths, logging_config_file, logging_level)
+        bootstrap_process(
+            logging_paths,
+            logging_config_file,
+            logging_level,
+            telemetry_service=TelemetryService(ServiceName.SCHEDULER, otlp_endpoint=scheduler_config.otlp_endpoint),
+        )
         register_event_loop(scheduler_config.event_loop)
 
         scheduler = Scheduler(scheduler_config)
