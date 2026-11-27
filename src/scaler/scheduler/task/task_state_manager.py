@@ -16,7 +16,7 @@ from scaler.utility.semantic_conventions import (
     TASK_ID_ATTRIBUTE,
     TASK_STATE_ATTRIBUTE,
 )
-from scaler.utility.telemetry import extract_trace_context, is_tracing, trace_context_field
+from scaler.utility.telemetry import extract_trace_context, trace_context_field
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +62,6 @@ class TaskStateManager:
         self._statistics[state_machine.current_state()] += 1
 
         parent_context = extract_trace_context(trace_context)
-        if not is_tracing():
-            if trace_context:
-                self._task_id_to_context[task_id] = parent_context
-            return state_machine
-
         span = tracer.start_span(
             SCHEDULER_TASK_SPAN,
             context=parent_context,
@@ -141,7 +136,7 @@ class TaskStateManager:
 
     def __start_queued_span(self, task_id: TaskID) -> None:
         span_context = self._task_id_to_context.get(task_id)
-        if span_context is None or not is_tracing():
+        if span_context is None:
             return
         self._task_id_to_queued_span[task_id] = tracer.start_span(SCHEDULER_QUEUED_SPAN, context=span_context)
 

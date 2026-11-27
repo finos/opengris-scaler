@@ -19,7 +19,7 @@ from scaler.utility.semantic_conventions import (
     WORKER_TASK_SPAN,
     WORKER_TASK_SUSPENDED_EVENT,
 )
-from scaler.utility.telemetry import extract_trace_context, inject_trace_context, is_tracing
+from scaler.utility.telemetry import extract_trace_context, inject_trace_context
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager
 
 tracer = trace.get_tracer(__name__)
@@ -145,12 +145,6 @@ class VanillaTaskManager(Looper, TaskManager):
         self._processor_manager = processor_manager
 
     async def on_task_new(self, task: Task):
-        if not is_tracing():
-            # the processor receives the client's context, if any, unchanged
-            entry = self._tasks.add(task, self.__get_task_priority(task))
-            await self.__suspend_if_priority_is_higher(entry)
-            return
-
         parent_context = extract_trace_context(task.traceContext)
         span = tracer.start_span(
             WORKER_TASK_SPAN,
@@ -247,8 +241,6 @@ class VanillaTaskManager(Looper, TaskManager):
         )
 
     def __start_queued_span(self, task: Task) -> None:
-        if not is_tracing():
-            return
         # the task carries the worker task span's context since on_task_new, baggage included
         task_context = extract_trace_context(task.traceContext)
         self._task_id_to_queued_span[task.taskId] = tracer.start_span(WORKER_QUEUED_SPAN, context=task_context)

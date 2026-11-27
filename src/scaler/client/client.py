@@ -40,7 +40,7 @@ from scaler.utility.semantic_conventions import (
     RESERVED_ATTRIBUTE_PREFIX,
     TASK_ID_ATTRIBUTE,
 )
-from scaler.utility.telemetry import is_tracing, trace_context_field
+from scaler.utility.telemetry import trace_context_field
 
 if sys.platform != "emscripten":
     from scaler.worker.agent.processor.processor import Processor
@@ -664,13 +664,10 @@ class Client:
         # current, not passed as the span's context: the span's own context takes its baggage from the current one
         token = attach(self.__submit_context())
         try:
-            if is_tracing():
-                with tracer.start_as_current_span(
-                    CLIENT_SUBMIT_SPAN, kind=SpanKind.PRODUCER, attributes={TASK_ID_ATTRIBUTE: task_id.hex()}
-                ):
-                    trace_context_fields = trace_context_field()
-            else:
-                trace_context_fields = trace_context_field()  # the caller's context still propagates
+            with tracer.start_as_current_span(
+                CLIENT_SUBMIT_SPAN, kind=SpanKind.PRODUCER, attributes={TASK_ID_ATTRIBUTE: task_id.hex()}
+            ):
+                trace_context_fields = trace_context_field()
         finally:
             detach(token)
 

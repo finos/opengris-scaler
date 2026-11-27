@@ -44,14 +44,7 @@ from scaler.utility.semantic_conventions import (
     TASK_ID_ATTRIBUTE,
 )
 from scaler.utility.serialization import serialize_failure
-from scaler.utility.telemetry import (
-    ServiceName,
-    TelemetryService,
-    extract_trace_context,
-    flush_telemetry,
-    is_tracing,
-    relay_buffer,
-)
+from scaler.utility.telemetry import ServiceName, TelemetryService, extract_trace_context, flush_telemetry, relay_buffer
 from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
 from scaler.worker.preload import execute_preload
@@ -334,17 +327,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __on_received_task(self, task: Task):
         self._current_task = task
 
-        if not is_tracing():
-            # a traced client's context still reaches the function, for calls it makes to traced services
-            token = attach(extract_trace_context(task.traceContext))
-            try:
-                self.__cache_required_object_ids(task)
-                self.__process_task(task)
-            finally:
-                detach(token)
-            self.__relay_telemetry()
-            return
-
         # the task's context, baggage included, and then the execute span are current while the function runs,
         # so the user's own spans nest under the execute span and carry the baggage
         token = attach(extract_trace_context(task.traceContext))
@@ -461,8 +443,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._connector_storage.set_object(result_object_id, result_bytes)
             return result_object_id
 
-        if not is_tracing():
-            return self.__hand_off(store, task_id, "store the result")
         with tracer.start_as_current_span(PROCESSOR_STORE_RESULT_SPAN):
             return self.__hand_off(store, task_id, "store the result")
 

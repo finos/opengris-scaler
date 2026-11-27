@@ -9,7 +9,7 @@ import logging
 import os
 from typing import Any, Awaitable, Dict, List, Optional, Tuple
 
-from opentelemetry import propagate, trace
+from opentelemetry import propagate
 from opentelemetry.context import Context
 
 from scaler.config.common.worker_manager import WorkerManagerConfig
@@ -83,11 +83,6 @@ def worker_manager_service(worker_manager_config: WorkerManagerConfig, unit_id: 
 def empty_trace_context() -> str:
     """A trace context with no span or baggage, as tests set it on a locally built message."""
     return ""
-
-
-def is_tracing() -> bool:
-    """True when a tracer provider records spans in this process: Scaler's SDK, or one the user installed."""
-    return not isinstance(trace.get_tracer_provider(), trace.ProxyTracerProvider)
 
 
 def inject_trace_context(context: Optional[Context] = None) -> str:
