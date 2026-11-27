@@ -84,7 +84,7 @@ docs = [
     "sphinx>=7.1.2",
 ]
 lint = [
-    "mypy>=1.14.1",
+    "pyrefly==1.5.0",
     "ruff==0.17.5",
 ]
 test = [
@@ -147,33 +147,22 @@ build.targets = ["py_capnp"]
 cmake.define.CMAKE_C_COMPILER = ""
 cmake.define.CMAKE_CXX_COMPILER = ""
 
-[tool.mypy]
-python_version = "3.10"
-# keeps src/ on the search path when it is not itself in the build, so that checking a single file
-# under tests/ still resolves scaler.protocol.capnp instead of silently degrading it to Any
-mypy_path = "src"
-no_strict_optional = true
-check_untyped_defs = true
-ignore_missing_imports = true
-warn_unused_ignores = true
-exclude = [
-    "^docs.*$",
-    "^benchmark.*$",
-    "^venv.*$",
-    "migrations",
-    "__pycache__",
-    "^build_*_*.*$",
-    "^thirdparties.*$",
-    "^capnproto.*$",
-    "^boost.*$",
-    "^scripts.*$",
-    ".*object_storage.*$",
-]
-
-[[tool.mypy.overrides]]
+[tool.pyrefly]
+python-version = "3.10"
+# src holds scaler, the root holds the tests package
+search-path = ["src", "."]
+project-excludes = ["benchmarks", "docs", "scripts", "**/*object_storage*", "**/*.ipynb"]
+preset = "legacy"
+check-unannotated-defs = true
+ignore-missing-imports = ["*"]
 # scaler.compat.ray replaces ray's API at runtime, so ray's own types do not describe the calls that run
-module = ["ray", "ray.*"]
-follow_imports = "skip"
+replace-imports-with-any = ["ray", "ray.*"]
+
+[tool.pyrefly.errors]
+# psutil ships no type information
+untyped-import = "ignore"
+unused-ignore = "error"
+unused-type-ignore = "error"
 
 [tool.ruff]
 line-length = 120

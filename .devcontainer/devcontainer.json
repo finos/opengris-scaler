@@ -11,7 +11,7 @@
         "vscode": {
             "extensions": [
                 "charliermarsh.ruff",
-                "ms-python.mypy-type-checker",
+                "meta.pyrefly",
                 "ms-python.python",
                 "ms-vscode.cmake-tools",
                 "ms-vscode.cpptools"

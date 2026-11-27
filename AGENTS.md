@@ -42,7 +42,7 @@ uv pip install -e ".[all]" --group dev    # also builds the C++ extensions (scik
 The gate, run by CI on Linux, macOS, and Windows, before every commit that touches code:
 
 ```bash
-ruff check --fix && ruff format && mypy .
+ruff check --fix && ruff format && pyrefly check
 clang-format --Werror --dry-run <the .cpp and .h files you changed>
 python -m pytest -n auto tests
 ./scripts/test.sh                               # C++

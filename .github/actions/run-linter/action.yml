@@ -34,10 +34,10 @@ runs:
         ruff format --check --diff || \
         { echo "::error::Formatting check failed. Run 'ruff format' to fix."; exit 1; }
 
-    - name: Lint With MyPy
+    - name: Type check with pyrefly
       shell: bash
       run: |
-        mypy --install-types --non-interactive .
+        pyrefly check
 
     - name: Lint with clang-format
       if: inputs.os == 'Linux'
