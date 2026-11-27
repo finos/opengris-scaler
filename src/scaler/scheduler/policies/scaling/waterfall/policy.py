@@ -2,7 +2,6 @@ import logging
 from math import ceil
 from typing import Dict, FrozenSet, List, Mapping, Optional, Tuple
 
-from scaler.config.constants import NO_LIMIT
 from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
@@ -124,13 +123,11 @@ class WaterfallScalingPolicy(ScalingPolicy):
         """
         if rule.worker_manager_id == current_rule.worker_manager_id:
             reported = cluster_state.managers[current_rule.worker_manager_id].max_task_concurrency
-            if reported is None:
-                reported = NO_LIMIT
             return min(rule.max_task_concurrency, reported) if rule.max_task_concurrency is not None else reported
         info = cluster_state.managers.get(rule.worker_manager_id)
         if info is None:
             return None
-        reported = info.max_task_concurrency if info.max_task_concurrency is not None else NO_LIMIT
+        reported = info.max_task_concurrency
         return min(rule.max_task_concurrency, reported) if rule.max_task_concurrency is not None else reported
 
 

@@ -2,6 +2,7 @@ import logging
 from math import ceil
 from typing import Dict, FrozenSet, List, Mapping, Tuple
 
+from scaler.config.constants import NO_LIMIT
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command, forget_departed_managers
@@ -73,7 +74,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
             if count == 0:
                 continue
             desired = max(1, ceil(count / self._upper_task_ratio))
-            if manager_info.max_task_concurrency is not None:
+            if manager_info.max_task_concurrency != NO_LIMIT:
                 desired = min(desired, manager_info.max_task_concurrency)
             result.append((cluster_state.capset_representatives[capset], desired))
         return result

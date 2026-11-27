@@ -4,7 +4,6 @@ import time
 from types import MappingProxyType
 from typing import Dict, List, Mapping, Optional
 
-from scaler.config.constants import NO_LIMIT
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
 from scaler.protocol.capnp import (
@@ -35,7 +34,7 @@ class _WorkerManagerHolder:
     source: bytes  # network identity (ZMQ/YMQ socket address)
     last_seen_at: float  # time.monotonic() of last heartbeat
     capabilities: Dict[str, int]
-    max_task_concurrency: Optional[int]  # None = unlimited
+    max_task_concurrency: int  # NO_LIMIT = unlimited
     last_desired_total: int = 0
 
 
@@ -66,7 +65,6 @@ class WorkerManagerController(Looper, Reporter):
             return
 
         capabilities = capabilities_to_dict(heartbeat.capabilities)
-        max_task_concurrency = heartbeat.maxTaskConcurrency if heartbeat.maxTaskConcurrency != NO_LIMIT else None
 
         if holder is None:
             holder = _WorkerManagerHolder(
@@ -74,14 +72,14 @@ class WorkerManagerController(Looper, Reporter):
                 source=source,
                 last_seen_at=time.monotonic(),
                 capabilities=capabilities,
-                max_task_concurrency=max_task_concurrency,
+                max_task_concurrency=heartbeat.maxTaskConcurrency,
             )
             self._managers[manager_id] = holder
             logger.info(f"{manager_id!r} connected")
         else:
             holder.last_seen_at = time.monotonic()
             holder.capabilities = capabilities
-            holder.max_task_concurrency = max_task_concurrency
+            holder.max_task_concurrency = heartbeat.maxTaskConcurrency
 
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
@@ -106,13 +104,12 @@ class WorkerManagerController(Looper, Reporter):
             caps_str = " ".join(sorted(holder.capabilities.keys())) if holder.capabilities else ""
             connected = len(self._worker_controller.get_workers_by_manager_id(manager_id))
             pending = max(0, holder.last_desired_total - connected)
-            max_task_concurrency = holder.max_task_concurrency if holder.max_task_concurrency is not None else NO_LIMIT
             details.append(
                 {
                     "worker_manager_id": manager_id,
                     "identity": holder.source.decode(errors="replace"),
                     "last_seen_seconds": min(int(now - holder.last_seen_at), UINT16_MAX),
-                    "max_task_concurrency": max_task_concurrency,
+                    "max_task_concurrency": holder.max_task_concurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
                 }

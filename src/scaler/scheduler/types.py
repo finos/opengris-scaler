@@ -1,5 +1,5 @@
 import dataclasses
-from typing import FrozenSet, Mapping, Optional
+from typing import FrozenSet, Mapping
 
 from scaler.utility.identifiers import WorkerManagerID
 
@@ -9,7 +9,7 @@ class WorkerManagerInfo:
     """Immutable snapshot of a worker manager's state."""
 
     manager_id: WorkerManagerID
-    max_task_concurrency: Optional[int]  # None = unlimited
+    max_task_concurrency: int  # NO_LIMIT = unlimited
     worker_count: int
     capabilities: Mapping[str, int]
 

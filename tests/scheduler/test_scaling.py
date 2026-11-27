@@ -13,6 +13,7 @@ from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.constants import NO_LIMIT
 from scaler.config.defaults import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -445,18 +446,22 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         self.worker_controller.get_workers_by_manager_id.return_value = []
         controller.register(binder, task_controller, self.worker_controller)
 
-        for advertised_max, snapshot_max, desired in ((0, 0, 0), (1, 1, 1), (-1, None, 1)):
+        for advertised_max, desired in ((NO_LIMIT, 1), (0, 0), (3, 1), (NO_LIMIT, 1)):
             with self.subTest(advertised_max=advertised_max):
                 binder.send.reset_mock()
+                holder = controller._managers.get(manager_id)
                 await controller.on_heartbeat(
                     b"mgr-src", _create_worker_manager_heartbeat(manager_id, max_task_concurrency=advertised_max)
                 )
 
+                if holder is not None:
+                    self.assertIs(controller._managers[manager_id], holder)
+                self.assertEqual(controller._managers[manager_id].max_task_concurrency, advertised_max)
                 cluster_state = controller._build_cluster_state()
                 self.assertEqual(cluster_state.n_tasks, len(task_ids))
                 self.assertEqual(cluster_state.n_workers, 0)
                 self.assertEqual(cluster_state.managers[manager_id].worker_count, 0)
-                self.assertEqual(cluster_state.managers[manager_id].max_task_concurrency, snapshot_max)
+                self.assertEqual(cluster_state.managers[manager_id].max_task_concurrency, advertised_max)
                 (command,) = [
                     call.args[1]
                     for call in binder.send.call_args_list

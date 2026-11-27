@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from typing import Dict, Optional
 
+from scaler.config.constants import NO_LIMIT
 from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
@@ -120,7 +121,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         policy = WaterfallScalingPolicy(rules)
         tasks = _create_tasks(100)  # target = ceil(100/10) = 10
         manager_infos = {
-            self.manager_id_a: _create_worker_manager_info(self.manager_id_a, max_task_concurrency=None),
+            self.manager_id_a: _create_worker_manager_info(self.manager_id_a, max_task_concurrency=NO_LIMIT),
             self.manager_id_b: _create_worker_manager_info(self.manager_id_b, max_task_concurrency=20),
         }
         cluster_state = build_cluster_state(tasks, {}, manager_infos)
@@ -876,7 +877,7 @@ def _create_mock_worker_heartbeat(
 
 def _create_worker_manager_info(
     worker_manager_id: WorkerManagerID,
-    max_task_concurrency: Optional[int] = 10,
+    max_task_concurrency: int = 10,
     capabilities: Optional[Dict[str, int]] = None,
     worker_count: int = 0,
 ) -> WorkerManagerInfo:

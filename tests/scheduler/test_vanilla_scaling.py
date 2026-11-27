@@ -332,7 +332,7 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, dra
 
 def _create_worker_manager_info(
     worker_manager_id: WorkerManagerID,
-    max_task_concurrency: Optional[int] = 10,
+    max_task_concurrency: int = 10,
     capabilities: Optional[Dict[str, int]] = None,
     worker_count: int = 0,
 ) -> WorkerManagerInfo:

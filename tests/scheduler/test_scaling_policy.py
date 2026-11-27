@@ -1,6 +1,7 @@
 import unittest
 from typing import Dict, Optional
 
+from scaler.config.constants import NO_LIMIT
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.scheduler.types import ClusterState, WorkerManagerInfo
@@ -14,7 +15,7 @@ CAPABILITY_LOGGER = "scaler.scheduler.policies.scaling.capability"
 
 def _info(manager_id: WorkerManagerID = MANAGER_ID, worker_count: int = 1) -> WorkerManagerInfo:
     return WorkerManagerInfo(
-        manager_id=manager_id, max_task_concurrency=None, worker_count=worker_count, capabilities={}
+        manager_id=manager_id, max_task_concurrency=NO_LIMIT, worker_count=worker_count, capabilities={}
     )
 
 

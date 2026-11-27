@@ -14,7 +14,7 @@ MAX_TASK_CONCURRENCY = 8
 def _desired_task_concurrency(
     policy: StaticScalingPolicy,
     worker_manager_id: WorkerManagerID = WorkerManagerID(b"manager"),
-    max_task_concurrency: Optional[int] = MAX_TASK_CONCURRENCY,
+    max_task_concurrency: int = MAX_TASK_CONCURRENCY,
 ) -> int:
     info = WorkerManagerInfo(
         manager_id=worker_manager_id, max_task_concurrency=max_task_concurrency, worker_count=0, capabilities={}
